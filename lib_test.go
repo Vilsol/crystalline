@@ -191,3 +191,16 @@ func TestUnsafePointer(t *testing.T) {
 	testza.AssertNoError(t, err)
 	testza.AssertEqual(t, nil, result)
 }
+
+func TestNilFunc(t *testing.T) {
+	var fakeFunc func()
+	result, err := Map(fakeFunc)
+	testza.AssertNoError(t, err)
+	testza.AssertEqual(t, nil, result)
+}
+
+func TestPanic(t *testing.T) {
+	testza.AssertPanics(t, func() {
+		MapOrPanic(make(chan bool))
+	})
+}

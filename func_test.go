@@ -5,6 +5,7 @@ package crystalline
 import (
 	"syscall/js"
 	"testing"
+	"unsafe"
 
 	"github.com/MarvinJWendt/testza"
 )
@@ -186,9 +187,9 @@ func TestFnStruct(t *testing.T) {
 	testza.AssertTrue(t, Run([]interface{}{"TestStructFnPtr", "B"}, true).Bool())
 }
 
-type FnSampleFunc func(string) (bool, string)
-
 func TestFnFunc(t *testing.T) {
+	type FnSampleFunc func(string) (bool, string)
+
 	js.Global().Set("TestFunc", MapOrPanic(func(a FnSampleFunc) (bool, string) {
 		return a("hello")
 	}))
@@ -200,6 +201,17 @@ func TestFnFunc(t *testing.T) {
 	testza.AssertTrue(t, result.Index(0).Bool())
 	testza.AssertEqual(t, "bob", result.Index(1).String())
 
+	type FnSampleFuncOne func(string) bool
+	js.Global().Set("TestFuncOneReturn", MapOrPanic(func(a FnSampleFuncOne) bool {
+		return a("hello")
+	}))
+
+	result = Run([]interface{}{"TestFuncOneReturn"}, MapOrPanic(func(data string) bool {
+		return data == "hello"
+	}))
+
+	testza.AssertTrue(t, result.Bool())
+
 	js.Global().Set("TestFuncNoReturn", MapOrPanic(func(a FnSampleFunc) {
 		x, y := a("hello")
 		testza.AssertTrue(t, x)
@@ -209,4 +221,28 @@ func TestFnFunc(t *testing.T) {
 	Run([]interface{}{"TestFuncNoReturn"}, MapOrPanic(func(data string) (bool, string) {
 		return data == "hello", "bob"
 	}))
+}
+
+type FnInterface interface {
+}
+
+func TestUnsupported(t *testing.T) {
+	testza.AssertPanics(t, func() {
+		_, _ = Map(func(chan bool) {})
+	})
+	testza.AssertPanics(t, func() {
+		_, _ = Map(func(complex64) {})
+	})
+	testza.AssertPanics(t, func() {
+		_, _ = Map(func(complex128) {})
+	})
+	testza.AssertPanics(t, func() {
+		_, _ = Map(func(unsafe.Pointer) {})
+	})
+	testza.AssertPanics(t, func() {
+		_, _ = Map(func(*FnSample) {})
+	})
+	testza.AssertPanics(t, func() {
+		_, _ = Map(func(FnInterface) {})
+	})
 }
