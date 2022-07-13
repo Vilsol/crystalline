@@ -11,6 +11,7 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: 1.19.0-rc1
+          stable: false
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2
@@ -31,6 +32,7 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: 1.19.0-rc1
+          stable: false
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2
