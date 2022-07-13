@@ -199,4 +199,14 @@ func TestFnFunc(t *testing.T) {
 
 	testza.AssertTrue(t, result.Index(0).Bool())
 	testza.AssertEqual(t, "bob", result.Index(1).String())
+
+	js.Global().Set("TestFuncNoReturn", MapOrPanic(func(a FnSampleFunc) {
+		x, y := a("hello")
+		testza.AssertTrue(t, x)
+		testza.AssertEqual(t, "bob", y)
+	}))
+
+	Run([]interface{}{"TestFuncNoReturn"}, MapOrPanic(func(data string) (bool, string) {
+		return data == "hello", "bob"
+	}))
 }
