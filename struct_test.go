@@ -17,8 +17,11 @@ func TestStructPointers(t *testing.T) {
 	js.Global().Set("TestPointers", MapOrPanic(obj))
 
 	js.Global().Get("eval").Invoke("global.TestPointers.FirstValue = 'world'")
-
 	testza.AssertEqual(t, "world", obj.FirstValue)
+
+	obj.FirstValue = "xyz"
+	testza.AssertEqual(t, "xyz", obj.FirstValue)
+	testza.AssertEqual(t, "xyz", js.Global().Get("TestPointers").Get("FirstValue").String())
 }
 
 func TestStructNoPointers(t *testing.T) {
