@@ -17,177 +17,36 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		return nil, errors.New("invalid value kind")
 	case reflect.Bool:
 		return func(data js.Value) reflect.Value {
-			return reflect.ValueOf(data.Bool())
+			newValue := reflect.New(hint).Elem()
+			newValue.SetBool(data.Bool())
+			return newValue
 		}, nil
 	case reflect.Int:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseInt(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(int(i))
-			}
-
-			return reflect.ValueOf(data.Int())
-		}, nil
+		return intToGo(hint), nil
 	case reflect.Int8:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseInt(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(int8(i))
-			}
-
-			return reflect.ValueOf(int8(data.Int()))
-		}, nil
+		return intToGo(hint), nil
 	case reflect.Int16:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseInt(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(int16(i))
-			}
-
-			return reflect.ValueOf(int16(data.Int()))
-		}, nil
+		return intToGo(hint), nil
 	case reflect.Int32:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseInt(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(int32(i))
-			}
-
-			return reflect.ValueOf(int32(data.Int()))
-		}, nil
+		return intToGo(hint), nil
 	case reflect.Int64:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseInt(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(i)
-			}
-
-			return reflect.ValueOf(int64(data.Int()))
-		}, nil
+		return intToGo(hint), nil
 	case reflect.Uint:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseUint(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(uint(i))
-			}
-
-			return reflect.ValueOf(uint(data.Int()))
-		}, nil
+		return uintToGo(hint), nil
 	case reflect.Uint8:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseUint(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(uint8(i))
-			}
-
-			return reflect.ValueOf(uint8(data.Int()))
-		}, nil
+		return uintToGo(hint), nil
 	case reflect.Uint16:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseUint(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(uint16(i))
-			}
-
-			return reflect.ValueOf(uint16(data.Int()))
-		}, nil
+		return uintToGo(hint), nil
 	case reflect.Uint32:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseUint(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(uint32(i))
-			}
-
-			return reflect.ValueOf(uint32(data.Int()))
-		}, nil
+		return uintToGo(hint), nil
 	case reflect.Uint64:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseUint(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(i)
-			}
-
-			return reflect.ValueOf(uint64(data.Int()))
-		}, nil
+		return uintToGo(hint), nil
 	case reflect.Uintptr:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseUint(data.String(), 10, 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(uintptr(i))
-			}
-
-			return reflect.ValueOf(uintptr(data.Int()))
-		}, nil
+		return uintToGo(hint), nil
 	case reflect.Float32:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseFloat(data.String(), 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(float32(i))
-			}
-
-			return reflect.ValueOf(float32(data.Float()))
-		}, nil
+		return floatToGo(hint), nil
 	case reflect.Float64:
-		return func(data js.Value) reflect.Value {
-			switch data.Type() {
-			case js.TypeString:
-				i, err := strconv.ParseFloat(data.String(), 64)
-				if err != nil {
-					panic(err)
-				}
-				return reflect.ValueOf(i)
-			}
-
-			return reflect.ValueOf(data.Float())
-		}, nil
+		return floatToGo(hint), nil
 	case reflect.Complex64:
 		panic("complex64 is not supported as argument type")
 	case reflect.Complex128:
@@ -276,7 +135,19 @@ func jsToGo(hint reflect.Type) (converter, error) {
 			return outMap
 		}, nil
 	case reflect.Pointer:
-		panic("pointers are not supported as argument types")
+		valueConverter, err := jsToGo(hint.Elem())
+		if err != nil {
+			return nil, err
+		}
+
+		return func(data js.Value) reflect.Value {
+			if data.IsNull() {
+				return reflect.Zero(hint)
+			}
+			newValue := reflect.New(hint.Elem())
+			newValue.Elem().Set(valueConverter(data))
+			return newValue
+		}, nil
 	case reflect.Slice:
 		elementConverter, err := jsToGo(hint.Elem())
 		if err != nil {
@@ -294,6 +165,11 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		}, nil
 	case reflect.String:
 		return func(data js.Value) reflect.Value {
+			if hint.String() != "string" {
+				newValue := reflect.New(hint).Elem()
+				newValue.SetString(data.String())
+				return newValue
+			}
 			return reflect.ValueOf(data.String())
 		}, nil
 	case reflect.Struct:
@@ -322,4 +198,73 @@ func jsToGo(hint reflect.Type) (converter, error) {
 	return func(_ js.Value) reflect.Value {
 		return reflect.ValueOf(nil)
 	}, nil
+}
+
+func intToGo(hint reflect.Type) converter {
+	return func(data js.Value) reflect.Value {
+		var value int64
+
+		switch data.Type() {
+		case js.TypeString:
+			var err error
+			value, err = strconv.ParseInt(data.String(), 10, 64)
+			if err != nil {
+				panic(err)
+			}
+		case js.TypeNumber:
+			value = int64(data.Int())
+		default:
+			panic("provided value is not an int")
+		}
+
+		newValue := reflect.New(hint).Elem()
+		newValue.SetInt(value)
+		return newValue
+	}
+}
+
+func uintToGo(hint reflect.Type) converter {
+	return func(data js.Value) reflect.Value {
+		var value uint64
+
+		switch data.Type() {
+		case js.TypeString:
+			var err error
+			value, err = strconv.ParseUint(data.String(), 10, 64)
+			if err != nil {
+				panic(err)
+			}
+		case js.TypeNumber:
+			value = uint64(data.Int())
+		default:
+			panic("provided value is not a uint")
+		}
+
+		newValue := reflect.New(hint).Elem()
+		newValue.SetUint(value)
+		return newValue
+	}
+}
+
+func floatToGo(hint reflect.Type) converter {
+	return func(data js.Value) reflect.Value {
+		var value float64
+
+		switch data.Type() {
+		case js.TypeString:
+			var err error
+			value, err = strconv.ParseFloat(data.String(), 64)
+			if err != nil {
+				panic(err)
+			}
+		case js.TypeNumber:
+			value = data.Float()
+		default:
+			panic("provided value is not a float")
+		}
+
+		newValue := reflect.New(hint).Elem()
+		newValue.SetFloat(value)
+		return newValue
+	}
 }

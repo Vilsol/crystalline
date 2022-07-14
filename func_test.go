@@ -227,22 +227,126 @@ type FnInterface interface {
 }
 
 func TestUnsupported(t *testing.T) {
+	// Should fail on channels
 	testza.AssertPanics(t, func() {
 		_, _ = Map(func(chan bool) {})
 	})
+
+	// Should fail on complex types
 	testza.AssertPanics(t, func() {
 		_, _ = Map(func(complex64) {})
 	})
 	testza.AssertPanics(t, func() {
 		_, _ = Map(func(complex128) {})
 	})
+
+	// Should fail on unsafe pointers
 	testza.AssertPanics(t, func() {
 		_, _ = Map(func(unsafe.Pointer) {})
 	})
-	testza.AssertPanics(t, func() {
-		_, _ = Map(func(*FnSample) {})
-	})
+
+	// Should fail on interfaces
 	testza.AssertPanics(t, func() {
 		_, _ = Map(func(FnInterface) {})
 	})
+}
+
+type (
+	WrappedTypeInt     int
+	WrappedTypeInt8    int8
+	WrappedTypeInt16   int16
+	WrappedTypeInt32   int32
+	WrappedTypeInt64   int64
+	WrappedTypeUint    uint
+	WrappedTypeUint8   uint8
+	WrappedTypeUint16  uint16
+	WrappedTypeUint32  uint32
+	WrappedTypeUint64  uint64
+	WrappedTypeUintPTR uintptr
+	WrappedTypeFloat32 float32
+	WrappedTypeFloat64 float64
+	WrappedTypeBool    bool
+	WrappedTypeArray   [1]string
+	WrappedTypeFunc    func() string
+	WrappedTypeMap     map[int]string
+	WrappedTypePointer *string
+	WrappedTypeSlice   []string
+	WrappedTypeStruct  Sample
+)
+
+func TestFnWrappedType(t *testing.T) {
+	js.Global().Set("TestWrappedTypeString", MapOrPanic(func(a WrappedTypeString) bool { return a == "hello" }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeString"}, "hello").Bool())
+
+	js.Global().Set("TestWrappedTypeInt", MapOrPanic(func(a WrappedTypeInt) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeInt"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeInt8", MapOrPanic(func(a WrappedTypeInt8) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeInt8"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeInt16", MapOrPanic(func(a WrappedTypeInt16) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeInt16"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeInt32", MapOrPanic(func(a WrappedTypeInt32) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeInt32"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeInt64", MapOrPanic(func(a WrappedTypeInt64) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeInt64"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeUint", MapOrPanic(func(a WrappedTypeUint) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeUint"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeUint8", MapOrPanic(func(a WrappedTypeUint8) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeUint8"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeUint16", MapOrPanic(func(a WrappedTypeUint16) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeUint16"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeUint32", MapOrPanic(func(a WrappedTypeUint32) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeUint32"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeUint64", MapOrPanic(func(a WrappedTypeUint64) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeUint64"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeUintPTR", MapOrPanic(func(a WrappedTypeUintPTR) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeUintPTR"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeFloat32", MapOrPanic(func(a WrappedTypeFloat32) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeFloat32"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeFloat64", MapOrPanic(func(a WrappedTypeFloat64) bool { return a == 10 }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeFloat64"}, 10).Bool())
+
+	js.Global().Set("TestWrappedTypeBool", MapOrPanic(func(a WrappedTypeBool) bool { return bool(a) }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeBool"}, true).Bool())
+
+	js.Global().Set("TestWrappedTypeArray", MapOrPanic(func(a WrappedTypeArray) bool { return a[0] == "hello" }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeArray"}, MapOrPanic([]string{"hello"})).Bool())
+
+	js.Global().Set("TestWrappedTypeFunc", MapOrPanic(func(a WrappedTypeFunc) bool { return a() == "hello" }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeFunc"}, MapOrPanic(func() string { return "hello" })).Bool())
+
+	js.Global().Set("TestWrappedTypeMap", MapOrPanic(func(a WrappedTypeMap) bool { return a[0] == "hello" }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeMap"}, MapOrPanic(map[int]string{0: "hello"})).Bool())
+
+	js.Global().Set("TestWrappedTypePointer", MapOrPanic(func(a WrappedTypePointer) bool { return *a == "hello" }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypePointer"}, "hello").Bool())
+
+	js.Global().Set("TestWrappedTypeSlice", MapOrPanic(func(a WrappedTypeSlice) bool { return a[0] == "hello" }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeSlice"}, MapOrPanic([]string{"hello"})).Bool())
+
+	js.Global().Set("TestWrappedTypeStruct", MapOrPanic(func(a WrappedTypeStruct) bool { return a.Greeting == "hello" }))
+	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeStruct"}, MapOrPanic(Sample{Greeting: "hello"})).Bool())
+}
+
+func TestFnPointers(t *testing.T) {
+	js.Global().Set("TestPointersValue", MapOrPanic(func(a *string) bool {
+		return *a == "hello"
+	}))
+	testza.AssertTrue(t, Run([]interface{}{"TestPointersValue"}, "hello").Bool())
+
+	js.Global().Set("TestPointersNil", MapOrPanic(func(a *string) bool {
+		return a == nil
+	}))
+	testza.AssertTrue(t, Run([]interface{}{"TestPointersNil"}, nil).Bool())
 }

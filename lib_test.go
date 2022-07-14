@@ -204,3 +204,11 @@ func TestPanic(t *testing.T) {
 		MapOrPanic(make(chan bool))
 	})
 }
+
+type WrappedTypeString string
+
+func TestWrappedType(t *testing.T) {
+	result, err := Map(WrappedTypeString("hello"))
+	testza.AssertNoError(t, err)
+	testza.AssertEqual(t, "hello", result)
+}
