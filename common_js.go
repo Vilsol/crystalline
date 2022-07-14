@@ -98,7 +98,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 					for i := 0; i < response.Length(); i++ {
 						outMapped[i] = converters[i](response.Index(i))
 					}
-				} else {
+				} else if hint.NumOut() > 0 {
 					outMapped[0] = converters[0](response)
 				}
 
