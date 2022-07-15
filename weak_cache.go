@@ -42,3 +42,7 @@ func (c *WeakCache) unref(index uintptr) {
 
 	delete(c.reachable, index)
 }
+
+func (c *WeakCache) Len() int {
+	return len(c.reachable)
+}
