@@ -9,15 +9,15 @@ import (
 
 var defineProperties js.Value
 
-var weakCache *WeakCache
+var weakCache *WeakCache[js.Value]
 
 func init() {
 	defineProperties = js.Global().Get("Object").Get("defineProperties")
-	weakCache = NewWeak()
+	weakCache = NewWeak[js.Value]()
 }
 
 func convertStruct(value reflect.Value) (interface{}, error) {
-	return weakCache.Fetch(value.UnsafeAddr(), func() (interface{}, error) {
+	return weakCache.Fetch(value.UnsafeAddr(), func() (js.Value, error) {
 		definitions := make(map[string]interface{})
 
 		for i := 0; i < value.NumField(); i++ {
@@ -29,7 +29,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 
 			conv, err := jsToGo(field.Type())
 			if err != nil {
-				return nil, err
+				return js.Null(), err
 			}
 
 			setFunc := js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -50,7 +50,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 		for i := 0; i < addr.NumMethod(); i++ {
 			val, err := mapInternal(addr.Method(i))
 			if err != nil {
-				return nil, err
+				return js.Null(), err
 			}
 			out[addr.Type().Method(i).Name] = val
 		}

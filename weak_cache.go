@@ -4,26 +4,26 @@ import (
 	"runtime"
 )
 
-type fetch func() (interface{}, error)
+type fetch[T any] func() (T, error)
 
-type WeakCache struct {
-	reachable map[uintptr]interface{}
+type WeakCache[T any] struct {
+	reachable map[uintptr]T
 }
 
-func NewWeak() *WeakCache {
-	return &WeakCache{
-		reachable: make(map[uintptr]interface{}),
+func NewWeak[T any]() *WeakCache[T] {
+	return &WeakCache[T]{
+		reachable: make(map[uintptr]T),
 	}
 }
 
-func (c *WeakCache) Fetch(key uintptr, fetch fetch) (interface{}, error) {
+func (c *WeakCache[T]) Fetch(key uintptr, fetch fetch[T]) (T, error) {
 	if found, ok := c.reachable[key]; ok {
 		return found, nil
 	}
 
 	value, err := fetch()
 	if err != nil {
-		return nil, err
+		return value, err
 	}
 
 	runtime.SetFinalizer(&value, func(_ any) {
@@ -35,7 +35,7 @@ func (c *WeakCache) Fetch(key uintptr, fetch fetch) (interface{}, error) {
 	return value, nil
 }
 
-func (c *WeakCache) unref(index uintptr) {
+func (c *WeakCache[T]) unref(index uintptr) {
 	if _, ok := c.reachable[index]; !ok {
 		return
 	}
@@ -43,6 +43,6 @@ func (c *WeakCache) unref(index uintptr) {
 	delete(c.reachable, index)
 }
 
-func (c *WeakCache) Len() int {
+func (c *WeakCache[T]) Len() int {
 	return len(c.reachable)
 }
