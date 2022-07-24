@@ -1,10 +1,7 @@
-//go:build js
-
 package crystalline
 
 import (
 	"reflect"
-	"syscall/js"
 	"testing"
 
 	"github.com/MarvinJWendt/testza"
@@ -17,6 +14,12 @@ type SomeObj struct {
 	Data     map[uint32]float64
 	Nested   nested.AnotherObj
 	VoidFunc func()
+}
+
+func (g SomeObj) NoPointer(first string, second int) {
+}
+
+func (g SomeObj) WithPointer(first float64, second bool) {
 }
 
 func SomeFunc(name string, a bool) (string, bool) {
@@ -46,7 +49,7 @@ var (
 type GlobalTestObj struct {
 }
 
-func TestE(t *testing.T) {
+func TestExposer(t *testing.T) {
 	appName := "app"
 
 	e := NewExposer(appName)
@@ -92,6 +95,8 @@ export declare namespace crystalline {
     Data?: Record<number, number>;
     Nested: nested.AnotherObj;
     VoidFunc: () => void;
+    NoPointer(first: string, second: number): void;
+    WithPointer(first: number, second: boolean): void;
   }
   const ExposeArrayTest: Array<string> | undefined;
   const ExposeIntTest: number;
@@ -100,7 +105,7 @@ export declare namespace crystalline {
   const ExposeSliceTest: Array<number> | undefined;
   const ExposeStringTest: string;
   const ExposeStructTest: crystalline.SomeObj;
-  function SomeFunc(arg1: string, arg2: boolean): [string, boolean];
+  function SomeFunc(name: string, a: boolean): [string, boolean];
 }
 export declare namespace nested {
   interface AnotherObj {
@@ -108,16 +113,4 @@ export declare namespace nested {
   }
 }
 export const initializeCrystalline: () => void;`, tsdFile)
-
-	testza.AssertFalse(t, js.Global().Get("go").IsNull())
-	testza.AssertFalse(t, js.Global().Get("go").Get(appName).IsNull())
-	testza.AssertFalse(t, js.Global().Get("go").Get(appName).Get("crystalline").IsNull())
-
-	obj := js.Global().Get("go").Get(appName).Get("crystalline").Get("ExposeStructTest")
-	testza.AssertFalse(t, obj.IsNull())
-	testza.AssertEqual(t, "Bob", obj.Get("Name").String())
-
-	obj = js.Global().Get("go").Get(appName).Get("crystalline").Get("ExposePointerTest")
-	testza.AssertFalse(t, obj.IsNull())
-	testza.AssertEqual(t, "Bob", obj.Get("Name").String())
 }

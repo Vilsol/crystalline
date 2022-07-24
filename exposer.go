@@ -3,6 +3,10 @@ package crystalline
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
 	"path"
 	"reflect"
 	"regexp"
@@ -36,7 +40,10 @@ func (e *Exposer) ExposeFunc(entity any) error {
 		return errors.New("can only expose functions without specifying package and name")
 	}
 
-	splitDef := strings.Split(path.Base(runtime.FuncForPC(value.Pointer()).Name()), ".")
+	pointer := value.Pointer()
+	e.extractArgNames(pointer, "")
+
+	splitDef := strings.Split(path.Base(runtime.FuncForPC(pointer).Name()), ".")
 	pkgName := splitDef[0]
 	valueName := splitDef[1]
 
@@ -44,7 +51,8 @@ func (e *Exposer) ExposeFunc(entity any) error {
 		return errors.New("could not determine function name or package")
 	}
 
-	return e.Expose(entity, pkgName, valueName)
+	setNamespace(e.appName, pkgName, valueName, MapOrPanic(entity))
+	return e.AddEntity([]string{pkgName}, valueName, valueType)
 }
 
 func (e *Exposer) ExposeOrPanic(entity any, packageName string, name string) {
@@ -101,6 +109,11 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 
 	for i := 0; i < typeDef.NumField(); i++ {
 		e.checkAddDefinition(typeDef.Field(i).Type)
+	}
+
+	for i := 0; i < typeDef.NumMethod(); i++ {
+		e.checkAddDefinition(typeDef.Method(i).Type)
+		e.extractArgNames(typeDef.Method(i).Func.Pointer(), name)
 	}
 
 	return nil
@@ -166,4 +179,49 @@ func (e *Exposer) Build() (string, string, error) {
 	jsFile.WriteString(defJsFile)
 
 	return strings.TrimSpace(tsdFile.String()), strings.TrimSpace(jsFile.String()), nil
+}
+
+func (e *Exposer) extractArgNames(pointer uintptr, interfaceName string) {
+	pc := runtime.FuncForPC(pointer)
+
+	splitDef := strings.Split(path.Base(pc.Name()), ".")
+	pkgName := splitDef[0]
+	valueName := splitDef[len(splitDef)-1]
+
+	filePath, lineNumber := pc.FileLine(pointer)
+
+	// Extract argument names if possible
+	fileData, err := os.ReadFile(filePath)
+	if err == nil {
+		fileSet := token.NewFileSet()
+		f, err := parser.ParseFile(fileSet, filePath, string(fileData), 0)
+		if err == nil {
+			for _, decl := range f.Decls {
+				switch castDecl := decl.(type) {
+				case *ast.FuncDecl:
+					if castDecl.Name.Name == valueName && castDecl.Type.Params != nil {
+						pos := fileSet.Position(castDecl.Pos())
+						if pos.Line == lineNumber || pos.Line == lineNumber-1 {
+							layer := e.ensureNamespaceExists([]string{pkgName})
+							if layer.FuncArgNames == nil {
+								layer.FuncArgNames = make(map[string]map[string][]string)
+							}
+
+							if _, ok := layer.FuncArgNames[interfaceName]; !ok {
+								layer.FuncArgNames[interfaceName] = make(map[string][]string)
+							}
+
+							argNames := make([]string, 0)
+							for _, field := range castDecl.Type.Params.List {
+								for _, name := range field.Names {
+									argNames = append(argNames, name.Name)
+								}
+							}
+							layer.FuncArgNames[interfaceName][valueName] = argNames
+						}
+					}
+				}
+			}
+		}
+	}
 }

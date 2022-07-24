@@ -7,10 +7,11 @@ import (
 )
 
 type Definition struct {
-	Name        string
-	Entities    map[string]reflect.Type
-	Definitions map[string]reflect.Type
-	Nested      map[string]*Definition
+	Name         string
+	Entities     map[string]reflect.Type
+	Definitions  map[string]reflect.Type
+	Nested       map[string]*Definition
+	FuncArgNames map[string]map[string][]string
 }
 
 func (d *Definition) Serialize(appName string, path []string) (string, string, error) {
@@ -25,14 +26,14 @@ func (d *Definition) Serialize(appName string, path []string) (string, string, e
 		subPath = append(path, d.Name)
 	}
 
-	defTsdFile, err := serializeDefinitions(d.Definitions, subPath)
+	defTsdFile, err := d.serializeDefinitions(d.Definitions, subPath)
 	if err != nil {
 		return "", "", err
 	}
 
 	tsdFile.WriteString(defTsdFile)
 
-	defTsdFile, defJsFile, err := serializeEntities(d.Entities, subPath, appName)
+	defTsdFile, defJsFile, err := d.serializeEntities(d.Entities, subPath, appName)
 	if err != nil {
 		return "", "", err
 	}
@@ -96,7 +97,7 @@ func (d *Definition) Serialize(appName string, path []string) (string, string, e
 	return tsdFile.String(), jsFile.String(), nil
 }
 
-func typeToInterface(name string, typeDef reflect.Type) string {
+func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 	if typeDef.Kind() != reflect.Struct {
 		panic("cannot be converted to interface: " + typeDef.Kind().String())
 	}
@@ -108,7 +109,7 @@ func typeToInterface(name string, typeDef reflect.Type) string {
 
 	for i := 0; i < typeDef.NumField(); i++ {
 		field := typeDef.Field(i)
-		jsName, optional := typeToJSName("", field.Type, false)
+		jsName, optional := d.typeToJSName("", field.Type, false, name)
 
 		result.WriteString("  ")
 		result.WriteString(field.Name)
@@ -120,11 +121,23 @@ func typeToInterface(name string, typeDef reflect.Type) string {
 		result.WriteString(";\n")
 	}
 
+	if typeDef.NumMethod() > 0 {
+		newInstance := reflect.New(typeDef).Elem()
+		for i := 0; i < typeDef.NumMethod(); i++ {
+			typeMethod := typeDef.Method(i)
+			instanceMethod := newInstance.Method(i)
+			jsName, _ := d.typeToJSName(typeMethod.Name, instanceMethod.Type(), true, name)
+			result.WriteString("  ")
+			result.WriteString(jsName)
+			result.WriteString(";\n")
+		}
+	}
+
 	result.WriteString("}\n")
 	return result.String()
 }
 
-func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, bool) {
+func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bool, interfaceName string) (string, bool) {
 	switch typeDef.Kind() {
 	case reflect.Bool:
 		return "boolean", false
@@ -161,7 +174,7 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 	case reflect.Array:
 		var result strings.Builder
 		result.WriteString("Array<")
-		jsName, undefined := typeToJSName("", typeDef.Elem(), false)
+		jsName, undefined := d.typeToJSName("", typeDef.Elem(), false, "")
 		result.WriteString(jsName)
 		if undefined {
 			result.WriteString(" | undefined")
@@ -172,7 +185,9 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 		var result strings.Builder
 
 		if name != "" && topLevel {
-			result.WriteString("function ")
+			if interfaceName == "" {
+				result.WriteString("function ")
+			}
 			result.WriteString(name)
 		}
 
@@ -184,12 +199,24 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 			}
 
 			in := typeDef.In(i)
-			jsName, optional := typeToJSName(in.Name(), in, false)
+			jsName, optional := d.typeToJSName(in.Name(), in, false, "")
+
+			argName := fmt.Sprintf("arg%d", i+1)
+
+			if d.FuncArgNames != nil {
+				if funcs, ok := d.FuncArgNames[interfaceName]; ok {
+					if f, ok := funcs[name]; ok {
+						if len(f)-1 >= i {
+							argName = f[i]
+						}
+					}
+				}
+			}
 
 			if optional {
-				result.WriteString(fmt.Sprintf("arg%d?: ", i+1))
+				result.WriteString(fmt.Sprintf("%s?: ", argName))
 			} else {
-				result.WriteString(fmt.Sprintf("arg%d: ", i+1))
+				result.WriteString(fmt.Sprintf("%s: ", argName))
 			}
 
 			result.WriteString(jsName)
@@ -214,7 +241,7 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 				}
 
 				out := typeDef.Out(i)
-				jsName, optional := typeToJSName(out.Name(), out, false)
+				jsName, optional := d.typeToJSName(out.Name(), out, false, "")
 				if optional {
 					result.WriteString("(")
 					result.WriteString(jsName)
@@ -236,7 +263,7 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 		var result strings.Builder
 		result.WriteString("Record<")
 
-		keyJsName, optional := typeToJSName("", typeDef.Key(), false)
+		keyJsName, optional := d.typeToJSName("", typeDef.Key(), false, "")
 		result.WriteString(keyJsName)
 		if optional {
 			result.WriteString(" | undefined")
@@ -244,7 +271,7 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 
 		result.WriteString(", ")
 
-		valueJsName, optional := typeToJSName("", typeDef.Elem(), false)
+		valueJsName, optional := d.typeToJSName("", typeDef.Elem(), false, "")
 		result.WriteString(valueJsName)
 		if optional {
 			result.WriteString(" | undefined")
@@ -253,7 +280,7 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 		result.WriteString(">")
 		return result.String(), true
 	case reflect.Pointer:
-		jsName, _ := typeToJSName(name, typeDef.Elem(), false)
+		jsName, _ := d.typeToJSName(name, typeDef.Elem(), false, "")
 		return jsName, true
 	case reflect.String:
 		return "string", false
@@ -264,12 +291,12 @@ func typeToJSName(name string, typeDef reflect.Type, topLevel bool) (string, boo
 	panic("un-convertable type: " + typeDef.Kind().String())
 }
 
-func serializeDefinitions(definitions map[string]reflect.Type, path []string) (string, error) {
+func (d *Definition) serializeDefinitions(definitions map[string]reflect.Type, path []string) (string, error) {
 	var tsdFile strings.Builder
 
 	for _, name := range SortedKeys(definitions) {
 		typeDef := definitions[name]
-		jsType := typeToInterface(name, typeDef)
+		jsType := d.typeToInterface(name, typeDef)
 		indentation := strings.Repeat("  ", len(path))
 
 		splitLines := strings.Split(strings.TrimSpace(jsType), "\n")
@@ -284,13 +311,13 @@ func serializeDefinitions(definitions map[string]reflect.Type, path []string) (s
 	return tsdFile.String(), nil
 }
 
-func serializeEntities(entities map[string]reflect.Type, path []string, appName string) (string, string, error) {
+func (d *Definition) serializeEntities(entities map[string]reflect.Type, path []string, appName string) (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
 	for _, name := range SortedKeys(entities) {
 		typeDef := entities[name]
-		jsType, optional := typeToJSName(name, typeDef, true)
+		jsType, optional := d.typeToJSName(name, typeDef, true, "")
 		if len(path) == 0 {
 			jsFile.WriteString(fmt.Sprintf(`%s = globalThis["go"]["%s"]["%s"];`+"\n", name, appName, name))
 			if optional {
