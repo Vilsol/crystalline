@@ -121,16 +121,14 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 		result.WriteString(";\n")
 	}
 
-	if typeDef.NumMethod() > 0 {
-		newInstance := reflect.New(typeDef).Elem()
-		for i := 0; i < typeDef.NumMethod(); i++ {
-			typeMethod := typeDef.Method(i)
-			instanceMethod := newInstance.Method(i)
-			jsName, _ := d.typeToJSName(typeMethod.Name, instanceMethod.Type(), true, name)
-			result.WriteString("  ")
-			result.WriteString(jsName)
-			result.WriteString(";\n")
-		}
+	newInstance := reflect.New(typeDef)
+	for i := 0; i < newInstance.NumMethod(); i++ {
+		typeMethod := newInstance.Type().Method(i)
+		instanceMethod := newInstance.Method(i)
+		jsName, _ := d.typeToJSName(typeMethod.Name, instanceMethod.Type(), true, name)
+		result.WriteString("  ")
+		result.WriteString(jsName)
+		result.WriteString(";\n")
 	}
 
 	result.WriteString("}\n")

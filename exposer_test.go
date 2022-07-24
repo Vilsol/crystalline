@@ -19,7 +19,7 @@ type SomeObj struct {
 func (g SomeObj) NoPointer(first string, second int) {
 }
 
-func (g SomeObj) WithPointer(first float64, second bool) {
+func (g *SomeObj) WithPointer(first float64, second bool) {
 }
 
 func SomeFunc(name string, a bool) (string, bool) {

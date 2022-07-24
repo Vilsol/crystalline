@@ -116,6 +116,12 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 		e.extractArgNames(typeDef.Method(i).Func.Pointer(), name)
 	}
 
+	newInstance := reflect.New(typeDef)
+	for i := 0; i < newInstance.NumMethod(); i++ {
+		e.checkAddDefinition(newInstance.Type().Method(i).Type)
+		e.extractArgNames(newInstance.Type().Method(i).Func.Pointer(), name)
+	}
+
 	return nil
 }
 
