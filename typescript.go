@@ -283,7 +283,8 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 	case reflect.String:
 		return "string", false
 	case reflect.Struct:
-		return typeDef.String(), false
+		noTypesName, _, _ := strings.Cut(typeDef.String(), "[")
+		return noTypesName, false
 	case reflect.Interface:
 		if typeDef.String() == "error" {
 			return "Error", false

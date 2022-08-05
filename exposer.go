@@ -91,18 +91,17 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 		return fmt.Errorf("only struct types can be added as definitions")
 	}
 
-	splitDef := strings.Split(typeDef.String(), ".")
-	namespace := splitDef[:1]
-	name := splitDef[1]
+	namespace, nameWithTypes, _ := strings.Cut(typeDef.String(), ".")
+	name, _, _ := strings.Cut(nameWithTypes, "[")
 
-	layer := e.ensureNamespaceExists(namespace)
+	layer := e.ensureNamespaceExists([]string{namespace})
 
 	if layer.Definitions == nil {
 		layer.Definitions = make(map[string]reflect.Type)
 	}
 
 	if _, ok := layer.Definitions[name]; ok {
-		return fmt.Errorf("namespace %s already contains definition %s", strings.Join(namespace, "."), name)
+		return fmt.Errorf("namespace %s already contains definition %s", namespace, name)
 	}
 
 	layer.Definitions[name] = typeDef
@@ -203,6 +202,7 @@ func (e *Exposer) extractArgNames(pointer uintptr, interfaceName string) {
 		f, err := parser.ParseFile(fileSet, filePath, string(fileData), 0)
 		if err == nil {
 			for _, decl := range f.Decls {
+				found := false
 				switch castDecl := decl.(type) {
 				case *ast.FuncDecl:
 					if castDecl.Name.Name == valueName && castDecl.Type.Params != nil {
@@ -224,8 +224,14 @@ func (e *Exposer) extractArgNames(pointer uintptr, interfaceName string) {
 								}
 							}
 							layer.FuncArgNames[interfaceName][valueName] = argNames
+
+							found = true
 						}
 					}
+				}
+
+				if found {
+					break
 				}
 			}
 		}
