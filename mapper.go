@@ -55,6 +55,10 @@ func mapInternal(value reflect.Value) (interface{}, error) {
 			return nil, nil
 		}
 
+		if err, ok := value.Interface().(error); ok {
+			return convertError(err)
+		}
+
 		return mapInternal(value.Elem())
 	case reflect.Map:
 		if value.IsNil() {

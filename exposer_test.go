@@ -1,6 +1,7 @@
 package crystalline
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -24,6 +25,10 @@ func (g *SomeObj) WithPointer(first float64, second bool) {
 
 func SomeFunc(name string, a bool) (string, bool) {
 	return "hello, " + name, !a
+}
+
+func ErrorFunc() error {
+	return errors.New("sample error")
 }
 
 var (
@@ -55,6 +60,7 @@ func TestExposer(t *testing.T) {
 	e := NewExposer(appName)
 
 	testza.AssertNoError(t, e.ExposeFunc(SomeFunc))
+	testza.AssertNoError(t, e.ExposeFunc(ErrorFunc))
 
 	testza.AssertNoError(t, e.Expose(ExposeArrayTest, "crystalline", "ExposeArrayTest"))
 	testza.AssertNoError(t, e.Expose(ExposeSliceTest, "crystalline", "ExposeSliceTest"))
@@ -75,6 +81,7 @@ export let crystalline;
 export const initializeCrystalline = () => {
   GlobalTest = globalThis["go"]["app"]["GlobalTest"];
   crystalline = {
+    ErrorFunc: globalThis["go"]["app"]["crystalline"]["ErrorFunc"],
     ExposeArrayTest: globalThis["go"]["app"]["crystalline"]["ExposeArrayTest"],
     ExposeIntTest: globalThis["go"]["app"]["crystalline"]["ExposeIntTest"],
     ExposeMapTest: globalThis["go"]["app"]["crystalline"]["ExposeMapTest"],
@@ -98,6 +105,7 @@ export declare namespace crystalline {
     NoPointer(first: string, second: number): void;
     WithPointer(first: number, second: boolean): void;
   }
+  function ErrorFunc(): Error;
   const ExposeArrayTest: Array<string> | undefined;
   const ExposeIntTest: number;
   const ExposeMapTest: Record<number, number> | undefined;

@@ -284,9 +284,13 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		return "string", false
 	case reflect.Struct:
 		return typeDef.String(), false
+	case reflect.Interface:
+		if typeDef.String() == "error" {
+			return "Error", false
+		}
 	}
 
-	panic("un-convertable type: " + typeDef.Kind().String())
+	panic(fmt.Sprintf("un-convertable type: %s (%s)", typeDef.Kind().String(), typeDef.String()))
 }
 
 func (d *Definition) serializeDefinitions(definitions map[string]reflect.Type, path []string) (string, error) {
