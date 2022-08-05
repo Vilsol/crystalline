@@ -31,6 +31,10 @@ func ErrorFunc() error {
 	return errors.New("sample error")
 }
 
+func InterfaceFunc() interface{} {
+	return "test"
+}
+
 var (
 	ExposeArrayTest  = [1]string{"hello"}
 	ExposeSliceTest  = []float64{10}
@@ -61,6 +65,7 @@ func TestExposer(t *testing.T) {
 
 	testza.AssertNoError(t, e.ExposeFunc(SomeFunc))
 	testza.AssertNoError(t, e.ExposeFunc(ErrorFunc))
+	testza.AssertNoError(t, e.ExposeFunc(InterfaceFunc))
 
 	testza.AssertNoError(t, e.Expose(ExposeArrayTest, "crystalline", "ExposeArrayTest"))
 	testza.AssertNoError(t, e.Expose(ExposeSliceTest, "crystalline", "ExposeSliceTest"))
@@ -89,6 +94,7 @@ export const initializeCrystalline = () => {
     ExposeSliceTest: globalThis["go"]["app"]["crystalline"]["ExposeSliceTest"],
     ExposeStringTest: globalThis["go"]["app"]["crystalline"]["ExposeStringTest"],
     ExposeStructTest: globalThis["go"]["app"]["crystalline"]["ExposeStructTest"],
+    InterfaceFunc: globalThis["go"]["app"]["crystalline"]["InterfaceFunc"],
     SomeFunc: globalThis["go"]["app"]["crystalline"]["SomeFunc"],
   }
 }`, jsFile)
@@ -113,6 +119,7 @@ export declare namespace crystalline {
   const ExposeSliceTest: Array<number> | undefined;
   const ExposeStringTest: string;
   const ExposeStructTest: crystalline.SomeObj;
+  function InterfaceFunc(): (unknown | undefined);
   function SomeFunc(name: string, a: boolean): [string, boolean];
 }
 export declare namespace nested {

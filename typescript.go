@@ -288,6 +288,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		if typeDef.String() == "error" {
 			return "Error", false
 		}
+		return "unknown", true
 	}
 
 	panic(fmt.Sprintf("un-convertable type: %s (%s)", typeDef.Kind().String(), typeDef.String()))

@@ -17,6 +17,7 @@ func TestJSExposer(t *testing.T) {
 
 	testza.AssertNoError(t, e.ExposeFunc(SomeFunc))
 	testza.AssertNoError(t, e.ExposeFunc(ErrorFunc))
+	testza.AssertNoError(t, e.ExposeFunc(InterfaceFunc))
 
 	testza.AssertNoError(t, e.Expose(ExposeArrayTest, "crystalline", "ExposeArrayTest"))
 	testza.AssertNoError(t, e.Expose(ExposeSliceTest, "crystalline", "ExposeSliceTest"))
@@ -44,4 +45,8 @@ func TestJSExposer(t *testing.T) {
 	errResult := js.Global().Get("go").Get(appName).Get("crystalline").Get("ErrorFunc").Invoke()
 	testza.AssertEqual(t, js.TypeObject, errResult.Type())
 	testza.AssertEqual(t, "sample error", errResult.Get("message").String())
+
+	interfaceResult := js.Global().Get("go").Get(appName).Get("crystalline").Get("InterfaceFunc").Invoke()
+	testza.AssertEqual(t, js.TypeString, interfaceResult.Type())
+	testza.AssertEqual(t, "test", interfaceResult.String())
 }
