@@ -48,7 +48,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 
 		addr := value.Addr()
 		for i := 0; i < addr.NumMethod(); i++ {
-			val, err := mapInternal(addr.Method(i))
+			val, err := mapInternal(addr.Method(i), false)
 			if err != nil {
 				return js.Null(), err
 			}

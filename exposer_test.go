@@ -44,6 +44,18 @@ func InterfaceFunc() interface{} {
 	return "test"
 }
 
+func PromiseFunc() int {
+	return 10
+}
+
+func FuncFunc(f func() string) string {
+	return "Hello, " + f()
+}
+
+func ByteFunc(f func() []byte) []byte {
+	return f()
+}
+
 var (
 	ExposeArrayTest  = [1]string{"hello"}
 	ExposeSliceTest  = []float64{10}
@@ -81,6 +93,9 @@ func TestExposer(t *testing.T) {
 	testza.AssertNoError(t, e.ExposeFunc(SomeFunc))
 	testza.AssertNoError(t, e.ExposeFunc(ErrorFunc))
 	testza.AssertNoError(t, e.ExposeFunc(InterfaceFunc))
+	testza.AssertNoError(t, e.ExposeFuncPromise(PromiseFunc, true))
+	testza.AssertNoError(t, e.ExposeFunc(FuncFunc))
+	testza.AssertNoError(t, e.ExposeFunc(ByteFunc))
 
 	testza.AssertNoError(t, e.Expose(ExposeArrayTest, "crystalline", "ExposeArrayTest"))
 	testza.AssertNoError(t, e.Expose(ExposeSliceTest, "crystalline", "ExposeSliceTest"))
@@ -91,7 +106,7 @@ func TestExposer(t *testing.T) {
 	testza.AssertNoError(t, e.Expose(ExposeMapTest, "crystalline", "ExposeMapTest"))
 	testza.AssertNoError(t, e.Expose(ExposeGenericStruct, "crystalline", "ExposeGenericStruct"))
 
-	testza.AssertNoError(t, e.AddEntity(nil, "GlobalTest", reflect.TypeOf(GlobalTestObj{})))
+	testza.AssertNoError(t, e.AddEntity(nil, "GlobalTest", reflect.TypeOf(GlobalTestObj{}), false))
 
 	tsdFile, jsFile, err := e.Build()
 	testza.AssertNoError(t, err)
@@ -102,6 +117,7 @@ export let crystalline;
 export const initializeCrystalline = () => {
   GlobalTest = globalThis["go"]["app"]["GlobalTest"];
   crystalline = {
+    ByteFunc: globalThis["go"]["app"]["crystalline"]["ByteFunc"],
     ErrorFunc: globalThis["go"]["app"]["crystalline"]["ErrorFunc"],
     ExposeArrayTest: globalThis["go"]["app"]["crystalline"]["ExposeArrayTest"],
     ExposeGenericStruct: globalThis["go"]["app"]["crystalline"]["ExposeGenericStruct"],
@@ -111,7 +127,9 @@ export const initializeCrystalline = () => {
     ExposeSliceTest: globalThis["go"]["app"]["crystalline"]["ExposeSliceTest"],
     ExposeStringTest: globalThis["go"]["app"]["crystalline"]["ExposeStringTest"],
     ExposeStructTest: globalThis["go"]["app"]["crystalline"]["ExposeStructTest"],
+    FuncFunc: globalThis["go"]["app"]["crystalline"]["FuncFunc"],
     InterfaceFunc: globalThis["go"]["app"]["crystalline"]["InterfaceFunc"],
+    PromiseFunc: globalThis["go"]["app"]["crystalline"]["PromiseFunc"],
     SomeFunc: globalThis["go"]["app"]["crystalline"]["SomeFunc"],
   }
 }`, jsFile)
@@ -133,6 +151,7 @@ export declare namespace crystalline {
     NoPointer(first: string, second: number): void;
     WithPointer(first: number, second: boolean): void;
   }
+  function ByteFunc(f: () => Promise<(Uint8Array | undefined)>): Promise<(Uint8Array | undefined)>;
   function ErrorFunc(): Error;
   const ExposeArrayTest: Array<string> | undefined;
   const ExposeGenericStruct: crystalline.GenericStruct;
@@ -142,7 +161,9 @@ export declare namespace crystalline {
   const ExposeSliceTest: Array<number> | undefined;
   const ExposeStringTest: string;
   const ExposeStructTest: crystalline.SomeObj;
+  function FuncFunc(f: () => Promise<string>): Promise<string>;
   function InterfaceFunc(): (unknown | undefined);
+  function PromiseFunc(): Promise<number>;
   function SomeFunc(name: string, a: boolean): [string, boolean];
 }
 export declare namespace nested {

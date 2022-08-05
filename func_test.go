@@ -198,8 +198,9 @@ func TestFnFunc(t *testing.T) {
 		return data == "hello", "bob"
 	}))
 
-	testza.AssertTrue(t, result.Index(0).Bool())
-	testza.AssertEqual(t, "bob", result.Index(1).String())
+	testFuncArgs := testResolvePromise(result)
+	testza.AssertTrue(t, testFuncArgs.Index(0).Bool())
+	testza.AssertEqual(t, "bob", testFuncArgs.Index(1).String())
 
 	type FnSampleFuncOne func(string) bool
 	js.Global().Set("TestFuncOneReturn", MapOrPanic(func(a FnSampleFuncOne) bool {
@@ -210,7 +211,8 @@ func TestFnFunc(t *testing.T) {
 		return data == "hello"
 	}))
 
-	testza.AssertTrue(t, result.Bool())
+	testFuncOneReturnArgs := testResolvePromise(result)
+	testza.AssertTrue(t, testFuncOneReturnArgs.Bool())
 
 	js.Global().Set("TestFuncNoReturn", MapOrPanic(func(a FnSampleFunc) {
 		x, y := a("hello")
@@ -229,25 +231,30 @@ type FnInterface interface {
 func TestUnsupported(t *testing.T) {
 	// Should fail on channels
 	testza.AssertPanics(t, func() {
-		_, _ = Map(func(chan bool) {})
+		fn, _ := Map(func(chan bool) {})
+		fn.(js.Value).Invoke()
 	})
 
 	// Should fail on complex types
 	testza.AssertPanics(t, func() {
-		_, _ = Map(func(complex64) {})
+		fn, _ := Map(func(complex64) {})
+		fn.(js.Value).Invoke()
 	})
 	testza.AssertPanics(t, func() {
-		_, _ = Map(func(complex128) {})
+		fn, _ := Map(func(complex128) {})
+		fn.(js.Value).Invoke()
 	})
 
 	// Should fail on unsafe pointers
 	testza.AssertPanics(t, func() {
-		_, _ = Map(func(unsafe.Pointer) {})
+		fn, _ := Map(func(unsafe.Pointer) {})
+		fn.(js.Value).Invoke()
 	})
 
 	// Should fail on interfaces
 	testza.AssertPanics(t, func() {
-		_, _ = Map(func(FnInterface) {})
+		fn, _ := Map(func(FnInterface) {})
+		fn.(js.Value).Invoke()
 	})
 }
 
@@ -324,7 +331,9 @@ func TestFnWrappedType(t *testing.T) {
 	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeArray"}, MapOrPanic([]string{"hello"})).Bool())
 
 	js.Global().Set("TestWrappedTypeFunc", MapOrPanic(func(a WrappedTypeFunc) bool { return a() == "hello" }))
-	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeFunc"}, MapOrPanic(func() string { return "hello" })).Bool())
+	TestWrappedTypeFuncResult := Run([]interface{}{"TestWrappedTypeFunc"}, MapOrPanic(func() string { return "hello" }))
+	TestWrappedTypeFuncArgs := testResolvePromise(TestWrappedTypeFuncResult)
+	testza.AssertTrue(t, TestWrappedTypeFuncArgs.Bool())
 
 	js.Global().Set("TestWrappedTypeMap", MapOrPanic(func(a WrappedTypeMap) bool { return a[0] == "hello" }))
 	testza.AssertTrue(t, Run([]interface{}{"TestWrappedTypeMap"}, MapOrPanic(map[int]string{0: "hello"})).Bool())

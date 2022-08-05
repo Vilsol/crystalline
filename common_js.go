@@ -85,21 +85,32 @@ func jsToGo(hint reflect.Type) (converter, error) {
 				inMapped := make([]interface{}, len(in))
 				for i, value := range in {
 					var err error
-					inMapped[i], err = mapInternal(value)
+					inMapped[i], err = mapInternal(value, false)
 					if err != nil {
 						panic(err)
 					}
 				}
 
 				response := data.Invoke(inMapped...)
+				realResponse := response
+
+				if response.Type() == js.TypeObject && response.Get("then").Type() == js.TypeFunction {
+					res, err := await(response)
+
+					if err != nil {
+						panic(err)
+					}
+
+					realResponse = res[0]
+				}
 
 				outMapped := make([]reflect.Value, hint.NumOut())
-				if isArrayFn.Invoke(response).Bool() {
-					for i := 0; i < response.Length(); i++ {
-						outMapped[i] = converters[i](response.Index(i))
+				if isArrayFn.Invoke(realResponse).Bool() && hint.NumOut() > 1 {
+					for i := 0; i < realResponse.Length(); i++ {
+						outMapped[i] = converters[i](realResponse.Index(i))
 					}
 				} else if hint.NumOut() > 0 {
-					outMapped[0] = converters[0](response)
+					outMapped[0] = converters[0](realResponse)
 				}
 
 				return outMapped
@@ -149,6 +160,14 @@ func jsToGo(hint reflect.Type) (converter, error) {
 			return newValue
 		}, nil
 	case reflect.Slice:
+		if hint.String() == "[]uint8" {
+			return func(data js.Value) reflect.Value {
+				outSlice := reflect.MakeSlice(hint, data.Length(), data.Length())
+				js.CopyBytesToGo(outSlice.Interface().([]uint8), data)
+				return outSlice
+			}, nil
+		}
+
 		elementConverter, err := jsToGo(hint.Elem())
 		if err != nil {
 			return nil, err
@@ -266,5 +285,32 @@ func floatToGo(hint reflect.Type) converter {
 		newValue := reflect.New(hint).Elem()
 		newValue.SetFloat(value)
 		return newValue
+	}
+}
+
+func await(awaitable js.Value) ([]js.Value, []js.Value) {
+	then := make(chan []js.Value)
+	defer close(then)
+	thenFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		then <- args
+		return nil
+	})
+	defer thenFunc.Release()
+
+	catch := make(chan []js.Value)
+	defer close(catch)
+	catchFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		catch <- args
+		return nil
+	})
+	defer catchFunc.Release()
+
+	awaitable.Call("then", thenFunc).Call("catch", catchFunc)
+
+	select {
+	case result := <-then:
+		return result, nil
+	case err := <-catch:
+		return nil, err
 	}
 }

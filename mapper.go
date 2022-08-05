@@ -7,7 +7,11 @@ import (
 )
 
 func MapOrPanic(data interface{}) interface{} {
-	result, err := mapInternal(reflect.ValueOf(data))
+	return MapOrPanicPromise(data, false)
+}
+
+func MapOrPanicPromise(data interface{}, promise bool) interface{} {
+	result, err := mapInternal(reflect.ValueOf(data), promise)
 	if err != nil {
 		panic(err)
 	}
@@ -15,10 +19,14 @@ func MapOrPanic(data interface{}) interface{} {
 }
 
 func Map(data interface{}) (interface{}, error) {
-	return mapInternal(reflect.ValueOf(data))
+	return MapPromise(data, false)
 }
 
-func mapInternal(value reflect.Value) (interface{}, error) {
+func MapPromise(data interface{}, promise bool) (interface{}, error) {
+	return mapInternal(reflect.ValueOf(data), promise)
+}
+
+func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 	switch value.Kind() {
 	case reflect.Invalid:
 		return nil, errors.New("invalid value kind")
@@ -34,9 +42,13 @@ func mapInternal(value reflect.Value) (interface{}, error) {
 		}
 		fallthrough
 	case reflect.Array:
+		if value.Type().String() == "[]uint8" {
+			return convertByteArray(value.Interface().([]uint8))
+		}
+
 		out := make([]interface{}, value.Len())
 		for i := 0; i < value.Len(); i++ {
-			val, err := mapInternal(value.Index(i))
+			val, err := mapInternal(value.Index(i), false)
 			if err != nil {
 				return nil, err
 			}
@@ -47,7 +59,7 @@ func mapInternal(value reflect.Value) (interface{}, error) {
 		if value.IsNil() {
 			return nil, nil
 		}
-		return convertFunc(value)
+		return convertFunc(value, promise)
 	case reflect.Pointer:
 		fallthrough
 	case reflect.Interface:
@@ -59,7 +71,7 @@ func mapInternal(value reflect.Value) (interface{}, error) {
 			return convertError(err)
 		}
 
-		return mapInternal(value.Elem())
+		return mapInternal(value.Elem(), false)
 	case reflect.Map:
 		if value.IsNil() {
 			return nil, nil
@@ -68,11 +80,11 @@ func mapInternal(value reflect.Value) (interface{}, error) {
 		out := make(map[string]interface{})
 		i := value.MapRange()
 		for i.Next() {
-			key, err := mapInternal(i.Key())
+			key, err := mapInternal(i.Key(), false)
 			if err != nil {
 				return nil, err
 			}
-			val, err := mapInternal(i.Value())
+			val, err := mapInternal(i.Value(), false)
 			if err != nil {
 				return nil, err
 			}
@@ -86,7 +98,7 @@ func mapInternal(value reflect.Value) (interface{}, error) {
 
 		out := make(map[string]interface{})
 		for i := 0; i < value.NumField(); i++ {
-			val, err := mapInternal(value.Field(i))
+			val, err := mapInternal(value.Field(i), false)
 			if err != nil {
 				return nil, err
 			}
@@ -94,7 +106,7 @@ func mapInternal(value reflect.Value) (interface{}, error) {
 		}
 
 		for i := 0; i < value.NumMethod(); i++ {
-			val, err := mapInternal(value.Method(i))
+			val, err := mapInternal(value.Method(i), false)
 			if err != nil {
 				return nil, err
 			}

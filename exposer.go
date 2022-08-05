@@ -32,7 +32,17 @@ func (e *Exposer) ExposeFuncOrPanic(entity any) {
 	}
 }
 
+func (e *Exposer) ExposeFuncOrPanicPromise(entity any) {
+	if err := e.ExposeFuncPromise(entity, true); err != nil {
+		panic(err)
+	}
+}
+
 func (e *Exposer) ExposeFunc(entity any) error {
+	return e.ExposeFuncPromise(entity, false)
+}
+
+func (e *Exposer) ExposeFuncPromise(entity any, promise bool) error {
 	value := reflect.ValueOf(entity)
 	valueType := value.Type()
 
@@ -51,8 +61,8 @@ func (e *Exposer) ExposeFunc(entity any) error {
 		return errors.New("could not determine function name or package")
 	}
 
-	setNamespace(e.appName, pkgName, valueName, MapOrPanic(entity))
-	return e.AddEntity([]string{pkgName}, valueName, valueType)
+	setNamespace(e.appName, pkgName, valueName, MapOrPanicPromise(entity, promise))
+	return e.AddEntity([]string{pkgName}, valueName, valueType, promise)
 }
 
 func (e *Exposer) ExposeOrPanic(entity any, packageName string, name string) {
@@ -63,12 +73,12 @@ func (e *Exposer) ExposeOrPanic(entity any, packageName string, name string) {
 
 func (e *Exposer) Expose(entity any, packageName string, name string) error {
 	setNamespace(e.appName, packageName, name, MapOrPanic(entity))
-	return e.AddEntity([]string{packageName}, name, reflect.ValueOf(entity).Type())
+	return e.AddEntity([]string{packageName}, name, reflect.ValueOf(entity).Type(), false)
 }
 
 var namespaceCleaner = regexp.MustCompile(`(\W)`)
 
-func (e *Exposer) AddEntity(namespace []string, name string, typeDef reflect.Type) error {
+func (e *Exposer) AddEntity(namespace []string, name string, typeDef reflect.Type, promise bool) error {
 	layer := e.ensureNamespaceExists(namespace)
 
 	if layer.Entities == nil {
@@ -80,6 +90,14 @@ func (e *Exposer) AddEntity(namespace []string, name string, typeDef reflect.Typ
 	}
 
 	layer.Entities[name] = typeDef
+
+	if promise {
+		if layer.Promises == nil {
+			layer.Promises = make(map[string]bool)
+		}
+
+		layer.Promises[name] = promise
+	}
 
 	e.checkAddDefinition(typeDef)
 

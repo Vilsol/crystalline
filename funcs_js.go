@@ -8,19 +8,19 @@ import (
 	"syscall/js"
 )
 
-func convertFunc(value reflect.Value) (interface{}, error) {
+var promiseConstructor js.Value
+
+func init() {
+	promiseConstructor = js.Global().Get("Promise")
+}
+
+func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 	valueType := value.Type()
 
-	converters := make([]converter, valueType.NumIn())
-	for i := 0; i < valueType.NumIn(); i++ {
-		var err error
-		converters[i], err = jsToGo(valueType.In(i))
-		if err != nil {
-			return nil, err
-		}
-	}
+	var converters []converter = nil
+	hasPromise := false
 
-	return js.FuncOf(func(_ js.Value, args []js.Value) any {
+	baseFunc := func(_ js.Value, args []js.Value) any {
 		if len(args) != valueType.NumIn() {
 			panic(fmt.Sprintf("expected %d arguments, got %d", valueType.NumIn(), len(args)))
 		}
@@ -38,7 +38,7 @@ func convertFunc(value reflect.Value) (interface{}, error) {
 
 		mappedOut := make([]interface{}, len(out))
 		for i, v := range out {
-			result, err := mapInternal(v)
+			result, err := mapInternal(v, true)
 			if err != nil {
 				panic(err)
 			}
@@ -50,5 +50,55 @@ func convertFunc(value reflect.Value) (interface{}, error) {
 		}
 
 		return mappedOut
+	}
+
+	finalFunc := baseFunc
+	promiseFunc := func(this js.Value, args []js.Value) any {
+		return promiseConstructor.New(js.FuncOf(func(_ js.Value, promiseArgs []js.Value) any {
+			resolve := promiseArgs[0]
+			reject := promiseArgs[1]
+
+			go func() {
+				defer func() {
+					if err := recover(); err != nil {
+						reject.Invoke(fmt.Sprint(err))
+					}
+				}()
+
+				resolve.Invoke(baseFunc(this, args))
+			}()
+
+			return nil
+		}))
+	}
+
+	if promise {
+		finalFunc = promiseFunc
+	}
+
+	return js.FuncOf(func(this js.Value, args []js.Value) any {
+		if converters == nil {
+			converters = make([]converter, valueType.NumIn())
+			for i := 0; i < valueType.NumIn(); i++ {
+				in := valueType.In(i)
+
+				if in.Kind() == reflect.Func {
+					hasPromise = true
+				}
+
+				var err error
+				conv, err := jsToGo(in)
+				converters[i], err = conv, err
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+
+		if hasPromise {
+			return promiseFunc(this, args)
+		}
+
+		return finalFunc(this, args)
 	}), nil
 }

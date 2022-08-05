@@ -12,6 +12,7 @@ type Definition struct {
 	Definitions  map[string]reflect.Type
 	Nested       map[string]*Definition
 	FuncArgNames map[string]map[string][]string
+	Promises     map[string]bool
 }
 
 func (d *Definition) Serialize(appName string, path []string) (string, string, error) {
@@ -109,7 +110,7 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 
 	for i := 0; i < typeDef.NumField(); i++ {
 		field := typeDef.Field(i)
-		jsName, optional := d.typeToJSName("", field.Type, false, name)
+		jsName, optional := d.typeToJSName("", field.Type, false, name, false)
 
 		result.WriteString("  ")
 		result.WriteString(field.Name)
@@ -125,7 +126,7 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 	for i := 0; i < newInstance.NumMethod(); i++ {
 		typeMethod := newInstance.Type().Method(i)
 		instanceMethod := newInstance.Method(i)
-		jsName, _ := d.typeToJSName(typeMethod.Name, instanceMethod.Type(), true, name)
+		jsName, _ := d.typeToJSName(typeMethod.Name, instanceMethod.Type(), true, name, false)
 		result.WriteString("  ")
 		result.WriteString(jsName)
 		result.WriteString(";\n")
@@ -135,7 +136,7 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 	return result.String()
 }
 
-func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bool, interfaceName string) (string, bool) {
+func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bool, interfaceName string, returnsPromise bool) (string, bool) {
 	switch typeDef.Kind() {
 	case reflect.Bool:
 		return "boolean", false
@@ -171,8 +172,13 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		fallthrough
 	case reflect.Array:
 		var result strings.Builder
+
+		if typeDef.String() == "[]uint8" {
+			return "Uint8Array", true
+		}
+
 		result.WriteString("Array<")
-		jsName, undefined := d.typeToJSName("", typeDef.Elem(), false, "")
+		jsName, undefined := d.typeToJSName("", typeDef.Elem(), false, "", false)
 		result.WriteString(jsName)
 		if undefined {
 			result.WriteString(" | undefined")
@@ -197,7 +203,12 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 			}
 
 			in := typeDef.In(i)
-			jsName, optional := d.typeToJSName(in.Name(), in, false, "")
+
+			if in.Kind() == reflect.Func {
+				returnsPromise = true
+			}
+
+			jsName, optional := d.typeToJSName(in.Name(), in, false, "", true)
 
 			argName := fmt.Sprintf("arg%d", i+1)
 
@@ -228,6 +239,15 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 			result.WriteString(" => ")
 		}
 
+		isPromise := returnsPromise
+		if d.Promises != nil {
+			isPromise = isPromise || d.Promises[name]
+		}
+
+		if isPromise {
+			result.WriteString("Promise<")
+		}
+
 		if typeDef.NumOut() > 0 {
 			if typeDef.NumOut() > 1 {
 				result.WriteString("[")
@@ -239,7 +259,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 				}
 
 				out := typeDef.Out(i)
-				jsName, optional := d.typeToJSName(out.Name(), out, false, "")
+				jsName, optional := d.typeToJSName(out.Name(), out, false, "", false)
 				if optional {
 					result.WriteString("(")
 					result.WriteString(jsName)
@@ -256,12 +276,16 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 			result.WriteString("void")
 		}
 
+		if isPromise {
+			result.WriteString(">")
+		}
+
 		return result.String(), false
 	case reflect.Map:
 		var result strings.Builder
 		result.WriteString("Record<")
 
-		keyJsName, optional := d.typeToJSName("", typeDef.Key(), false, "")
+		keyJsName, optional := d.typeToJSName("", typeDef.Key(), false, "", false)
 		result.WriteString(keyJsName)
 		if optional {
 			result.WriteString(" | undefined")
@@ -269,7 +293,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 
 		result.WriteString(", ")
 
-		valueJsName, optional := d.typeToJSName("", typeDef.Elem(), false, "")
+		valueJsName, optional := d.typeToJSName("", typeDef.Elem(), false, "", false)
 		result.WriteString(valueJsName)
 		if optional {
 			result.WriteString(" | undefined")
@@ -278,7 +302,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		result.WriteString(">")
 		return result.String(), true
 	case reflect.Pointer:
-		jsName, _ := d.typeToJSName(name, typeDef.Elem(), false, "")
+		jsName, _ := d.typeToJSName(name, typeDef.Elem(), false, "", false)
 		return jsName, true
 	case reflect.String:
 		return "string", false
@@ -321,7 +345,7 @@ func (d *Definition) serializeEntities(entities map[string]reflect.Type, path []
 
 	for _, name := range SortedKeys(entities) {
 		typeDef := entities[name]
-		jsType, optional := d.typeToJSName(name, typeDef, true, "")
+		jsType, optional := d.typeToJSName(name, typeDef, true, "", false)
 		if len(path) == 0 {
 			jsFile.WriteString(fmt.Sprintf(`%s = globalThis["go"]["%s"]["%s"];`+"\n", name, appName, name))
 			if optional {
