@@ -33,7 +33,9 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 			}
 
 			setFunc := js.FuncOf(func(this js.Value, args []js.Value) any {
-				field.Set(conv(args[0]))
+				if conv != nil {
+					field.Set(conv(args[0]))
+				}
 				return nil
 			})
 

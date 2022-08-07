@@ -2,13 +2,18 @@ module github.com/Vilsol/crystalline
 
 go 1.19
 
-require github.com/MarvinJWendt/testza v0.4.2
+require (
+	github.com/MarvinJWendt/testza v0.4.2
+	github.com/rs/zerolog v1.27.0
+)
 
 require (
 	github.com/atomicgo/cursor v0.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gookit/color v1.5.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
+	github.com/mattn/go-colorable v0.1.12 // indirect
+	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/pterm/pterm v0.12.40 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect

@@ -27,7 +27,9 @@ func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 
 		mappedIn := make([]reflect.Value, len(args))
 		for i, arg := range args {
-			mappedIn[i] = converters[i](arg)
+			if converters[i] != nil {
+				mappedIn[i] = converters[i](arg)
+			}
 		}
 
 		out := value.Call(mappedIn)

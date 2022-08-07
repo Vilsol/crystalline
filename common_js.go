@@ -7,80 +7,109 @@ import (
 	"reflect"
 	"strconv"
 	"syscall/js"
+
+	"github.com/rs/zerolog/log"
 )
 
 type converter = func(data js.Value) reflect.Value
 
+var jsToGoCache map[reflect.Type]converter
+
+func init() {
+	jsToGoCache = make(map[reflect.Type]converter)
+}
+
 func jsToGo(hint reflect.Type) (converter, error) {
+	if found, ok := jsToGoCache[hint]; ok {
+		return found, nil
+	}
+
 	switch hint.Kind() {
 	case reflect.Invalid:
 		return nil, errors.New("invalid value kind")
 	case reflect.Bool:
-		return func(data js.Value) reflect.Value {
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
 			newValue := reflect.New(hint).Elem()
 			newValue.SetBool(data.Bool())
 			return newValue
-		}, nil
+		}
+		return jsToGoCache[hint], nil
 	case reflect.Int:
-		return intToGo(hint), nil
+		jsToGoCache[hint] = intToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Int8:
-		return intToGo(hint), nil
+		jsToGoCache[hint] = intToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Int16:
-		return intToGo(hint), nil
+		jsToGoCache[hint] = intToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Int32:
-		return intToGo(hint), nil
+		jsToGoCache[hint] = intToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Int64:
-		return intToGo(hint), nil
+		jsToGoCache[hint] = intToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Uint:
-		return uintToGo(hint), nil
+		jsToGoCache[hint] = uintToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Uint8:
-		return uintToGo(hint), nil
+		jsToGoCache[hint] = uintToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Uint16:
-		return uintToGo(hint), nil
+		jsToGoCache[hint] = uintToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Uint32:
-		return uintToGo(hint), nil
+		jsToGoCache[hint] = uintToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Uint64:
-		return uintToGo(hint), nil
+		jsToGoCache[hint] = uintToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Uintptr:
-		return uintToGo(hint), nil
+		jsToGoCache[hint] = uintToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Float32:
-		return floatToGo(hint), nil
+		jsToGoCache[hint] = floatToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Float64:
-		return floatToGo(hint), nil
+		jsToGoCache[hint] = floatToGo(hint)
+		return jsToGoCache[hint], nil
 	case reflect.Complex64:
-		panic("complex64 is not supported as argument type")
+		log.Error().Msg("complex64 is not supported as argument type. value will not get converted")
+		return nil, nil
 	case reflect.Complex128:
-		panic("complex128 is not supported as argument type")
+		log.Error().Msg("complex128 is not supported as argument type. value will not get converted")
+		return nil, nil
 	case reflect.Array:
-		elementConverter, err := jsToGo(hint.Elem())
+		var elementConverter converter
+
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			outArray := reflect.New(hint).Elem()
+
+			if elementConverter != nil {
+				for i := 0; i < data.Length(); i++ {
+					outArray.Index(i).Set(elementConverter(data.Index(i)))
+				}
+			}
+
+			return outArray
+		}
+
+		var err error
+		elementConverter, err = jsToGo(hint.Elem())
 		if err != nil {
 			return nil, err
 		}
 
-		return func(data js.Value) reflect.Value {
-			outArray := reflect.New(hint).Elem()
-
-			for i := 0; i < data.Length(); i++ {
-				outArray.Index(i).Set(elementConverter(data.Index(i)))
-			}
-
-			return outArray
-		}, nil
+		return jsToGoCache[hint], nil
 	case reflect.Chan:
-		panic("channels are not supported as argument types")
+		log.Error().Msg("channels are not supported as argument types. value will not get converted")
+		return nil, nil
 	case reflect.Func:
 		converters := make([]converter, hint.NumOut())
-		for i := 0; i < hint.NumOut(); i++ {
-			var err error
-			converters[i], err = jsToGo(hint.Out(i))
-			if err != nil {
-				return nil, err
-			}
-		}
 
 		isArrayFn := js.Global().Get("Array").Get("isArray")
 
-		return func(data js.Value) reflect.Value {
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
 			return reflect.MakeFunc(hint, func(in []reflect.Value) []reflect.Value {
 				inMapped := make([]interface{}, len(in))
 				for i, value := range in {
@@ -107,58 +136,94 @@ func jsToGo(hint reflect.Type) (converter, error) {
 				outMapped := make([]reflect.Value, hint.NumOut())
 				if isArrayFn.Invoke(realResponse).Bool() && hint.NumOut() > 1 {
 					for i := 0; i < realResponse.Length(); i++ {
-						outMapped[i] = converters[i](realResponse.Index(i))
+						if converters[i] != nil {
+							outMapped[i] = converters[i](realResponse.Index(i))
+						}
 					}
 				} else if hint.NumOut() > 0 {
-					outMapped[0] = converters[0](realResponse)
+					if converters[0] != nil {
+						outMapped[0] = converters[0](realResponse)
+					}
 				}
 
 				return outMapped
 			})
-		}, nil
-	case reflect.Interface:
-		panic("interfaces are not supported as argument types")
-	case reflect.Map:
-		keyConverter, err := jsToGo(hint.Key())
-		if err != nil {
-			return nil, err
 		}
 
-		elementConverter, err := jsToGo(hint.Elem())
-		if err != nil {
-			return nil, err
+		for i := 0; i < hint.NumOut(); i++ {
+			var err error
+			converters[i], err = jsToGo(hint.Out(i))
+			if err != nil {
+				return nil, err
+			}
 		}
+
+		return jsToGoCache[hint], nil
+	case reflect.Interface:
+		log.Error().Str("hint", hint.String()).Msg("interfaces are not supported as argument types. value will not get converted")
+		jsToGoCache[hint] = nil
+		return nil, nil
+	case reflect.Map:
+		var keyConverter converter
+		var elementConverter converter
 
 		entriesFunc := js.Global().Get("Object").Get("entries")
 
-		return func(data js.Value) reflect.Value {
-			entryValues := entriesFunc.Invoke(data)
-
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
 			outMap := reflect.MakeMap(hint)
-			for i := 0; i < entryValues.Length(); i++ {
-				key := entryValues.Index(i).Index(0)
-				value := entryValues.Index(i).Index(1)
-				cKey := keyConverter(key)
-				cVal := elementConverter(value)
-				outMap.SetMapIndex(cKey, cVal)
+
+			if keyConverter != nil {
+				entryValues := entriesFunc.Invoke(data)
+				for i := 0; i < entryValues.Length(); i++ {
+					key := entryValues.Index(i).Index(0)
+					cKey := keyConverter(key)
+
+					var cVal = reflect.ValueOf(nil)
+					if elementConverter != nil {
+						value := entryValues.Index(i).Index(1)
+						cVal = elementConverter(value)
+					}
+
+					outMap.SetMapIndex(cKey, cVal)
+				}
 			}
 
 			return outMap
-		}, nil
-	case reflect.Pointer:
-		valueConverter, err := jsToGo(hint.Elem())
+		}
+
+		var err error
+		keyConverter, err = jsToGo(hint.Key())
 		if err != nil {
 			return nil, err
 		}
 
-		return func(data js.Value) reflect.Value {
+		elementConverter, err = jsToGo(hint.Elem())
+		if err != nil {
+			return nil, err
+		}
+
+		return jsToGoCache[hint], nil
+	case reflect.Pointer:
+		var valueConverter converter
+
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
 			if data.IsNull() {
 				return reflect.Zero(hint)
 			}
 			newValue := reflect.New(hint.Elem())
-			newValue.Elem().Set(valueConverter(data))
+			if valueConverter != nil {
+				newValue.Elem().Set(valueConverter(data))
+			}
 			return newValue
-		}, nil
+		}
+
+		var err error
+		valueConverter, err = jsToGo(hint.Elem())
+		if err != nil {
+			return nil, err
+		}
+
+		return jsToGoCache[hint], nil
 	case reflect.Slice:
 		if hint.String() == "[]uint8" {
 			return func(data js.Value) reflect.Value {
@@ -168,31 +233,57 @@ func jsToGo(hint reflect.Type) (converter, error) {
 			}, nil
 		}
 
-		elementConverter, err := jsToGo(hint.Elem())
+		var elementConverter converter
+
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			length := 0
+			if !data.IsNull() && !data.IsUndefined() && !data.IsNaN() {
+				length = data.Length()
+			}
+
+			outSlice := reflect.MakeSlice(hint, length, length)
+
+			if elementConverter != nil {
+				for i := 0; i < length; i++ {
+					outSlice.Index(i).Set(elementConverter(data.Index(i)))
+				}
+			}
+
+			return outSlice
+		}
+
+		var err error
+		elementConverter, err = jsToGo(hint.Elem())
 		if err != nil {
 			return nil, err
 		}
 
-		return func(data js.Value) reflect.Value {
-			outSlice := reflect.MakeSlice(hint, data.Length(), data.Length())
-
-			for i := 0; i < data.Length(); i++ {
-				outSlice.Index(i).Set(elementConverter(data.Index(i)))
-			}
-
-			return outSlice
-		}, nil
+		return jsToGoCache[hint], nil
 	case reflect.String:
-		return func(data js.Value) reflect.Value {
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
 			if hint.String() != "string" {
 				newValue := reflect.New(hint).Elem()
 				newValue.SetString(data.String())
 				return newValue
 			}
 			return reflect.ValueOf(data.String())
-		}, nil
+		}
+
+		return jsToGoCache[hint], nil
 	case reflect.Struct:
 		converters := make(map[string]converter, hint.NumField())
+
+		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			outStruct := reflect.New(hint).Elem()
+			for i := 0; i < hint.NumField(); i++ {
+				field := hint.Field(i)
+				if converters[field.Name] != nil {
+					outStruct.Field(i).Set(converters[field.Name](data.Get(field.Name)))
+				}
+			}
+			return outStruct
+		}
+
 		for i := 0; i < hint.NumField(); i++ {
 			field := hint.Field(i)
 			var err error
@@ -202,16 +293,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 			}
 		}
 
-		return func(data js.Value) reflect.Value {
-			outStruct := reflect.New(hint).Elem()
-			for i := 0; i < hint.NumField(); i++ {
-				field := hint.Field(i)
-				outStruct.Field(i).Set(converters[field.Name](data.Get(field.Name)))
-			}
-			return outStruct
-		}, nil
+		return jsToGoCache[hint], nil
 	case reflect.UnsafePointer:
-		panic("unsafe pointers are not supported as argument types")
+		log.Error().Msg("unsafe pointers are not supported as argument types. value will not get converted")
+		return nil, nil
 	}
 
 	return func(_ js.Value) reflect.Value {
