@@ -29,6 +29,9 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		return nil, errors.New("invalid value kind")
 	case reflect.Bool:
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			if data.IsUndefined() || data.IsNull() {
+				return reflect.Zero(hint)
+			}
 			newValue := reflect.New(hint).Elem()
 			newValue.SetBool(data.Bool())
 			return newValue
@@ -83,6 +86,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		var elementConverter converter
 
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			if data.IsUndefined() || data.IsNull() {
+				return reflect.Zero(hint)
+			}
+
 			outArray := reflect.New(hint).Elem()
 
 			if elementConverter != nil {
@@ -110,6 +117,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		isArrayFn := js.Global().Get("Array").Get("isArray")
 
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			if data.IsUndefined() || data.IsNull() {
+				return reflect.Zero(hint)
+			}
+
 			return reflect.MakeFunc(hint, func(in []reflect.Value) []reflect.Value {
 				inMapped := make([]interface{}, len(in))
 				for i, value := range in {
@@ -170,6 +181,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		entriesFunc := js.Global().Get("Object").Get("entries")
 
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			if data.IsUndefined() || data.IsNull() {
+				return reflect.Zero(hint)
+			}
+
 			outMap := reflect.MakeMap(hint)
 
 			if keyConverter != nil {
@@ -207,7 +222,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		var valueConverter converter
 
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
-			if data.IsNull() {
+			if data.IsUndefined() || data.IsNull() {
 				return reflect.Zero(hint)
 			}
 			newValue := reflect.New(hint.Elem())
@@ -236,6 +251,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		var elementConverter converter
 
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			if data.IsUndefined() || data.IsNull() {
+				return reflect.Zero(hint)
+			}
+
 			length := 0
 			if !data.IsNull() && !data.IsUndefined() && !data.IsNaN() {
 				length = data.Length()
@@ -261,6 +280,9 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		return jsToGoCache[hint], nil
 	case reflect.String:
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			if data.IsUndefined() || data.IsNull() {
+				return reflect.Zero(hint)
+			}
 			if hint.String() != "string" {
 				newValue := reflect.New(hint).Elem()
 				newValue.SetString(data.String())
@@ -274,6 +296,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		converters := make(map[string]converter, hint.NumField())
 
 		jsToGoCache[hint] = func(data js.Value) reflect.Value {
+			if data.IsUndefined() || data.IsNull() {
+				return reflect.Zero(hint)
+			}
+
 			outStruct := reflect.New(hint).Elem()
 			for i := 0; i < hint.NumField(); i++ {
 				field := hint.Field(i)
@@ -306,6 +332,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 
 func intToGo(hint reflect.Type) converter {
 	return func(data js.Value) reflect.Value {
+		if data.IsUndefined() || data.IsNull() {
+			return reflect.Zero(hint)
+		}
+
 		var value int64
 
 		switch data.Type() {
@@ -329,6 +359,10 @@ func intToGo(hint reflect.Type) converter {
 
 func uintToGo(hint reflect.Type) converter {
 	return func(data js.Value) reflect.Value {
+		if data.IsUndefined() || data.IsNull() {
+			return reflect.Zero(hint)
+		}
+
 		var value uint64
 
 		switch data.Type() {
@@ -352,6 +386,10 @@ func uintToGo(hint reflect.Type) converter {
 
 func floatToGo(hint reflect.Type) converter {
 	return func(data js.Value) reflect.Value {
+		if data.IsUndefined() || data.IsNull() {
+			return reflect.Zero(hint)
+		}
+
 		var value float64
 
 		switch data.Type() {
