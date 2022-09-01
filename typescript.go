@@ -6,13 +6,18 @@ import (
 	"strings"
 )
 
+type FuncMeta struct {
+	ArgNames []string
+	Promise  bool
+}
+
 type Definition struct {
-	Name         string
-	Entities     map[string]reflect.Type
-	Definitions  map[string]reflect.Type
-	Nested       map[string]*Definition
-	FuncArgNames map[string]map[string][]string
-	Promises     map[string]bool
+	Name        string
+	Entities    map[string]reflect.Type
+	Definitions map[string]reflect.Type
+	Nested      map[string]*Definition
+	FuncMeta    map[string]map[string]*FuncMeta
+	Promises    map[string]bool
 }
 
 func (d *Definition) Serialize(appName string, path []string) (string, string, error) {
@@ -197,6 +202,16 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 
 		result.WriteString("(")
 
+		if d.FuncMeta != nil {
+			if funcs, ok := d.FuncMeta[interfaceName]; ok {
+				if f, ok := funcs[name]; ok {
+					if f.Promise {
+						returnsPromise = f.Promise
+					}
+				}
+			}
+		}
+
 		for i := 0; i < typeDef.NumIn(); i++ {
 			if i > 0 {
 				result.WriteString(", ")
@@ -212,11 +227,11 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 
 			argName := fmt.Sprintf("arg%d", i+1)
 
-			if d.FuncArgNames != nil {
-				if funcs, ok := d.FuncArgNames[interfaceName]; ok {
+			if d.FuncMeta != nil {
+				if funcs, ok := d.FuncMeta[interfaceName]; ok {
 					if f, ok := funcs[name]; ok {
-						if len(f)-1 >= i {
-							argName = f[i]
+						if len(f.ArgNames)-1 >= i {
+							argName = f.ArgNames[i]
 						}
 					}
 				}

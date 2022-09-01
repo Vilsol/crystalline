@@ -3,10 +3,6 @@ package crystalline
 import (
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"os"
 	"path"
 	"reflect"
 	"regexp"
@@ -51,7 +47,7 @@ func (e *Exposer) ExposeFuncPromise(entity any, promise bool) error {
 	}
 
 	pointer := value.Pointer()
-	e.extractArgNames(pointer, "")
+	e.processFunctionMeta(pointer, "")
 
 	splitDef := strings.Split(path.Base(runtime.FuncForPC(pointer).Name()), ".")
 	pkgName := splitDef[0]
@@ -130,13 +126,13 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 
 	for i := 0; i < typeDef.NumMethod(); i++ {
 		e.checkAddDefinition(typeDef.Method(i).Type)
-		e.extractArgNames(typeDef.Method(i).Func.Pointer(), name)
+		e.processFunctionMeta(typeDef.Method(i).Func.Pointer(), name)
 	}
 
 	newInstance := reflect.New(typeDef)
 	for i := 0; i < newInstance.NumMethod(); i++ {
 		e.checkAddDefinition(newInstance.Type().Method(i).Type)
-		e.extractArgNames(newInstance.Type().Method(i).Func.Pointer(), name)
+		e.processFunctionMeta(newInstance.Type().Method(i).Func.Pointer(), name)
 	}
 
 	return nil
@@ -204,54 +200,47 @@ func (e *Exposer) Build() (string, string, error) {
 	return strings.TrimSpace(tsdFile.String()), strings.TrimSpace(jsFile.String()), nil
 }
 
-func (e *Exposer) extractArgNames(pointer uintptr, interfaceName string) {
+func (e *Exposer) processFunctionMeta(pointer uintptr, interfaceName string) {
 	pc := runtime.FuncForPC(pointer)
 
 	splitDef := strings.Split(path.Base(pc.Name()), ".")
 	pkgName := splitDef[0]
 	valueName := splitDef[len(splitDef)-1]
 
-	filePath, lineNumber := pc.FileLine(pointer)
+	funcDecl := findFunction(pointer)
+	if funcDecl == nil {
+		return
+	}
 
-	// Extract argument names if possible
-	fileData, err := os.ReadFile(filePath)
-	if err == nil {
-		fileSet := token.NewFileSet()
-		f, err := parser.ParseFile(fileSet, filePath, string(fileData), 0)
-		if err == nil {
-			for _, decl := range f.Decls {
-				found := false
-				switch castDecl := decl.(type) {
-				case *ast.FuncDecl:
-					if castDecl.Name.Name == valueName && castDecl.Type.Params != nil {
-						pos := fileSet.Position(castDecl.Pos())
-						if pos.Line == lineNumber || pos.Line == lineNumber-1 {
-							layer := e.ensureNamespaceExists([]string{pkgName})
-							if layer.FuncArgNames == nil {
-								layer.FuncArgNames = make(map[string]map[string][]string)
-							}
+	layer := e.ensureNamespaceExists([]string{pkgName})
+	if layer.FuncMeta == nil {
+		layer.FuncMeta = make(map[string]map[string]*FuncMeta)
+	}
 
-							if _, ok := layer.FuncArgNames[interfaceName]; !ok {
-								layer.FuncArgNames[interfaceName] = make(map[string][]string)
-							}
+	if _, ok := layer.FuncMeta[interfaceName]; !ok {
+		layer.FuncMeta[interfaceName] = make(map[string]*FuncMeta)
+	}
 
-							argNames := make([]string, 0)
-							for _, field := range castDecl.Type.Params.List {
-								for _, name := range field.Names {
-									argNames = append(argNames, name.Name)
-								}
-							}
-							layer.FuncArgNames[interfaceName][valueName] = argNames
+	argNames := make([]string, 0)
+	for _, field := range funcDecl.Type.Params.List {
+		for _, name := range field.Names {
+			argNames = append(argNames, name.Name)
+		}
+	}
 
-							found = true
-						}
-					}
-				}
-
-				if found {
-					break
+	promise := false
+	if funcDecl.Doc != nil {
+		for _, comment := range funcDecl.Doc.List {
+			if comment != nil {
+				if strings.Contains(comment.Text, "crystalline:promise") {
+					promise = true
 				}
 			}
 		}
+	}
+
+	layer.FuncMeta[interfaceName][valueName] = &FuncMeta{
+		ArgNames: argNames,
+		Promise:  promise,
 	}
 }

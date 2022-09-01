@@ -163,6 +163,11 @@ func (s *FnSample) B(x bool) bool {
 	return x
 }
 
+// crystalline:promise
+func (s FnSample) C(x bool) bool {
+	return x
+}
+
 func TestFnStruct(t *testing.T) {
 	js.Global().Set("TestStruct", MapOrPanic(func(a FnSample) bool {
 		return a.FirstValue == "hello" && a.SecondValue == 1 && a.ThirdValue == 2.345
@@ -182,9 +187,17 @@ func TestFnStruct(t *testing.T) {
 	js.Global().Set("TestStructFn", MapOrPanic(FnSample{}))
 	testza.AssertTrue(t, Run([]interface{}{"TestStructFn", "A"}, true).Bool())
 
+	noPtrPromise := Run([]interface{}{"TestStructFn", "C"}, true)
+	noPtrResults := testResolvePromise(noPtrPromise)
+	testza.AssertTrue(t, noPtrResults.Bool())
+
 	js.Global().Set("TestStructFnPtr", MapOrPanic(&FnSample{}))
 	testza.AssertTrue(t, Run([]interface{}{"TestStructFnPtr", "A"}, true).Bool())
 	testza.AssertTrue(t, Run([]interface{}{"TestStructFnPtr", "B"}, true).Bool())
+
+	ptrPromise := Run([]interface{}{"TestStructFnPtr", "C"}, true)
+	ptrResults := testResolvePromise(ptrPromise)
+	testza.AssertTrue(t, ptrResults.Bool())
 }
 
 func TestFnFunc(t *testing.T) {

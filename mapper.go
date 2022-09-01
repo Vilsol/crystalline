@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 func MapOrPanic(data interface{}) interface{} {
@@ -106,7 +107,19 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 		}
 
 		for i := 0; i < value.NumMethod(); i++ {
-			val, err := mapInternal(value.Method(i), false)
+			methodPromise := false
+			fn := findFunction(value.Type().Method(i).Func.Pointer())
+			if fn != nil && fn.Doc != nil {
+				for _, comment := range fn.Doc.List {
+					if comment != nil {
+						if strings.Contains(comment.Text, "crystalline:promise") {
+							methodPromise = true
+						}
+					}
+				}
+			}
+
+			val, err := mapInternal(value.Method(i), methodPromise)
 			if err != nil {
 				return nil, err
 			}

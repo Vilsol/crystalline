@@ -32,6 +32,10 @@ func (g SomeObj) NoPointer(first string, second int) {
 func (g *SomeObj) WithPointer(first float64, second bool) {
 }
 
+// crystalline:promise
+func (g *SomeObj) Promised() {
+}
+
 func SomeFunc(name string, a bool) (string, bool) {
 	return "hello, " + name, !a
 }
@@ -149,6 +153,7 @@ export declare namespace crystalline {
     Nested: nested.AnotherObj;
     VoidFunc: () => void;
     NoPointer(first: string, second: number): void;
+    Promised(): Promise<void>;
     WithPointer(first: number, second: boolean): void;
   }
   function ByteFunc(f: () => Promise<(Uint8Array | undefined)>): Promise<(Uint8Array | undefined)>;

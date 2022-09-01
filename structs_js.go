@@ -4,6 +4,7 @@ package crystalline
 
 import (
 	"reflect"
+	"strings"
 	"syscall/js"
 )
 
@@ -48,13 +49,44 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 
 		out := make(map[string]interface{})
 
+		promiseFuncs := make(map[string]bool)
+		for i := 0; i < value.NumMethod(); i++ {
+			fn := findFunction(value.Type().Method(i).Func.Pointer())
+			if fn != nil && fn.Doc != nil {
+				for _, comment := range fn.Doc.List {
+					if comment != nil {
+						if strings.Contains(comment.Text, "crystalline:promise") {
+							name := value.Type().Method(i).Name
+							promiseFuncs[name] = true
+						}
+					}
+				}
+			}
+		}
+
 		addr := value.Addr()
 		for i := 0; i < addr.NumMethod(); i++ {
-			val, err := mapInternal(addr.Method(i), false)
+			name := addr.Type().Method(i).Name
+			promise := promiseFuncs[name]
+
+			if !promise {
+				fn := findFunction(addr.Type().Method(i).Func.Pointer())
+				if fn != nil && fn.Doc != nil {
+					for _, comment := range fn.Doc.List {
+						if comment != nil {
+							if strings.Contains(comment.Text, "crystalline:promise") {
+								promise = true
+							}
+						}
+					}
+				}
+			}
+
+			val, err := mapInternal(addr.Method(i), promise)
 			if err != nil {
 				return js.Null(), err
 			}
-			out[addr.Type().Method(i).Name] = val
+			out[name] = val
 		}
 
 		obj := js.ValueOf(out)
