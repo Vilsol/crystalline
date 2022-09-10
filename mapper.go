@@ -99,16 +99,26 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 
 		out := make(map[string]interface{})
 		for i := 0; i < value.NumField(); i++ {
+			structField := value.Type().Field(i)
+			if !structField.IsExported() {
+				continue
+			}
+
 			val, err := mapInternal(value.Field(i), false)
 			if err != nil {
 				return nil, err
 			}
-			out[value.Type().Field(i).Name] = val
+			out[structField.Name] = val
 		}
 
 		for i := 0; i < value.NumMethod(); i++ {
+			method := value.Type().Method(i)
+			if !method.IsExported() {
+				continue
+			}
+
 			methodPromise := false
-			fn := findFunction(value.Type().Method(i).Func.Pointer())
+			fn := findFunction(method.Func.Pointer())
 			if fn != nil && fn.Doc != nil {
 				for _, comment := range fn.Doc.List {
 					if comment != nil {
@@ -123,7 +133,7 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 			if err != nil {
 				return nil, err
 			}
-			out[value.Type().Method(i).Name] = val
+			out[method.Name] = val
 		}
 
 		return out, nil

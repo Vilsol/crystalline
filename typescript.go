@@ -115,6 +115,10 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 
 	for i := 0; i < typeDef.NumField(); i++ {
 		field := typeDef.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+
 		jsName, optional := d.typeToJSName("", field.Type, false, name, false)
 
 		result.WriteString("  ")
@@ -130,6 +134,10 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 	newInstance := reflect.New(typeDef)
 	for i := 0; i < newInstance.NumMethod(); i++ {
 		typeMethod := newInstance.Type().Method(i)
+		if !typeMethod.IsExported() {
+			continue
+		}
+
 		instanceMethod := newInstance.Method(i)
 		jsName, _ := d.typeToJSName(typeMethod.Name, instanceMethod.Type(), true, name, false)
 		result.WriteString("  ")

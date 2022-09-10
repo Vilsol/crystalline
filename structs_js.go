@@ -22,6 +22,11 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 		definitions := make(map[string]interface{})
 
 		for i := 0; i < value.NumField(); i++ {
+			structField := value.Type().Field(i)
+			if !structField.IsExported() {
+				continue
+			}
+
 			field := value.Field(i)
 
 			getFunc := js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -40,7 +45,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 				return nil
 			})
 
-			fieldName := value.Type().Field(i).Name
+			fieldName := structField.Name
 			definitions[fieldName] = js.ValueOf(map[string]interface{}{
 				"get": getFunc,
 				"set": setFunc,
@@ -51,12 +56,17 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 
 		promiseFuncs := make(map[string]bool)
 		for i := 0; i < value.NumMethod(); i++ {
-			fn := findFunction(value.Type().Method(i).Func.Pointer())
+			method := value.Type().Method(i)
+			if !method.IsExported() {
+				continue
+			}
+
+			fn := findFunction(method.Func.Pointer())
 			if fn != nil && fn.Doc != nil {
 				for _, comment := range fn.Doc.List {
 					if comment != nil {
 						if strings.Contains(comment.Text, "crystalline:promise") {
-							name := value.Type().Method(i).Name
+							name := method.Name
 							promiseFuncs[name] = true
 						}
 					}
@@ -66,11 +76,16 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 
 		addr := value.Addr()
 		for i := 0; i < addr.NumMethod(); i++ {
-			name := addr.Type().Method(i).Name
+			method := addr.Type().Method(i)
+			if !method.IsExported() {
+				continue
+			}
+
+			name := method.Name
 			promise := promiseFuncs[name]
 
 			if !promise {
-				fn := findFunction(addr.Type().Method(i).Func.Pointer())
+				fn := findFunction(method.Func.Pointer())
 				if fn != nil && fn.Doc != nil {
 					for _, comment := range fn.Doc.List {
 						if comment != nil {

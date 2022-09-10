@@ -121,18 +121,33 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 	layer.Definitions[name] = typeDef
 
 	for i := 0; i < typeDef.NumField(); i++ {
-		e.checkAddDefinition(typeDef.Field(i).Type)
+		field := typeDef.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+
+		e.checkAddDefinition(field.Type)
 	}
 
 	for i := 0; i < typeDef.NumMethod(); i++ {
-		e.checkAddDefinition(typeDef.Method(i).Type)
-		e.processFunctionMeta(typeDef.Method(i).Func.Pointer(), name)
+		method := typeDef.Method(i)
+		if !method.IsExported() {
+			continue
+		}
+
+		e.checkAddDefinition(method.Type)
+		e.processFunctionMeta(method.Func.Pointer(), name)
 	}
 
 	newInstance := reflect.New(typeDef)
 	for i := 0; i < newInstance.NumMethod(); i++ {
-		e.checkAddDefinition(newInstance.Type().Method(i).Type)
-		e.processFunctionMeta(newInstance.Type().Method(i).Func.Pointer(), name)
+		method := newInstance.Type().Method(i)
+		if !method.IsExported() {
+			continue
+		}
+
+		e.checkAddDefinition(method.Type)
+		e.processFunctionMeta(method.Func.Pointer(), name)
 	}
 
 	return nil
