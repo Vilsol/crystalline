@@ -8,12 +8,11 @@ import (
 var stepKey struct{}
 
 func withContextStep(ctx context.Context, step string) context.Context {
-	value := ctx.Value(stepKey)
 	var steps []string
-	if value == nil {
-		steps = make([]string, 0)
-	} else {
+	if value := ctx.Value(stepKey); value != nil {
 		steps = value.([]string)
+	} else {
+		steps = make([]string, 0)
 	}
 
 	return context.WithValue(ctx, stepKey, append(steps, step))
