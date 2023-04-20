@@ -30,6 +30,7 @@ func TestJSExposer(t *testing.T) {
 	testza.AssertNoError(t, e.Expose(ExposeStructTest, "crystalline", "ExposeStructTest"))
 	testza.AssertNoError(t, e.Expose(ExposePointerTest, "crystalline", "ExposePointerTest"))
 	testza.AssertNoError(t, e.Expose(ExposeMapTest, "crystalline", "ExposeMapTest"))
+	testza.AssertNoError(t, e.Expose(ExposeInheritedStructTest, "crystalline", "ExposeInheritedStructTest"))
 
 	testza.AssertNoError(t, e.AddEntity(nil, "GlobalTest", reflect.TypeOf(GlobalTestObj{}), false))
 
@@ -92,6 +93,10 @@ func TestJSExposer(t *testing.T) {
 	js.CopyBytesToGo(outData, byteFuncArgs)
 
 	testza.AssertEqual(t, sampleBytes, outData)
+
+	obj = js.Global().Get("go").Get(appName).Get("crystalline").Get("ExposeInheritedStructTest")
+	testza.AssertFalse(t, obj.IsNull())
+	testza.AssertEqual(t, 7, obj.Get("AnotherObj").Get("SomeValue").Length())
 }
 
 func testResolvePromise(promise js.Value) js.Value {

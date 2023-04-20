@@ -22,6 +22,10 @@ type GenericStruct[K string, V nested.AnotherObj] struct {
 	FieldTwo V
 }
 
+type InheritedObj struct {
+	nested.AnotherObj
+}
+
 func (g GenericStruct[K, V]) GenericFunc(a K) (K, V) {
 	return g.FieldOne, g.FieldTwo
 }
@@ -84,6 +88,9 @@ var (
 			SomeValue: []int{100, 200, 300, 400},
 		},
 	}
+	ExposeInheritedStructTest = InheritedObj{
+		ExposeStructTest.Nested,
+	}
 )
 
 type GlobalTestObj struct {
@@ -109,6 +116,7 @@ func TestExposer(t *testing.T) {
 	testza.AssertNoError(t, e.Expose(ExposePointerTest, "crystalline", "ExposePointerTest"))
 	testza.AssertNoError(t, e.Expose(ExposeMapTest, "crystalline", "ExposeMapTest"))
 	testza.AssertNoError(t, e.Expose(ExposeGenericStruct, "crystalline", "ExposeGenericStruct"))
+	testza.AssertNoError(t, e.Expose(ExposeInheritedStructTest, "crystalline", "ExposeInheritedStructTest"))
 
 	testza.AssertNoError(t, e.AddEntity(nil, "GlobalTest", reflect.TypeOf(GlobalTestObj{}), false))
 
@@ -125,6 +133,7 @@ export const initializeCrystalline = () => {
     ErrorFunc: globalThis["go"]["app"]["crystalline"]["ErrorFunc"],
     ExposeArrayTest: globalThis["go"]["app"]["crystalline"]["ExposeArrayTest"],
     ExposeGenericStruct: globalThis["go"]["app"]["crystalline"]["ExposeGenericStruct"],
+    ExposeInheritedStructTest: globalThis["go"]["app"]["crystalline"]["ExposeInheritedStructTest"],
     ExposeIntTest: globalThis["go"]["app"]["crystalline"]["ExposeIntTest"],
     ExposeMapTest: globalThis["go"]["app"]["crystalline"]["ExposeMapTest"],
     ExposePointerTest: globalThis["go"]["app"]["crystalline"]["ExposePointerTest"],
@@ -143,9 +152,12 @@ export declare namespace crystalline {
   interface GenericStruct {
     FieldOne: string;
     FieldTwo: nested.AnotherObj;
-    GenericFunc(arg1: string): [string, nested.AnotherObj];
+    GenericFunc(a: string): [string, nested.AnotherObj];
   }
   interface GlobalTestObj {
+  }
+  interface InheritedObj {
+    AnotherObj: nested.AnotherObj;
   }
   interface SomeObj {
     Name: string;
@@ -160,6 +172,7 @@ export declare namespace crystalline {
   function ErrorFunc(): Error;
   const ExposeArrayTest: Array<string> | undefined;
   const ExposeGenericStruct: crystalline.GenericStruct;
+  const ExposeInheritedStructTest: crystalline.InheritedObj;
   const ExposeIntTest: number;
   const ExposeMapTest: Record<number, number> | undefined;
   const ExposePointerTest: crystalline.SomeObj | undefined;

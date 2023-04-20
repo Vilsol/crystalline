@@ -84,6 +84,12 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 			name := method.Name
 			promise := promiseFuncs[name]
 
+			if inner, ok := ignored[value.Type().String()]; ok {
+				if inner[name] {
+					continue
+				}
+			}
+
 			if !promise {
 				fn := findFunction(method.Func.Pointer())
 				if fn != nil && fn.Doc != nil {
@@ -94,6 +100,12 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 							}
 						}
 					}
+				}
+			}
+
+			if !promise {
+				if inner, ok := promisified[value.Type().String()]; ok {
+					promise = inner[name]
 				}
 			}
 

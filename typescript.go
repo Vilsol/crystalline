@@ -1,6 +1,7 @@
 package crystalline
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -20,7 +21,7 @@ type Definition struct {
 	Promises    map[string]bool
 }
 
-func (d *Definition) Serialize(appName string, path []string) (string, string, error) {
+func (d *Definition) Serialize(ctx context.Context, appName string, path []string) (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
@@ -32,14 +33,14 @@ func (d *Definition) Serialize(appName string, path []string) (string, string, e
 		subPath = append(path, d.Name)
 	}
 
-	defTsdFile, err := d.serializeDefinitions(d.Definitions, subPath)
+	defTsdFile, err := d.serializeDefinitions(ctx, d.Definitions, subPath)
 	if err != nil {
 		return "", "", err
 	}
 
 	tsdFile.WriteString(defTsdFile)
 
-	defTsdFile, defJsFile, err := d.serializeEntities(d.Entities, subPath, appName)
+	defTsdFile, defJsFile, err := d.serializeEntities(ctx, d.Entities, subPath, appName)
 	if err != nil {
 		return "", "", err
 	}
@@ -51,7 +52,7 @@ func (d *Definition) Serialize(appName string, path []string) (string, string, e
 	writtenJs := make(map[string]bool)
 	for _, key := range SortedKeys(d.Nested) {
 		definition := d.Nested[key]
-		defTsdFile, defJsFile, err = definition.Serialize(appName, subPath)
+		defTsdFile, defJsFile, err = definition.Serialize(ctx, appName, subPath)
 		if err != nil {
 			return "", "", err
 		}
@@ -103,7 +104,7 @@ func (d *Definition) Serialize(appName string, path []string) (string, string, e
 	return tsdFile.String(), jsFile.String(), nil
 }
 
-func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
+func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef reflect.Type) string {
 	if typeDef.Kind() != reflect.Struct {
 		panic("cannot be converted to interface: " + typeDef.Kind().String())
 	}
@@ -113,13 +114,15 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 	result.WriteString(name)
 	result.WriteString(" {\n")
 
+	interfaceCtx := withContextStep(ctx, name)
+
 	for i := 0; i < typeDef.NumField(); i++ {
 		field := typeDef.Field(i)
 		if !field.IsExported() {
 			continue
 		}
 
-		jsName, optional := d.typeToJSName("", field.Type, false, name, false)
+		jsName, optional := d.typeToJSName(withContextStep(interfaceCtx, field.Name), "", field.Type, false, name, false)
 
 		result.WriteString("  ")
 		result.WriteString(field.Name)
@@ -138,8 +141,14 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 			continue
 		}
 
+		if inner, ok := ignored[typeDef.String()]; ok {
+			if inner[typeMethod.Name] {
+				continue
+			}
+		}
+
 		instanceMethod := newInstance.Method(i)
-		jsName, _ := d.typeToJSName(typeMethod.Name, instanceMethod.Type(), true, name, false)
+		jsName, _ := d.typeToJSName(withContextStep(interfaceCtx, typeMethod.Name), typeMethod.Name, instanceMethod.Type(), true, name, false)
 		result.WriteString("  ")
 		result.WriteString(jsName)
 		result.WriteString(";\n")
@@ -149,7 +158,7 @@ func (d *Definition) typeToInterface(name string, typeDef reflect.Type) string {
 	return result.String()
 }
 
-func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bool, interfaceName string, returnsPromise bool) (string, bool) {
+func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef reflect.Type, topLevel bool, interfaceName string, returnsPromise bool) (string, bool) {
 	switch typeDef.Kind() {
 	case reflect.Bool:
 		return "boolean", false
@@ -191,7 +200,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		}
 
 		result.WriteString("Array<")
-		jsName, undefined := d.typeToJSName("", typeDef.Elem(), false, "", false)
+		jsName, undefined := d.typeToJSName(ctx, "", typeDef.Elem(), false, "", false)
 		result.WriteString(jsName)
 		if undefined {
 			result.WriteString(" | undefined")
@@ -231,7 +240,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 				returnsPromise = true
 			}
 
-			jsName, optional := d.typeToJSName(in.Name(), in, false, "", true)
+			jsName, optional := d.typeToJSName(withContextStep(ctx, in.Name()), in.Name(), in, false, "", true)
 
 			argName := fmt.Sprintf("arg%d", i+1)
 
@@ -282,7 +291,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 				}
 
 				out := typeDef.Out(i)
-				jsName, optional := d.typeToJSName(out.Name(), out, false, "", false)
+				jsName, optional := d.typeToJSName(withContextStep(ctx, out.Name()), out.Name(), out, false, "", false)
 				if optional {
 					result.WriteString("(")
 					result.WriteString(jsName)
@@ -308,7 +317,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		var result strings.Builder
 		result.WriteString("Record<")
 
-		keyJsName, optional := d.typeToJSName("", typeDef.Key(), false, "", false)
+		keyJsName, optional := d.typeToJSName(ctx, "", typeDef.Key(), false, "", false)
 		result.WriteString(keyJsName)
 		if optional {
 			result.WriteString(" | undefined")
@@ -316,7 +325,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 
 		result.WriteString(", ")
 
-		valueJsName, optional := d.typeToJSName("", typeDef.Elem(), false, "", false)
+		valueJsName, optional := d.typeToJSName(ctx, "", typeDef.Elem(), false, "", false)
 		result.WriteString(valueJsName)
 		if optional {
 			result.WriteString(" | undefined")
@@ -325,7 +334,7 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		result.WriteString(">")
 		return result.String(), true
 	case reflect.Pointer:
-		jsName, _ := d.typeToJSName(name, typeDef.Elem(), false, "", false)
+		jsName, _ := d.typeToJSName(withContextStep(ctx, name), name, typeDef.Elem(), false, "", false)
 		return jsName, true
 	case reflect.String:
 		return "string", false
@@ -339,15 +348,15 @@ func (d *Definition) typeToJSName(name string, typeDef reflect.Type, topLevel bo
 		return "unknown", true
 	}
 
-	panic(fmt.Sprintf("un-convertable type: %s (%s)", typeDef.Kind().String(), typeDef.String()))
+	panic(fmt.Sprintf("un-convertable type: \"%s\" - %s (%s)", getContextSteps(ctx), typeDef.Kind().String(), typeDef.String()))
 }
 
-func (d *Definition) serializeDefinitions(definitions map[string]reflect.Type, path []string) (string, error) {
+func (d *Definition) serializeDefinitions(ctx context.Context, definitions map[string]reflect.Type, path []string) (string, error) {
 	var tsdFile strings.Builder
 
 	for _, name := range SortedKeys(definitions) {
 		typeDef := definitions[name]
-		jsType := d.typeToInterface(name, typeDef)
+		jsType := d.typeToInterface(withContextStep(ctx, name), name, typeDef)
 		indentation := strings.Repeat("  ", len(path))
 
 		splitLines := strings.Split(strings.TrimSpace(jsType), "\n")
@@ -362,13 +371,13 @@ func (d *Definition) serializeDefinitions(definitions map[string]reflect.Type, p
 	return tsdFile.String(), nil
 }
 
-func (d *Definition) serializeEntities(entities map[string]reflect.Type, path []string, appName string) (string, string, error) {
+func (d *Definition) serializeEntities(ctx context.Context, entities map[string]reflect.Type, path []string, appName string) (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
 	for _, name := range SortedKeys(entities) {
 		typeDef := entities[name]
-		jsType, optional := d.typeToJSName(name, typeDef, true, "", false)
+		jsType, optional := d.typeToJSName(withContextStep(ctx, name), name, typeDef, true, "", false)
 		if len(path) == 0 {
 			jsFile.WriteString(fmt.Sprintf(`%s = globalThis["go"]["%s"]["%s"];`+"\n", name, appName, name))
 			if optional {

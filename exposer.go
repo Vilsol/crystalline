@@ -1,6 +1,7 @@
 package crystalline
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path"
@@ -135,6 +136,12 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 			continue
 		}
 
+		if inner, ok := ignored[typeDef.String()]; ok {
+			if inner[method.Name] {
+				continue
+			}
+		}
+
 		e.checkAddDefinition(method.Type)
 		e.processFunctionMeta(method.Func.Pointer(), name)
 	}
@@ -144,6 +151,12 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 		method := newInstance.Type().Method(i)
 		if !method.IsExported() {
 			continue
+		}
+
+		if inner, ok := ignored[typeDef.String()]; ok {
+			if inner[method.Name] {
+				continue
+			}
 		}
 
 		e.checkAddDefinition(method.Type)
@@ -204,7 +217,7 @@ func (e *Exposer) Build() (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
-	defTsdFile, defJsFile, err := e.rootDefinition.Serialize(e.appName, []string{})
+	defTsdFile, defJsFile, err := e.rootDefinition.Serialize(context.Background(), e.appName, []string{})
 	if err != nil {
 		return "", "", err
 	}

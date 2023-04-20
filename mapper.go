@@ -7,6 +7,27 @@ import (
 	"strings"
 )
 
+var (
+	promisified = make(map[string]map[string]bool)
+	ignored     = make(map[string]map[string]bool)
+)
+
+func MarkIgnored(entity string, fn string) {
+	if _, ok := ignored[entity]; !ok {
+		ignored[entity] = make(map[string]bool)
+	}
+
+	ignored[entity][fn] = true
+}
+
+func MarkPromise(entity string, fn string) {
+	if _, ok := promisified[entity]; !ok {
+		promisified[entity] = make(map[string]bool)
+	}
+
+	promisified[entity][fn] = true
+}
+
 func MapOrPanic(data interface{}) interface{} {
 	return MapOrPanicPromise(data, false)
 }
