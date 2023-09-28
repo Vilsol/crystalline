@@ -127,25 +127,25 @@ func TestExposer(t *testing.T) {
 export let crystalline;
 
 export const initializeCrystalline = () => {
-  GlobalTest = globalThis["go"]["app"]["GlobalTest"];
+  GlobalTest = globalThis['go']['app']['GlobalTest'];
   crystalline = {
-    ByteFunc: globalThis["go"]["app"]["crystalline"]["ByteFunc"],
-    ErrorFunc: globalThis["go"]["app"]["crystalline"]["ErrorFunc"],
-    ExposeArrayTest: globalThis["go"]["app"]["crystalline"]["ExposeArrayTest"],
-    ExposeGenericStruct: globalThis["go"]["app"]["crystalline"]["ExposeGenericStruct"],
-    ExposeInheritedStructTest: globalThis["go"]["app"]["crystalline"]["ExposeInheritedStructTest"],
-    ExposeIntTest: globalThis["go"]["app"]["crystalline"]["ExposeIntTest"],
-    ExposeMapTest: globalThis["go"]["app"]["crystalline"]["ExposeMapTest"],
-    ExposePointerTest: globalThis["go"]["app"]["crystalline"]["ExposePointerTest"],
-    ExposeSliceTest: globalThis["go"]["app"]["crystalline"]["ExposeSliceTest"],
-    ExposeStringTest: globalThis["go"]["app"]["crystalline"]["ExposeStringTest"],
-    ExposeStructTest: globalThis["go"]["app"]["crystalline"]["ExposeStructTest"],
-    FuncFunc: globalThis["go"]["app"]["crystalline"]["FuncFunc"],
-    InterfaceFunc: globalThis["go"]["app"]["crystalline"]["InterfaceFunc"],
-    PromiseFunc: globalThis["go"]["app"]["crystalline"]["PromiseFunc"],
-    SomeFunc: globalThis["go"]["app"]["crystalline"]["SomeFunc"],
-  }
-}`, jsFile)
+    ByteFunc: globalThis['go']['app']['crystalline']['ByteFunc'],
+    ErrorFunc: globalThis['go']['app']['crystalline']['ErrorFunc'],
+    ExposeArrayTest: globalThis['go']['app']['crystalline']['ExposeArrayTest'],
+    ExposeGenericStruct: globalThis['go']['app']['crystalline']['ExposeGenericStruct'],
+    ExposeInheritedStructTest: globalThis['go']['app']['crystalline']['ExposeInheritedStructTest'],
+    ExposeIntTest: globalThis['go']['app']['crystalline']['ExposeIntTest'],
+    ExposeMapTest: globalThis['go']['app']['crystalline']['ExposeMapTest'],
+    ExposePointerTest: globalThis['go']['app']['crystalline']['ExposePointerTest'],
+    ExposeSliceTest: globalThis['go']['app']['crystalline']['ExposeSliceTest'],
+    ExposeStringTest: globalThis['go']['app']['crystalline']['ExposeStringTest'],
+    ExposeStructTest: globalThis['go']['app']['crystalline']['ExposeStructTest'],
+    FuncFunc: globalThis['go']['app']['crystalline']['FuncFunc'],
+    InterfaceFunc: globalThis['go']['app']['crystalline']['InterfaceFunc'],
+    PromiseFunc: globalThis['go']['app']['crystalline']['PromiseFunc'],
+    SomeFunc: globalThis['go']['app']['crystalline']['SomeFunc']
+  };
+};`, jsFile)
 
 	testza.AssertEqual(t, `export const GlobalTest = crystalline.GlobalTestObj;
 export declare namespace crystalline {
