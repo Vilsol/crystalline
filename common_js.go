@@ -4,11 +4,10 @@ package crystalline
 
 import (
 	"errors"
+	"log/slog"
 	"reflect"
 	"strconv"
 	"syscall/js"
-
-	"github.com/rs/zerolog/log"
 )
 
 type converter = func(data js.Value) reflect.Value
@@ -77,10 +76,10 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		jsToGoCache[hint] = floatToGo(hint)
 		return jsToGoCache[hint], nil
 	case reflect.Complex64:
-		log.Error().Msg("complex64 is not supported as argument type. value will not get converted")
+		slog.Error("complex64 is not supported as argument type. value will not get converted")
 		return nil, nil
 	case reflect.Complex128:
-		log.Error().Msg("complex128 is not supported as argument type. value will not get converted")
+		slog.Error("complex128 is not supported as argument type. value will not get converted")
 		return nil, nil
 	case reflect.Array:
 		var elementConverter converter
@@ -109,7 +108,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 
 		return jsToGoCache[hint], nil
 	case reflect.Chan:
-		log.Error().Msg("channels are not supported as argument types. value will not get converted")
+		slog.Error("channels are not supported as argument types. value will not get converted")
 		return nil, nil
 	case reflect.Func:
 		converters := make([]converter, hint.NumOut())
@@ -171,7 +170,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 
 		return jsToGoCache[hint], nil
 	case reflect.Interface:
-		log.Error().Str("hint", hint.String()).Msg("interfaces are not supported as argument types. value will not get converted")
+		slog.Error("interfaces are not supported as argument types. value will not get converted", slog.String("hint", hint.String()))
 		jsToGoCache[hint] = nil
 		return nil, nil
 	case reflect.Map:
@@ -321,7 +320,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 
 		return jsToGoCache[hint], nil
 	case reflect.UnsafePointer:
-		log.Error().Msg("unsafe pointers are not supported as argument types. value will not get converted")
+		slog.Error("unsafe pointers are not supported as argument types. value will not get converted")
 		return nil, nil
 	}
 
