@@ -7,7 +7,7 @@ import (
 type fetch[T any] func() (T, error)
 
 type WeakCache[T any] struct {
-	reachable map[uintptr]T
+	reachable map[uintptr]T //nolint:structcheck
 }
 
 func NewWeak[T any]() *WeakCache[T] {
