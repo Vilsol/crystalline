@@ -356,7 +356,7 @@ func (d *Definition) serializeDefinitions(ctx context.Context, definitions map[s
 
 	for _, name := range SortedKeys(definitions) {
 		typeDef := definitions[name]
-		jsType := d.typeToInterface(withContextStep(ctx, name), name, typeDef)
+		jsType := d.typeToInterface(withContextStep(ctx, strings.Join(path, ".")), name, typeDef)
 		indentation := strings.Repeat("  ", len(path))
 
 		splitLines := strings.Split(strings.TrimSpace(jsType), "\n")
