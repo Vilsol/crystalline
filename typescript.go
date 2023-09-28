@@ -21,6 +21,11 @@ type Definition struct {
 	Promises    map[string]bool
 }
 
+var (
+	JSQuoteStyle    = "'"
+	JSTrailingComma = false
+)
+
 func (d *Definition) Serialize(ctx context.Context, appName string, path []string) (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
@@ -66,7 +71,7 @@ func (d *Definition) Serialize(ctx context.Context, appName string, path []strin
 	}
 
 	if d.Name != "" {
-		jsFile.WriteString("}\n")
+		jsFile.WriteString("};\n")
 		tsdFile.WriteString("}\n")
 	}
 
@@ -96,7 +101,7 @@ func (d *Definition) Serialize(ctx context.Context, appName string, path []strin
 		}
 		jsFile.WriteString(strings.Join(indented, "\n"))
 
-		jsFile.WriteString("\n}")
+		jsFile.WriteString("\n};")
 
 		tsdFile.WriteString("export const initializeCrystalline: () => void;")
 	}
@@ -375,11 +380,11 @@ func (d *Definition) serializeEntities(ctx context.Context, entities map[string]
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
-	for _, name := range SortedKeys(entities) {
+	for i, name := range SortedKeys(entities) {
 		typeDef := entities[name]
 		jsType, optional := d.typeToJSName(withContextStep(ctx, name), name, typeDef, true, "", false)
 		if len(path) == 0 {
-			jsFile.WriteString(fmt.Sprintf(`%s = globalThis["go"]["%s"]["%s"];`+"\n", name, appName, name))
+			jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s = globalThis["go"]["%s"]["%s"];`, name, appName, name)+"\n", "\"", JSQuoteStyle, -1))
 			if optional {
 				tsdFile.WriteString(fmt.Sprintf("export const %s = %s | undefined;\n", name, jsType))
 			} else {
@@ -392,7 +397,12 @@ func (d *Definition) serializeEntities(ctx context.Context, entities map[string]
 			}
 
 			indentation := strings.Repeat("  ", len(path))
-			jsFile.WriteString(fmt.Sprintf(`%s%s: globalThis["go"]["%s"]%s["%s"],`, indentation, name, appName, mergedPathJs, name) + "\n")
+
+			comma := ","
+			if !JSTrailingComma && i == len(entities)-1 {
+				comma = ""
+			}
+			jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: globalThis["go"]["%s"]%s["%s"]%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
 
 			if typeDef.Kind() != reflect.Func {
 				if optional {
