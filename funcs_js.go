@@ -40,7 +40,7 @@ func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 
 		mappedOut := make([]interface{}, len(out))
 		for i, v := range out {
-			result, err := mapInternal(v, true)
+			result, err := mapInternal(v, true, false)
 			if err != nil {
 				panic(err)
 			}

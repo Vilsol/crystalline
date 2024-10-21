@@ -19,6 +19,7 @@ type Definition struct {
 	Nested      map[string]*Definition
 	FuncMeta    map[string]map[string]*FuncMeta
 	Promises    map[string]bool
+	NotNil      map[string]bool
 }
 
 var (
@@ -132,7 +133,9 @@ func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef r
 		result.WriteString("  ")
 		result.WriteString(field.Name)
 		if optional {
-			result.WriteString("?")
+			if d.NotNil == nil || !d.NotNil[field.Name] {
+				result.WriteString("?")
+			}
 		}
 		result.WriteString(": ")
 		result.WriteString(jsName)

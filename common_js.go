@@ -124,7 +124,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 				inMapped := make([]interface{}, len(in))
 				for i, value := range in {
 					var err error
-					inMapped[i], err = mapInternal(value, false)
+					inMapped[i], err = mapInternal(value, false, false)
 					if err != nil {
 						panic(err)
 					}

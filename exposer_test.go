@@ -11,10 +11,13 @@ import (
 )
 
 type SomeObj struct {
-	Name     string
-	Data     map[uint32]float64
-	Nested   nested.AnotherObj
-	VoidFunc func()
+	Name             string
+	Data             map[uint32]float64
+	Nested           nested.AnotherObj
+	VoidFunc         func()
+	MightBeNil       []string
+	DefinitelyNotNil []string        `crystalline:"not_nil"`
+	NotNilMap        map[string]bool `crystalline:"not_nil"`
 }
 
 type GenericStruct[K string, V nested.AnotherObj] struct {
@@ -164,6 +167,9 @@ export declare namespace crystalline {
     Data?: Record<number, number>;
     Nested: nested.AnotherObj;
     VoidFunc: () => void;
+    MightBeNil?: Array<string>;
+    DefinitelyNotNil: Array<string>;
+    NotNilMap: Record<string, boolean>;
     NoPointer(first: string, second: number): void;
     Promised(): Promise<void>;
     WithPointer(first: number, second: boolean): void;

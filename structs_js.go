@@ -109,7 +109,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 				}
 			}
 
-			val, err := mapInternal(addr.Method(i), promise)
+			val, err := mapInternal(addr.Method(i), promise, false)
 			if err != nil {
 				return js.Null(), err
 			}

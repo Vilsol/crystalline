@@ -42,6 +42,10 @@ func TestJSExposer(t *testing.T) {
 	testza.AssertFalse(t, obj.IsNull())
 	testza.AssertEqual(t, "Bob", obj.Get("Name").String())
 	testza.AssertEqual(t, js.TypeFunction, obj.Get("NoPointer").Type())
+	testza.AssertEqual(t, js.TypeObject, obj.Get("DefinitelyNotNil").Type())
+	testza.AssertEqual(t, 0, obj.Get("DefinitelyNotNil").Get("length").Int())
+	testza.AssertEqual(t, js.TypeObject, obj.Get("NotNilMap").Type())
+	testza.AssertEqual(t, 0, js.Global().Get("Object").Get("keys").Invoke(obj.Get("NotNilMap")).Get("length").Int())
 
 	obj = js.Global().Get("go").Get(appName).Get("crystalline").Get("ExposePointerTest")
 	testza.AssertFalse(t, obj.IsNull())

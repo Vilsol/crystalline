@@ -182,12 +182,12 @@ func TestPointer(t *testing.T) {
 
 func TestUnsafePointer(t *testing.T) {
 	var greetable Greetable = &Sample{Greeting: "Hello, "}
-	result, err := mapInternal(reflect.ValueOf(reflect.ValueOf(greetable).UnsafePointer()), false)
+	result, err := mapInternal(reflect.ValueOf(reflect.ValueOf(greetable).UnsafePointer()), false, false)
 	testza.AssertNoError(t, err)
 	testza.AssertGreater(t, result, 0)
 
 	var fakeInterface *Greetable
-	result, err = mapInternal(reflect.ValueOf(reflect.ValueOf(fakeInterface).UnsafePointer()), false)
+	result, err = mapInternal(reflect.ValueOf(reflect.ValueOf(fakeInterface).UnsafePointer()), false, false)
 	testza.AssertNoError(t, err)
 	testza.AssertEqual(t, nil, result)
 }

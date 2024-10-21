@@ -127,6 +127,15 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 			continue
 		}
 
+		if value, ok := field.Tag.Lookup("crystalline"); ok {
+			if strings.Contains(value, "not_nil") {
+				if layer.NotNil == nil {
+					layer.NotNil = make(map[string]bool)
+				}
+
+				layer.NotNil[field.Name] = true
+			}
+		}
 		e.checkAddDefinition(field.Type)
 	}
 

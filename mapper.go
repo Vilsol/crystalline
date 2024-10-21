@@ -33,7 +33,7 @@ func MapOrPanic(data interface{}) interface{} {
 }
 
 func MapOrPanicPromise(data interface{}, promise bool) interface{} {
-	result, err := mapInternal(reflect.ValueOf(data), promise)
+	result, err := mapInternal(reflect.ValueOf(data), promise, false)
 	if err != nil {
 		panic(err)
 	}
@@ -45,10 +45,10 @@ func Map(data interface{}) (interface{}, error) {
 }
 
 func MapPromise(data interface{}, promise bool) (interface{}, error) {
-	return mapInternal(reflect.ValueOf(data), promise)
+	return mapInternal(reflect.ValueOf(data), promise, false)
 }
 
-func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
+func mapInternal(value reflect.Value, promise bool, nonNil bool) (interface{}, error) {
 	switch value.Kind() {
 	case reflect.Invalid:
 		return nil, errors.New("invalid value kind")
@@ -60,6 +60,9 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 		return nil, errors.New("complex128 cannot be converted to wasm")
 	case reflect.Slice:
 		if value.IsNil() {
+			if nonNil {
+				return make([]interface{}, 0), nil
+			}
 			return nil, nil
 		}
 		fallthrough
@@ -70,7 +73,7 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 
 		out := make([]interface{}, value.Len())
 		for i := 0; i < value.Len(); i++ {
-			val, err := mapInternal(value.Index(i), false)
+			val, err := mapInternal(value.Index(i), false, false)
 			if err != nil {
 				return nil, err
 			}
@@ -93,20 +96,23 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 			return convertError(err)
 		}
 
-		return mapInternal(value.Elem(), false)
+		return mapInternal(value.Elem(), false, false)
 	case reflect.Map:
 		if value.IsNil() {
+			if nonNil {
+				return make(map[string]interface{}), nil
+			}
 			return nil, nil
 		}
 
 		out := make(map[string]interface{})
 		i := value.MapRange()
 		for i.Next() {
-			key, err := mapInternal(i.Key(), false)
+			key, err := mapInternal(i.Key(), false, false)
 			if err != nil {
 				return nil, err
 			}
-			val, err := mapInternal(i.Value(), false)
+			val, err := mapInternal(i.Value(), false, false)
 			if err != nil {
 				return nil, err
 			}
@@ -125,7 +131,9 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 				continue
 			}
 
-			val, err := mapInternal(value.Field(i), false)
+			notNil := strings.Contains(structField.Tag.Get("crystalline"), "not_nil")
+
+			val, err := mapInternal(value.Field(i), false, notNil)
 			if err != nil {
 				return nil, err
 			}
@@ -150,7 +158,7 @@ func mapInternal(value reflect.Value, promise bool) (interface{}, error) {
 				}
 			}
 
-			val, err := mapInternal(value.Method(i), methodPromise)
+			val, err := mapInternal(value.Method(i), methodPromise, false)
 			if err != nil {
 				return nil, err
 			}
