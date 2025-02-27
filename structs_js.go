@@ -23,7 +23,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 
 		for i := 0; i < value.NumField(); i++ {
 			structField := value.Type().Field(i)
-			if !structField.IsExported() {
+			if structField.PkgPath != "" {
 				continue
 			}
 
@@ -57,7 +57,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 		promiseFuncs := make(map[string]bool)
 		for i := 0; i < value.NumMethod(); i++ {
 			method := value.Type().Method(i)
-			if !method.IsExported() {
+			if method.PkgPath != "" {
 				continue
 			}
 
@@ -77,7 +77,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 		addr := value.Addr()
 		for i := 0; i < addr.NumMethod(); i++ {
 			method := addr.Type().Method(i)
-			if !method.IsExported() {
+			if method.PkgPath != "" {
 				continue
 			}
 

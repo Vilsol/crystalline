@@ -35,7 +35,7 @@ func MapOrPanic(data interface{}) interface{} {
 func MapOrPanicPromise(data interface{}, promise bool) interface{} {
 	result, err := mapInternal(reflect.ValueOf(data), promise, false)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed internal mapping: %w", err))
 	}
 	return result
 }
@@ -127,7 +127,7 @@ func mapInternal(value reflect.Value, promise bool, nonNil bool) (interface{}, e
 		out := make(map[string]interface{})
 		for i := 0; i < value.NumField(); i++ {
 			structField := value.Type().Field(i)
-			if !structField.IsExported() {
+			if structField.PkgPath != "" {
 				continue
 			}
 
@@ -142,7 +142,7 @@ func mapInternal(value reflect.Value, promise bool, nonNil bool) (interface{}, e
 
 		for i := 0; i < value.NumMethod(); i++ {
 			method := value.Type().Method(i)
-			if !method.IsExported() {
+			if method.PkgPath != "" {
 				continue
 			}
 

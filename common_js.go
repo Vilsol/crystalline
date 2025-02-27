@@ -4,6 +4,7 @@ package crystalline
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strconv"
@@ -126,7 +127,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 					var err error
 					inMapped[i], err = mapInternal(value, false, false)
 					if err != nil {
-						panic(err)
+						panic(fmt.Errorf("failed internal mapping: %w", err))
 					}
 				}
 
@@ -137,7 +138,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 					res, err := await(response)
 
 					if err != nil {
-						panic(err)
+						panic(fmt.Errorf("failed awaiting response: %v", err))
 					}
 
 					realResponse = res[0]
@@ -342,7 +343,7 @@ func intToGo(hint reflect.Type) converter {
 			var err error
 			value, err = strconv.ParseInt(data.String(), 10, 64)
 			if err != nil {
-				panic(err)
+				panic(fmt.Errorf("failed parsing string to int %s: %w", data, err))
 			}
 		case js.TypeNumber:
 			value = int64(data.Int())
@@ -369,7 +370,7 @@ func uintToGo(hint reflect.Type) converter {
 			var err error
 			value, err = strconv.ParseUint(data.String(), 10, 64)
 			if err != nil {
-				panic(err)
+				panic(fmt.Errorf("failed parsing string to uint %s: %w", data, err))
 			}
 		case js.TypeNumber:
 			value = uint64(data.Int())
@@ -396,7 +397,7 @@ func floatToGo(hint reflect.Type) converter {
 			var err error
 			value, err = strconv.ParseFloat(data.String(), 64)
 			if err != nil {
-				panic(err)
+				panic(fmt.Errorf("failed parsing string to float %s: %w", data, err))
 			}
 		case js.TypeNumber:
 			value = data.Float()

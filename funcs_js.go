@@ -5,6 +5,7 @@ package crystalline
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"syscall/js"
 )
 
@@ -20,7 +21,20 @@ func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 	var converters []converter = nil
 	hasPromise := false
 
-	baseFunc := func(_ js.Value, args []js.Value) any {
+	catcher := func(args []reflect.Value) []reflect.Value {
+		defer func() {
+			if err := recover(); err != nil {
+				var stack [8192]byte
+				n := runtime.Stack(stack[:], false)
+				message := fmt.Sprintf("Panic: %s\n%s", err, stack[:n])
+				js.Global().Set("goInternalError", message)
+			}
+		}()
+
+		return value.Call(args)
+	}
+
+	baseFunc := func(_ js.Value, args []js.Value) (result any) {
 		if len(args) != valueType.NumIn() {
 			panic(fmt.Sprintf("expected %d arguments, got %d", valueType.NumIn(), len(args)))
 		}
@@ -32,7 +46,7 @@ func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 			}
 		}
 
-		out := value.Call(mappedIn)
+		out := catcher(mappedIn)
 
 		if len(out) == 0 {
 			return nil
@@ -42,7 +56,7 @@ func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 		for i, v := range out {
 			result, err := mapInternal(v, true, false)
 			if err != nil {
-				panic(err)
+				panic(fmt.Errorf("failed internal mapping: %w", err))
 			}
 			mappedOut[i] = result
 		}
@@ -63,7 +77,9 @@ func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 			go func() {
 				defer func() {
 					if err := recover(); err != nil {
-						reject.Invoke(fmt.Sprint(err))
+						var stack [8192]byte
+						n := runtime.Stack(stack[:], false)
+						reject.Invoke(fmt.Sprintf("Panic: %s\n%s", err, stack[:n]))
 					}
 				}()
 
@@ -90,9 +106,9 @@ func convertFunc(value reflect.Value, promise bool) (interface{}, error) {
 
 				var err error
 				conv, err := jsToGo(in)
-				converters[i], err = conv, err
+				converters[i] = conv
 				if err != nil {
-					panic(err)
+					panic(fmt.Errorf("failed conversion from js to go: %w", err))
 				}
 			}
 		}

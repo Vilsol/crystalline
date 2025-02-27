@@ -25,13 +25,13 @@ func NewExposer(appName string) *Exposer {
 
 func (e *Exposer) ExposeFuncOrPanic(entity any) {
 	if err := e.ExposeFunc(entity); err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed exposing func: %w", err))
 	}
 }
 
 func (e *Exposer) ExposeFuncOrPanicPromise(entity any) {
 	if err := e.ExposeFuncPromise(entity, true); err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed exposing func promise: %w", err))
 	}
 }
 
@@ -64,7 +64,7 @@ func (e *Exposer) ExposeFuncPromise(entity any, promise bool) error {
 
 func (e *Exposer) ExposeOrPanic(entity any, packageName string, name string) {
 	if err := e.Expose(entity, packageName, name); err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to expose: %w", err))
 	}
 }
 
@@ -123,7 +123,7 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 
 	for i := 0; i < typeDef.NumField(); i++ {
 		field := typeDef.Field(i)
-		if !field.IsExported() {
+		if field.PkgPath != "" {
 			continue
 		}
 
@@ -141,7 +141,7 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 
 	for i := 0; i < typeDef.NumMethod(); i++ {
 		method := typeDef.Method(i)
-		if !method.IsExported() {
+		if method.PkgPath != "" {
 			continue
 		}
 
@@ -158,7 +158,7 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 	newInstance := reflect.New(typeDef)
 	for i := 0; i < newInstance.NumMethod(); i++ {
 		method := newInstance.Type().Method(i)
-		if !method.IsExported() {
+		if method.PkgPath != "" {
 			continue
 		}
 
@@ -225,6 +225,19 @@ func (e *Exposer) ensureNamespaceExists(namespace []string) *Definition {
 func (e *Exposer) Build() (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
+
+	jsFile.WriteString(`const wrap = (fn) => {
+  return (...args) => {
+    const result = fn.call(undefined, ...args);
+    if (globalThis.goInternalError) {
+      const error = new Error(globalThis.goInternalError);
+      globalThis.goInternalError = undefined;
+      throw error;
+    }
+    return result;
+  }
+};`)
+	jsFile.WriteString("\n\n")
 
 	defTsdFile, defJsFile, err := e.rootDefinition.Serialize(context.Background(), e.appName, []string{})
 	if err != nil {

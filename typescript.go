@@ -124,7 +124,7 @@ func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef r
 
 	for i := 0; i < typeDef.NumField(); i++ {
 		field := typeDef.Field(i)
-		if !field.IsExported() {
+		if field.PkgPath != "" {
 			continue
 		}
 
@@ -145,7 +145,7 @@ func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef r
 	newInstance := reflect.New(typeDef)
 	for i := 0; i < newInstance.NumMethod(); i++ {
 		typeMethod := newInstance.Type().Method(i)
-		if !typeMethod.IsExported() {
+		if typeMethod.PkgPath != "" {
 			continue
 		}
 
@@ -405,7 +405,7 @@ func (d *Definition) serializeEntities(ctx context.Context, entities map[string]
 			if !JSTrailingComma && i == len(entities)-1 {
 				comma = ""
 			}
-			jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: globalThis["go"]["%s"]%s["%s"]%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
+			jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: wrap(globalThis["go"]["%s"]%s["%s"])%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
 
 			if typeDef.Kind() != reflect.Func {
 				if optional {

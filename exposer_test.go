@@ -126,27 +126,39 @@ func TestExposer(t *testing.T) {
 	tsdFile, jsFile, err := e.Build()
 	testza.AssertNoError(t, err)
 
-	testza.AssertEqual(t, `export let GlobalTest;
+	testza.AssertEqual(t, `const wrap = (fn) => {
+  return (...args) => {
+    const result = fn.call(undefined, ...args);
+    if (globalThis.goInternalError) {
+      const error = new Error(result.message);
+      globalThis.goInternalError = undefined;
+      throw error;
+    }
+    return result;
+  }
+};
+
+export let GlobalTest;
 export let crystalline;
 
 export const initializeCrystalline = () => {
   GlobalTest = globalThis['go']['app']['GlobalTest'];
   crystalline = {
-    ByteFunc: globalThis['go']['app']['crystalline']['ByteFunc'],
-    ErrorFunc: globalThis['go']['app']['crystalline']['ErrorFunc'],
-    ExposeArrayTest: globalThis['go']['app']['crystalline']['ExposeArrayTest'],
-    ExposeGenericStruct: globalThis['go']['app']['crystalline']['ExposeGenericStruct'],
-    ExposeInheritedStructTest: globalThis['go']['app']['crystalline']['ExposeInheritedStructTest'],
-    ExposeIntTest: globalThis['go']['app']['crystalline']['ExposeIntTest'],
-    ExposeMapTest: globalThis['go']['app']['crystalline']['ExposeMapTest'],
-    ExposePointerTest: globalThis['go']['app']['crystalline']['ExposePointerTest'],
-    ExposeSliceTest: globalThis['go']['app']['crystalline']['ExposeSliceTest'],
-    ExposeStringTest: globalThis['go']['app']['crystalline']['ExposeStringTest'],
-    ExposeStructTest: globalThis['go']['app']['crystalline']['ExposeStructTest'],
-    FuncFunc: globalThis['go']['app']['crystalline']['FuncFunc'],
-    InterfaceFunc: globalThis['go']['app']['crystalline']['InterfaceFunc'],
-    PromiseFunc: globalThis['go']['app']['crystalline']['PromiseFunc'],
-    SomeFunc: globalThis['go']['app']['crystalline']['SomeFunc']
+    ByteFunc: wrap(globalThis['go']['app']['crystalline']['ByteFunc']),
+    ErrorFunc: wrap(globalThis['go']['app']['crystalline']['ErrorFunc']),
+    ExposeArrayTest: wrap(globalThis['go']['app']['crystalline']['ExposeArrayTest']),
+    ExposeGenericStruct: wrap(globalThis['go']['app']['crystalline']['ExposeGenericStruct']),
+    ExposeInheritedStructTest: wrap(globalThis['go']['app']['crystalline']['ExposeInheritedStructTest']),
+    ExposeIntTest: wrap(globalThis['go']['app']['crystalline']['ExposeIntTest']),
+    ExposeMapTest: wrap(globalThis['go']['app']['crystalline']['ExposeMapTest']),
+    ExposePointerTest: wrap(globalThis['go']['app']['crystalline']['ExposePointerTest']),
+    ExposeSliceTest: wrap(globalThis['go']['app']['crystalline']['ExposeSliceTest']),
+    ExposeStringTest: wrap(globalThis['go']['app']['crystalline']['ExposeStringTest']),
+    ExposeStructTest: wrap(globalThis['go']['app']['crystalline']['ExposeStructTest']),
+    FuncFunc: wrap(globalThis['go']['app']['crystalline']['FuncFunc']),
+    InterfaceFunc: wrap(globalThis['go']['app']['crystalline']['InterfaceFunc']),
+    PromiseFunc: wrap(globalThis['go']['app']['crystalline']['PromiseFunc']),
+    SomeFunc: wrap(globalThis['go']['app']['crystalline']['SomeFunc'])
   };
 };`, jsFile)
 
