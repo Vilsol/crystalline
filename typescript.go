@@ -405,15 +405,16 @@ func (d *Definition) serializeEntities(ctx context.Context, entities map[string]
 			if !JSTrailingComma && i == len(entities)-1 {
 				comma = ""
 			}
-			jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: wrap(globalThis["go"]["%s"]%s["%s"])%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
 
 			if typeDef.Kind() != reflect.Func {
+				jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: globalThis["go"]["%s"]%s["%s"]%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
 				if optional {
 					tsdFile.WriteString(fmt.Sprintf("%sconst %s: %s | undefined;\n", indentation, name, jsType))
 				} else {
 					tsdFile.WriteString(fmt.Sprintf("%sconst %s: %s;\n", indentation, name, jsType))
 				}
 			} else {
+				jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: wrap(globalThis["go"]["%s"]%s["%s"])%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
 				tsdFile.WriteString(fmt.Sprintf("%s%s;\n", indentation, jsType))
 			}
 		}

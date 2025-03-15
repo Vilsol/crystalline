@@ -130,7 +130,7 @@ func TestExposer(t *testing.T) {
   return (...args) => {
     const result = fn.call(undefined, ...args);
     if (globalThis.goInternalError) {
-      const error = new Error(result.message);
+      const error = new Error(globalThis.goInternalError);
       globalThis.goInternalError = undefined;
       throw error;
     }
@@ -146,15 +146,15 @@ export const initializeCrystalline = () => {
   crystalline = {
     ByteFunc: wrap(globalThis['go']['app']['crystalline']['ByteFunc']),
     ErrorFunc: wrap(globalThis['go']['app']['crystalline']['ErrorFunc']),
-    ExposeArrayTest: wrap(globalThis['go']['app']['crystalline']['ExposeArrayTest']),
-    ExposeGenericStruct: wrap(globalThis['go']['app']['crystalline']['ExposeGenericStruct']),
-    ExposeInheritedStructTest: wrap(globalThis['go']['app']['crystalline']['ExposeInheritedStructTest']),
-    ExposeIntTest: wrap(globalThis['go']['app']['crystalline']['ExposeIntTest']),
-    ExposeMapTest: wrap(globalThis['go']['app']['crystalline']['ExposeMapTest']),
-    ExposePointerTest: wrap(globalThis['go']['app']['crystalline']['ExposePointerTest']),
-    ExposeSliceTest: wrap(globalThis['go']['app']['crystalline']['ExposeSliceTest']),
-    ExposeStringTest: wrap(globalThis['go']['app']['crystalline']['ExposeStringTest']),
-    ExposeStructTest: wrap(globalThis['go']['app']['crystalline']['ExposeStructTest']),
+    ExposeArrayTest: globalThis['go']['app']['crystalline']['ExposeArrayTest'],
+    ExposeGenericStruct: globalThis['go']['app']['crystalline']['ExposeGenericStruct'],
+    ExposeInheritedStructTest: globalThis['go']['app']['crystalline']['ExposeInheritedStructTest'],
+    ExposeIntTest: globalThis['go']['app']['crystalline']['ExposeIntTest'],
+    ExposeMapTest: globalThis['go']['app']['crystalline']['ExposeMapTest'],
+    ExposePointerTest: globalThis['go']['app']['crystalline']['ExposePointerTest'],
+    ExposeSliceTest: globalThis['go']['app']['crystalline']['ExposeSliceTest'],
+    ExposeStringTest: globalThis['go']['app']['crystalline']['ExposeStringTest'],
+    ExposeStructTest: globalThis['go']['app']['crystalline']['ExposeStructTest'],
     FuncFunc: wrap(globalThis['go']['app']['crystalline']['FuncFunc']),
     InterfaceFunc: wrap(globalThis['go']['app']['crystalline']['InterfaceFunc']),
     PromiseFunc: wrap(globalThis['go']['app']['crystalline']['PromiseFunc']),
