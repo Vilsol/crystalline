@@ -19,18 +19,18 @@ func TestJSExposer(t *testing.T) {
 	testza.AssertNoError(t, e.ExposeFunc(SomeFunc))
 	testza.AssertNoError(t, e.ExposeFunc(ErrorFunc))
 	testza.AssertNoError(t, e.ExposeFunc(InterfaceFunc))
-	testza.AssertNoError(t, e.ExposeFuncPromise(PromiseFunc, true))
+	testza.AssertNoError(t, e.ExposeFunc(PromiseFunc, AsPromise()))
 	testza.AssertNoError(t, e.ExposeFunc(FuncFunc))
 	testza.AssertNoError(t, e.ExposeFunc(ByteFunc))
 
-	testza.AssertNoError(t, e.Expose(ExposeArrayTest, "crystalline", "ExposeArrayTest"))
-	testza.AssertNoError(t, e.Expose(ExposeSliceTest, "crystalline", "ExposeSliceTest"))
-	testza.AssertNoError(t, e.Expose(ExposeStringTest, "crystalline", "ExposeStringTest"))
-	testza.AssertNoError(t, e.Expose(ExposeIntTest, "crystalline", "ExposeIntTest"))
-	testza.AssertNoError(t, e.Expose(ExposeStructTest, "crystalline", "ExposeStructTest"))
-	testza.AssertNoError(t, e.Expose(ExposePointerTest, "crystalline", "ExposePointerTest"))
-	testza.AssertNoError(t, e.Expose(ExposeMapTest, "crystalline", "ExposeMapTest"))
-	testza.AssertNoError(t, e.Expose(ExposeInheritedStructTest, "crystalline", "ExposeInheritedStructTest"))
+	testza.AssertNoError(t, e.ExposeValue("ExposeArrayTest", ExposeArrayTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeSliceTest", ExposeSliceTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeStringTest", ExposeStringTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeIntTest", ExposeIntTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeStructTest", ExposeStructTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposePointerTest", ExposePointerTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeMapTest", ExposeMapTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeInheritedStructTest", ExposeInheritedStructTest))
 
 	testza.AssertNoError(t, e.AddEntity(nil, "GlobalTest", reflect.TypeOf(GlobalTestObj{}), false))
 
@@ -85,7 +85,7 @@ func TestJSExposer(t *testing.T) {
 	byteFuncResult := js.Global().Get("go").Get(appName).Get("crystalline").Get("ByteFunc").Invoke(js.FuncOf(func(_ js.Value, _ []js.Value) any {
 		return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, args []js.Value) any {
 			// args[0] is resolve function
-			go args[0].Invoke(MapOrPanic(sampleBytes))
+			go args[0].Invoke(MustMap(sampleBytes))
 			return nil
 		}))
 	}))

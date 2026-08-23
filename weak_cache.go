@@ -8,25 +8,25 @@ import (
 
 type fetch[T any] func() (T, error)
 
-// WeakCache caches values against the Go object they were derived from.
+// weakCache caches values against the Go object they were derived from.
 //
 // An entry is evicted once its owner becomes unreachable, which is also what
 // makes the owner address safe to use as a key: while an entry is live its
 // owner is live, so the allocator cannot hand that address to another object.
-type WeakCache[T any] struct {
+type weakCache[T any] struct {
 	mu        sync.Mutex
 	reachable map[uintptr]T
 }
 
-func NewWeak[T any]() *WeakCache[T] {
-	return &WeakCache[T]{
+func newWeak[T any]() *weakCache[T] {
+	return &weakCache[T]{
 		reachable: make(map[uintptr]T),
 	}
 }
 
 // Fetch returns the value cached against owner, building it on a miss.
 // owner must point at the Go object whose lifetime governs the entry.
-func (c *WeakCache[T]) Fetch(owner unsafe.Pointer, fetch fetch[T]) (T, error) {
+func (c *weakCache[T]) Fetch(owner unsafe.Pointer, fetch fetch[T]) (T, error) {
 	key := uintptr(owner)
 
 	if found, ok := c.load(key); ok {
@@ -54,7 +54,7 @@ func (c *WeakCache[T]) Fetch(owner unsafe.Pointer, fetch fetch[T]) (T, error) {
 	return value, nil
 }
 
-func (c *WeakCache[T]) load(key uintptr) (T, bool) {
+func (c *weakCache[T]) load(key uintptr) (T, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	found, ok := c.reachable[key]
@@ -62,13 +62,13 @@ func (c *WeakCache[T]) load(key uintptr) (T, bool) {
 }
 
 // unref runs on a cleanup goroutine, concurrently with Fetch.
-func (c *WeakCache[T]) unref(key uintptr) {
+func (c *weakCache[T]) unref(key uintptr) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.reachable, key)
 }
 
-func (c *WeakCache[T]) Len() int {
+func (c *weakCache[T]) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.reachable)

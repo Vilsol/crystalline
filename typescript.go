@@ -7,27 +7,39 @@ import (
 	"strings"
 )
 
-type FuncMeta struct {
+type funcMeta struct {
 	ArgNames []string
 	Promise  bool
 }
 
-type Definition struct {
+type definition struct {
 	Name        string
 	Entities    map[string]reflect.Type
 	Definitions map[string]reflect.Type
-	Nested      map[string]*Definition
-	FuncMeta    map[string]map[string]*FuncMeta
+	Nested      map[string]*definition
+	FuncMeta    map[string]map[string]*funcMeta
 	Promises    map[string]bool
 	NotNil      map[string]map[string]bool
 }
 
-var (
-	JSQuoteStyle    = "'"
-	JSTrailingComma = false
-)
+// jsStyle holds the cosmetic choices for the emitted JavaScript. It lives on
+// the Exposer rather than in package globals so that two Exposers in one
+// process can differ.
+type jsStyle struct {
+	quote         string
+	trailingComma bool
+}
 
-func (d *Definition) Serialize(ctx context.Context, appName string, path []string) (string, string, error) {
+func defaultStyle() jsStyle {
+	return jsStyle{quote: "'"}
+}
+
+// quoted renders s as a JavaScript string literal in the configured style.
+func (s jsStyle) quoted(value string) string {
+	return s.quote + value + s.quote
+}
+
+func (d *definition) serialize(ctx context.Context, appName string, path []string, style jsStyle) (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
@@ -46,7 +58,7 @@ func (d *Definition) Serialize(ctx context.Context, appName string, path []strin
 
 	tsdFile.WriteString(defTsdFile)
 
-	defTsdFile, defJsFile, err := d.serializeEntities(ctx, d.Entities, subPath, appName)
+	defTsdFile, defJsFile, err := d.serializeEntities(ctx, d.Entities, subPath, appName, style)
 	if err != nil {
 		return "", "", err
 	}
@@ -56,9 +68,9 @@ func (d *Definition) Serialize(ctx context.Context, appName string, path []strin
 
 	hasEntities := len(defJsFile) > 0
 	writtenJs := make(map[string]bool)
-	for _, key := range SortedKeys(d.Nested) {
+	for _, key := range sortedKeys(d.Nested) {
 		definition := d.Nested[key]
-		defTsdFile, defJsFile, err = definition.Serialize(ctx, appName, subPath)
+		defTsdFile, defJsFile, err = definition.serialize(ctx, appName, subPath, style)
 		if err != nil {
 			return "", "", err
 		}
@@ -84,16 +96,23 @@ func (d *Definition) Serialize(ctx context.Context, appName string, path []strin
 		innerJs := jsFile.String()
 
 		jsFile = strings.Builder{}
-		for _, key := range SortedKeys(d.Entities) {
+		for _, key := range sortedKeys(d.Entities) {
 			jsFile.WriteString(fmt.Sprintf("export let %s;\n", key))
 		}
 
-		for _, key := range SortedKeys(writtenJs) {
+		for _, key := range sortedKeys(writtenJs) {
 			jsFile.WriteString(fmt.Sprintf("export let %s;\n", key))
 		}
 
 		jsFile.WriteString("\n")
 		jsFile.WriteString("export const initializeCrystalline = () => {\n")
+		jsFile.WriteString(fmt.Sprintf(
+			"  if (globalThis[%s]?.[%s] === undefined) {\n"+
+				"    throw new Error(%s);\n"+
+				"  }\n\n",
+			style.quoted("go"), style.quoted(appName),
+			style.quoted("crystalline: globalThis.go."+appName+" is not set. Start the Go wasm module before calling initializeCrystalline()."),
+		))
 
 		splitLines := strings.Split(strings.TrimSpace(innerJs), "\n")
 		indented := make([]string, len(splitLines))
@@ -110,7 +129,7 @@ func (d *Definition) Serialize(ctx context.Context, appName string, path []strin
 	return tsdFile.String(), jsFile.String(), nil
 }
 
-func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef reflect.Type) (string, error) {
+func (d *definition) typeToInterface(ctx context.Context, name string, typeDef reflect.Type) (string, error) {
 	if typeDef.Kind() != reflect.Struct {
 		return "", fmt.Errorf("%s cannot be converted to an interface: %s", name, typeDef.Kind())
 	}
@@ -152,7 +171,7 @@ func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef r
 			continue
 		}
 
-		if isIgnored(typeDef.String(), typeMethod.Name) {
+		if isIgnored(typeDef, typeMethod.Name) {
 			continue
 		}
 
@@ -172,7 +191,7 @@ func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef r
 	return result.String(), nil
 }
 
-func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef reflect.Type, topLevel bool, interfaceName string, returnsPromise bool) (string, bool, error) {
+func (d *definition) typeToJSName(ctx context.Context, name string, typeDef reflect.Type, topLevel bool, interfaceName string, returnsPromise bool) (string, bool, error) {
 	switch typeDef.Kind() {
 	case reflect.Bool:
 		return "boolean", false, nil
@@ -390,10 +409,10 @@ func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef refl
 	return "", false, fmt.Errorf("un-convertable type: %q - %s (%s)", getContextSteps(ctx), typeDef.Kind(), typeDef)
 }
 
-func (d *Definition) serializeDefinitions(ctx context.Context, definitions map[string]reflect.Type, path []string) (string, error) {
+func (d *definition) serializeDefinitions(ctx context.Context, definitions map[string]reflect.Type, path []string) (string, error) {
 	var tsdFile strings.Builder
 
-	for _, name := range SortedKeys(definitions) {
+	for _, name := range sortedKeys(definitions) {
 		typeDef := definitions[name]
 		jsType, err := d.typeToInterface(withContextStep(ctx, strings.Join(path, ".")), name, typeDef)
 		if err != nil {
@@ -414,11 +433,11 @@ func (d *Definition) serializeDefinitions(ctx context.Context, definitions map[s
 	return tsdFile.String(), nil
 }
 
-func (d *Definition) serializeEntities(ctx context.Context, entities map[string]reflect.Type, path []string, appName string) (string, string, error) {
+func (d *definition) serializeEntities(ctx context.Context, entities map[string]reflect.Type, path []string, appName string, style jsStyle) (string, string, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
-	for i, name := range SortedKeys(entities) {
+	for i, name := range sortedKeys(entities) {
 		typeDef := entities[name]
 		jsType, optional, err := d.typeToJSName(withContextStep(ctx, name), name, typeDef, true, "", false)
 		if err != nil {
@@ -426,7 +445,7 @@ func (d *Definition) serializeEntities(ctx context.Context, entities map[string]
 		}
 
 		if len(path) == 0 {
-			jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s = globalThis["go"]["%s"]["%s"];`, name, appName, name)+"\n", "\"", JSQuoteStyle, -1))
+			jsFile.WriteString(fmt.Sprintf("%s = globalThis[%s][%s][%s];\n", name, style.quoted("go"), style.quoted(appName), style.quoted(name)))
 			if optional {
 				tsdFile.WriteString(fmt.Sprintf("export const %s = %s | undefined;\n", name, jsType))
 			} else {
@@ -435,25 +454,25 @@ func (d *Definition) serializeEntities(ctx context.Context, entities map[string]
 		} else {
 			mergedPathJs := ""
 			for _, s := range path {
-				mergedPathJs += fmt.Sprintf(`["%s"]`, s)
+				mergedPathJs += "[" + style.quoted(s) + "]"
 			}
 
 			indentation := strings.Repeat("  ", len(path))
 
 			comma := ","
-			if !JSTrailingComma && i == len(entities)-1 {
+			if !style.trailingComma && i == len(entities)-1 {
 				comma = ""
 			}
 
 			if typeDef.Kind() != reflect.Func {
-				jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: globalThis["go"]["%s"]%s["%s"]%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
+				jsFile.WriteString(fmt.Sprintf("%s%s: globalThis[%s][%s]%s[%s]%s\n", indentation, name, style.quoted("go"), style.quoted(appName), mergedPathJs, style.quoted(name), comma))
 				if optional {
 					tsdFile.WriteString(fmt.Sprintf("%sconst %s: %s | undefined;\n", indentation, name, jsType))
 				} else {
 					tsdFile.WriteString(fmt.Sprintf("%sconst %s: %s;\n", indentation, name, jsType))
 				}
 			} else {
-				jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s%s: wrap(globalThis["go"]["%s"]%s["%s"])%s`, indentation, name, appName, mergedPathJs, name, comma)+"\n", "\"", JSQuoteStyle, -1))
+				jsFile.WriteString(fmt.Sprintf("%s%s: wrap(globalThis[%s][%s]%s[%s])%s\n", indentation, name, style.quoted("go"), style.quoted(appName), mergedPathJs, style.quoted(name), comma))
 				tsdFile.WriteString(fmt.Sprintf("%s%s;\n", indentation, jsType))
 			}
 		}

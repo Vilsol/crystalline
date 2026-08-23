@@ -16,15 +16,15 @@ var defineProperties js.Value
 // Note that in practice entries are never evicted: the getters below capture
 // the struct through js.FuncOf, and those funcs are never Released, so the
 // struct stays reachable. Dropping them needs JS-side finalization.
-var weakCache *WeakCache[js.Value]
+var structCache *weakCache[js.Value]
 
 func init() {
 	defineProperties = js.Global().Get("Object").Get("defineProperties")
-	weakCache = NewWeak[js.Value]()
+	structCache = newWeak[js.Value]()
 }
 
 func convertStruct(value reflect.Value) (interface{}, error) {
-	return weakCache.Fetch(value.Addr().UnsafePointer(), func() (js.Value, error) {
+	return structCache.Fetch(value.Addr().UnsafePointer(), func() (js.Value, error) {
 		definitions := make(map[string]interface{})
 
 		for i := 0; i < value.NumField(); i++ {
@@ -36,7 +36,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 			field := value.Field(i)
 
 			getFunc := js.FuncOf(func(this js.Value, args []js.Value) any {
-				return MapOrPanic(field.Interface())
+				return MustMap(field.Interface())
 			})
 
 			conv, err := jsToGo(field.Type())
@@ -90,7 +90,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 			name := method.Name
 			promise := promiseFuncs[name]
 
-			if isIgnored(value.Type().String(), name) {
+			if isIgnored(value.Type(), name) {
 				continue
 			}
 
@@ -108,7 +108,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 			}
 
 			if !promise {
-				promise = isPromise(value.Type().String(), name)
+				promise = isPromise(value.Type(), name)
 			}
 
 			val, err := mapInternal(addr.Method(i), promise, false)

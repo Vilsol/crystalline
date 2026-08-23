@@ -4,47 +4,112 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
 )
 
+// Exposer collects the Go functions, values and types that should be visible
+// from JavaScript, and renders them into a JS module plus a matching
+// TypeScript declaration file.
+//
+// Exposing has two effects: it publishes the entity on the JS side under
+// go.<app>.<namespace>.<name>, and it records the type so that Build can
+// declare it. An Exposer is not safe for concurrent use.
 type Exposer struct {
 	appName        string
-	rootDefinition *Definition
+	rootDefinition *definition
+	style          jsStyle
 }
 
-func NewExposer(appName string) *Exposer {
-	return &Exposer{
+// ExposerOption configures an Exposer at construction time.
+type ExposerOption func(*Exposer)
+
+// WithQuoteStyle sets the quote character used in the generated JavaScript,
+// so the output can match the project's formatter. Defaults to a single quote.
+func WithQuoteStyle(quote string) ExposerOption {
+	return func(e *Exposer) {
+		e.style.quote = quote
+	}
+}
+
+// WithTrailingComma emits trailing commas in the generated JavaScript.
+func WithTrailingComma() ExposerOption {
+	return func(e *Exposer) {
+		e.style.trailingComma = true
+	}
+}
+
+// NewExposer creates an Exposer that publishes everything under the global
+// go.<appName> object on the JS side.
+func NewExposer(appName string, opts ...ExposerOption) *Exposer {
+	e := &Exposer{
 		appName:        appName,
-		rootDefinition: &Definition{},
+		rootDefinition: &definition{},
+		style:          defaultStyle(),
+	}
+
+	for _, opt := range opts {
+		opt(e)
+	}
+
+	return e
+}
+
+// Option customises how an entity is exposed.
+type Option func(*exposeOptions)
+
+type exposeOptions struct {
+	promise   bool
+	namespace string
+}
+
+// AsPromise makes an exposed function return a JS Promise. The Go call runs on
+// its own goroutine, so it does not block the JS event loop.
+//
+// Functions taking a callback are always promises, whether or not this is set:
+// the callback cannot be serviced without yielding to the event loop.
+func AsPromise() Option {
+	return func(o *exposeOptions) {
+		o.promise = true
 	}
 }
 
-func (e *Exposer) ExposeFuncOrPanic(entity any) {
-	if err := e.ExposeFunc(entity); err != nil {
-		panic(fmt.Errorf("failed exposing func: %w", err))
+// InNamespace overrides the JS namespace an entity is placed under. It
+// defaults to the name of the Go package the entity comes from.
+func InNamespace(name string) Option {
+	return func(o *exposeOptions) {
+		o.namespace = name
 	}
 }
 
-func (e *Exposer) ExposeFuncOrPanicPromise(entity any) {
-	if err := e.ExposeFuncPromise(entity, true); err != nil {
-		panic(fmt.Errorf("failed exposing func promise: %w", err))
+func buildOptions(opts []Option) exposeOptions {
+	var built exposeOptions
+
+	for _, opt := range opts {
+		opt(&built)
 	}
+
+	return built
 }
 
-func (e *Exposer) ExposeFunc(entity any) error {
-	return e.ExposeFuncPromise(entity, false)
-}
+// ExposeFunc exposes fn to JS as go.<app>.<package>.<FuncName>.
+//
+// Both the package and the function name are recovered from the Go runtime,
+// so there is nothing to keep in sync by hand:
+//
+//	e.ExposeFunc(mypkg.Greet)          // go.app.mypkg.Greet
+//	e.ExposeFunc(mypkg.Load, AsPromise())
+func (e *Exposer) ExposeFunc(fn any, opts ...Option) error {
+	options := buildOptions(opts)
 
-func (e *Exposer) ExposeFuncPromise(entity any, promise bool) error {
-	value := reflect.ValueOf(entity)
-	valueType := value.Type()
-
-	if valueType.Kind() != reflect.Func {
-		return errors.New("can only expose functions without specifying package and name")
+	value := reflect.ValueOf(fn)
+	if !value.IsValid() || value.Kind() != reflect.Func {
+		return fmt.Errorf("ExposeFunc needs a function, got %T (use ExposeValue for anything else)", fn)
 	}
 
 	pointer := value.Pointer()
@@ -55,19 +120,95 @@ func (e *Exposer) ExposeFuncPromise(entity any, promise bool) error {
 		return err
 	}
 
-	setNamespace(e.appName, pkgName, valueName, MapOrPanicPromise(entity, promise))
-	return e.AddEntity([]string{pkgName}, valueName, valueType, promise)
+	if options.namespace != "" {
+		pkgName = options.namespace
+	}
+
+	return e.expose(pkgName, valueName, fn, value.Type(), options)
 }
 
-func (e *Exposer) ExposeOrPanic(entity any, packageName string, name string) {
-	if err := e.Expose(entity, packageName, name); err != nil {
-		panic(fmt.Errorf("failed to expose: %w", err))
+// MustExposeFunc is ExposeFunc, panicking instead of returning an error. It is
+// meant for package initialisation, where a failure is a programming mistake.
+func (e *Exposer) MustExposeFunc(fn any, opts ...Option) {
+	if err := e.ExposeFunc(fn, opts...); err != nil {
+		panic(fmt.Errorf("failed exposing func: %w", err))
 	}
 }
 
-func (e *Exposer) Expose(entity any, packageName string, name string) error {
-	setNamespace(e.appName, packageName, name, MapOrPanic(entity))
-	return e.AddEntity([]string{packageName}, name, reflect.ValueOf(entity).Type(), false)
+// ExposeValue exposes a non-function value as go.<app>.<package>.<name>.
+//
+// A value carries no name at runtime, so name has to be given; the package is
+// taken from the caller. Override it with InNamespace.
+func (e *Exposer) ExposeValue(name string, value any, opts ...Option) error {
+	options := buildOptions(opts)
+
+	if options.namespace == "" {
+		pkgName, err := callerPackage(2)
+		if err != nil {
+			return err
+		}
+
+		options.namespace = pkgName
+	}
+
+	return e.exposeValue(name, value, options)
+}
+
+// MustExposeValue is ExposeValue, panicking instead of returning an error.
+func (e *Exposer) MustExposeValue(name string, value any, opts ...Option) {
+	options := buildOptions(opts)
+
+	if options.namespace == "" {
+		pkgName, err := callerPackage(2)
+		if err != nil {
+			panic(fmt.Errorf("failed exposing value: %w", err))
+		}
+
+		options.namespace = pkgName
+	}
+
+	if err := e.exposeValue(name, value, options); err != nil {
+		panic(fmt.Errorf("failed exposing value: %w", err))
+	}
+}
+
+func (e *Exposer) exposeValue(name string, value any, options exposeOptions) error {
+	if name == "" {
+		return errors.New("cannot expose a value without a name")
+	}
+
+	reflected := reflect.ValueOf(value)
+	if !reflected.IsValid() {
+		return fmt.Errorf("cannot expose nil as %q", name)
+	}
+
+	return e.expose(options.namespace, name, value, reflected.Type(), options)
+}
+
+func (e *Exposer) expose(namespace string, name string, value any, typeDef reflect.Type, options exposeOptions) error {
+	mapped, err := mapValue(value, options.promise)
+	if err != nil {
+		return fmt.Errorf("exposing %s.%s: %w", namespace, name, err)
+	}
+
+	setNamespace(e.appName, namespace, name, mapped)
+
+	return e.AddEntity([]string{namespace}, name, typeDef, options.promise)
+}
+
+// callerPackage recovers the package name of the frame skip levels above it.
+func callerPackage(skip int) (string, error) {
+	pc, _, _, ok := runtime.Caller(skip)
+	if !ok {
+		return "", errors.New("could not determine the calling package, pass InNamespace to set it explicitly")
+	}
+
+	pkgName, _, err := splitFuncName(runtime.FuncForPC(pc).Name())
+	if err != nil {
+		return "", fmt.Errorf("could not determine the calling package, pass InNamespace to set it explicitly: %w", err)
+	}
+
+	return pkgName, nil
 }
 
 var namespaceCleaner = regexp.MustCompile(`(\W)`)
@@ -95,6 +236,12 @@ func splitFuncName(fullName string) (string, string, error) {
 	return pkgName, valueName, nil
 }
 
+// AddEntity declares an entity in the generated output without publishing a
+// value for it. It is the low level building block behind ExposeFunc and
+// ExposeValue; reach for it when a binding is set up by hand, or to declare
+// something that only exists on the JS side.
+//
+// A nil or empty namespace places the entity at the root of the module.
 func (e *Exposer) AddEntity(namespace []string, name string, typeDef reflect.Type, promise bool) error {
 	layer := e.ensureNamespaceExists(namespace)
 
@@ -119,6 +266,11 @@ func (e *Exposer) AddEntity(namespace []string, name string, typeDef reflect.Typ
 	return e.checkAddDefinition(typeDef)
 }
 
+// AddDefinition records a struct type so that Build emits a TypeScript
+// interface for it, pulling in every type it references.
+//
+// Exposing a value does this automatically. Call it directly only to declare a
+// type that no exposed entity mentions.
 func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 	if typeDef.Kind() != reflect.Struct {
 		return fmt.Errorf("only struct types can be added as definitions")
@@ -151,8 +303,12 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 			continue
 		}
 
-		if value, ok := field.Tag.Lookup("crystalline"); ok {
-			if strings.Contains(value, "not_nil") {
+		if value, ok := field.Tag.Lookup(tagName); ok {
+			if err := validateTag(value); err != nil {
+				return fmt.Errorf("%s.%s: %w", name, field.Name, err)
+			}
+
+			if tagHasOption(value, tagNotNil) {
 				if layer.NotNil == nil {
 					layer.NotNil = make(map[string]map[string]bool)
 				}
@@ -176,7 +332,7 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 			continue
 		}
 
-		if isIgnored(typeDef.String(), method.Name) {
+		if isIgnored(typeDef, method.Name) {
 			continue
 		}
 
@@ -194,7 +350,7 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 			continue
 		}
 
-		if isIgnored(typeDef.String(), method.Name) {
+		if isIgnored(typeDef, method.Name) {
 			continue
 		}
 
@@ -241,7 +397,7 @@ func (e *Exposer) checkAddDefinition(typeDef reflect.Type) error {
 	return nil
 }
 
-func (e *Exposer) ensureNamespaceExists(namespace []string) *Definition {
+func (e *Exposer) ensureNamespaceExists(namespace []string) *definition {
 	cleanNamespace := make([]string, len(namespace))
 	for i, s := range namespace {
 		cleanNamespace[i] = namespaceCleaner.ReplaceAllLiteralString(s, "_")
@@ -250,11 +406,11 @@ func (e *Exposer) ensureNamespaceExists(namespace []string) *Definition {
 	layer := e.rootDefinition
 	for _, ns := range cleanNamespace {
 		if layer.Nested == nil {
-			layer.Nested = make(map[string]*Definition)
+			layer.Nested = make(map[string]*definition)
 		}
 
 		if _, ok := layer.Nested[ns]; !ok {
-			layer.Nested[ns] = &Definition{
+			layer.Nested[ns] = &definition{
 				Name: ns,
 			}
 		}
@@ -265,7 +421,36 @@ func (e *Exposer) ensureNamespaceExists(namespace []string) *Definition {
 	return layer
 }
 
-func (e *Exposer) Build() (string, string, error) {
+// Output is the pair of files a build produces.
+type Output struct {
+	// JavaScript is the ES module that binds the wasm exports into a
+	// namespaced object graph. Import it and call initializeCrystalline()
+	// once the wasm module is running.
+	JavaScript string
+
+	// TypeScript is the matching .d.ts declaration file.
+	TypeScript string
+}
+
+// WriteFiles writes the generated sources to the given paths, creating parent
+// directories as needed.
+func (o Output) WriteFiles(jsPath string, tsPath string) error {
+	for target, content := range map[string]string{jsPath: o.JavaScript, tsPath: o.TypeScript} {
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return fmt.Errorf("creating directory for %s: %w", target, err)
+		}
+
+		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", target, err)
+		}
+	}
+
+	return nil
+}
+
+// Build renders everything exposed so far into a JS module and a matching
+// TypeScript declaration file.
+func (e *Exposer) Build() (Output, error) {
 	var tsdFile strings.Builder
 	var jsFile strings.Builder
 
@@ -282,15 +467,18 @@ func (e *Exposer) Build() (string, string, error) {
 };`)
 	jsFile.WriteString("\n\n")
 
-	defTsdFile, defJsFile, err := e.rootDefinition.Serialize(context.Background(), e.appName, []string{})
+	defTsdFile, defJsFile, err := e.rootDefinition.serialize(context.Background(), e.appName, []string{}, e.style)
 	if err != nil {
-		return "", "", err
+		return Output{}, err
 	}
 
 	tsdFile.WriteString(defTsdFile)
 	jsFile.WriteString(defJsFile)
 
-	return strings.TrimSpace(tsdFile.String()), strings.TrimSpace(jsFile.String()), nil
+	return Output{
+		JavaScript: strings.TrimSpace(jsFile.String()),
+		TypeScript: strings.TrimSpace(tsdFile.String()),
+	}, nil
 }
 
 func (e *Exposer) processFunctionMeta(pointer uintptr, interfaceName string) {
@@ -306,11 +494,11 @@ func (e *Exposer) processFunctionMeta(pointer uintptr, interfaceName string) {
 
 	layer := e.ensureNamespaceExists([]string{pkgName})
 	if layer.FuncMeta == nil {
-		layer.FuncMeta = make(map[string]map[string]*FuncMeta)
+		layer.FuncMeta = make(map[string]map[string]*funcMeta)
 	}
 
 	if _, ok := layer.FuncMeta[interfaceName]; !ok {
-		layer.FuncMeta[interfaceName] = make(map[string]*FuncMeta)
+		layer.FuncMeta[interfaceName] = make(map[string]*funcMeta)
 	}
 
 	argNames := make([]string, 0)
@@ -331,7 +519,7 @@ func (e *Exposer) processFunctionMeta(pointer uintptr, interfaceName string) {
 		}
 	}
 
-	layer.FuncMeta[interfaceName][valueName] = &FuncMeta{
+	layer.FuncMeta[interfaceName][valueName] = &funcMeta{
 		ArgNames: argNames,
 		Promise:  promise,
 	}

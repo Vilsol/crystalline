@@ -201,7 +201,7 @@ func TestNilFunc(t *testing.T) {
 
 func TestPanic(t *testing.T) {
 	testza.AssertPanics(t, func() {
-		MapOrPanic(make(chan bool))
+		MustMap(make(chan bool))
 	})
 }
 

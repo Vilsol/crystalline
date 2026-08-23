@@ -107,24 +107,26 @@ func TestExposer(t *testing.T) {
 	testza.AssertNoError(t, e.ExposeFunc(SomeFunc))
 	testza.AssertNoError(t, e.ExposeFunc(ErrorFunc))
 	testza.AssertNoError(t, e.ExposeFunc(InterfaceFunc))
-	testza.AssertNoError(t, e.ExposeFuncPromise(PromiseFunc, true))
+	testza.AssertNoError(t, e.ExposeFunc(PromiseFunc, AsPromise()))
 	testza.AssertNoError(t, e.ExposeFunc(FuncFunc))
 	testza.AssertNoError(t, e.ExposeFunc(ByteFunc))
 
-	testza.AssertNoError(t, e.Expose(ExposeArrayTest, "crystalline", "ExposeArrayTest"))
-	testza.AssertNoError(t, e.Expose(ExposeSliceTest, "crystalline", "ExposeSliceTest"))
-	testza.AssertNoError(t, e.Expose(ExposeStringTest, "crystalline", "ExposeStringTest"))
-	testza.AssertNoError(t, e.Expose(ExposeIntTest, "crystalline", "ExposeIntTest"))
-	testza.AssertNoError(t, e.Expose(ExposeStructTest, "crystalline", "ExposeStructTest"))
-	testza.AssertNoError(t, e.Expose(ExposePointerTest, "crystalline", "ExposePointerTest"))
-	testza.AssertNoError(t, e.Expose(ExposeMapTest, "crystalline", "ExposeMapTest"))
-	testza.AssertNoError(t, e.Expose(ExposeGenericStruct, "crystalline", "ExposeGenericStruct"))
-	testza.AssertNoError(t, e.Expose(ExposeInheritedStructTest, "crystalline", "ExposeInheritedStructTest"))
+	testza.AssertNoError(t, e.ExposeValue("ExposeArrayTest", ExposeArrayTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeSliceTest", ExposeSliceTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeStringTest", ExposeStringTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeIntTest", ExposeIntTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeStructTest", ExposeStructTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposePointerTest", ExposePointerTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeMapTest", ExposeMapTest))
+	testza.AssertNoError(t, e.ExposeValue("ExposeGenericStruct", ExposeGenericStruct))
+	testza.AssertNoError(t, e.ExposeValue("ExposeInheritedStructTest", ExposeInheritedStructTest))
 
 	testza.AssertNoError(t, e.AddEntity(nil, "GlobalTest", reflect.TypeOf(GlobalTestObj{}), false))
 
-	tsdFile, jsFile, err := e.Build()
+	out, err := e.Build()
 	testza.AssertNoError(t, err)
+
+	tsdFile, jsFile := out.TypeScript, out.JavaScript
 
 	testza.AssertEqual(t, `const wrap = (fn) => {
   return (...args) => {
@@ -142,6 +144,10 @@ export let GlobalTest;
 export let crystalline;
 
 export const initializeCrystalline = () => {
+  if (globalThis['go']?.['app'] === undefined) {
+    throw new Error('crystalline: globalThis.go.app is not set. Start the Go wasm module before calling initializeCrystalline().');
+  }
+
   GlobalTest = globalThis['go']['app']['GlobalTest'];
   crystalline = {
     ByteFunc: wrap(globalThis['go']['app']['crystalline']['ByteFunc']),

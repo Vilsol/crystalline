@@ -18,7 +18,7 @@ type cacheOwner struct {
 
 // waitForLen polls until the cache reaches want, giving cleanup goroutines a
 // chance to run. Cleanups are asynchronous, so a single GC is not enough.
-func waitForLen[T any](cache *WeakCache[T], want int) int {
+func waitForLen[T any](cache *weakCache[T], want int) int {
 	for i := 0; i < 100; i++ {
 		runtime.GC()
 		time.Sleep(time.Millisecond)
@@ -30,7 +30,7 @@ func waitForLen[T any](cache *WeakCache[T], want int) int {
 }
 
 func TestWeakCacheKeepsLiveEntries(t *testing.T) {
-	cache := NewWeak[string]()
+	cache := newWeak[string]()
 
 	owners := make([]*cacheOwner, 0, 5)
 	for i := 0; i < 5; i++ {
@@ -53,7 +53,7 @@ func TestWeakCacheKeepsLiveEntries(t *testing.T) {
 }
 
 func TestWeakCacheHitsWhileOwnerAlive(t *testing.T) {
-	cache := NewWeak[string]()
+	cache := newWeak[string]()
 	owner := &cacheOwner{value: 1}
 
 	calls := 0
@@ -73,7 +73,7 @@ func TestWeakCacheHitsWhileOwnerAlive(t *testing.T) {
 }
 
 func TestWeakCacheEvictsDeadOwners(t *testing.T) {
-	cache := NewWeak[string]()
+	cache := newWeak[string]()
 
 	func() {
 		owner := &cacheOwner{value: 1}
@@ -88,7 +88,7 @@ func TestWeakCacheEvictsDeadOwners(t *testing.T) {
 }
 
 func TestWeakCacheFetchError(t *testing.T) {
-	cache := NewWeak[string]()
+	cache := newWeak[string]()
 	owner := &cacheOwner{value: 1}
 
 	_, err := cache.Fetch(unsafe.Pointer(owner), func() (string, error) {

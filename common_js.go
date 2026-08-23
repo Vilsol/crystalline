@@ -5,7 +5,6 @@ package crystalline
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"strconv"
 	"syscall/js"
@@ -77,11 +76,9 @@ func jsToGo(hint reflect.Type) (converter, error) {
 		jsToGoCache[hint] = floatToGo(hint)
 		return jsToGoCache[hint], nil
 	case reflect.Complex64:
-		slog.Error("complex64 is not supported as argument type. value will not get converted")
-		return nil, nil
+		return nil, errors.New("complex64 is not supported as an argument type")
 	case reflect.Complex128:
-		slog.Error("complex128 is not supported as argument type. value will not get converted")
-		return nil, nil
+		return nil, errors.New("complex128 is not supported as an argument type")
 	case reflect.Array:
 		var elementConverter converter
 
@@ -109,8 +106,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 
 		return jsToGoCache[hint], nil
 	case reflect.Chan:
-		slog.Error("channels are not supported as argument types. value will not get converted")
-		return nil, nil
+		return nil, errors.New("channels are not supported as argument types")
 	case reflect.Func:
 		converters := make([]converter, hint.NumOut())
 
@@ -171,9 +167,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 
 		return jsToGoCache[hint], nil
 	case reflect.Interface:
-		slog.Error("interfaces are not supported as argument types. value will not get converted", slog.String("hint", hint.String()))
-		jsToGoCache[hint] = nil
-		return nil, nil
+		return nil, fmt.Errorf("interfaces are not supported as argument types: %s", hint)
 	case reflect.Map:
 		var keyConverter converter
 		var elementConverter converter
@@ -321,8 +315,7 @@ func jsToGo(hint reflect.Type) (converter, error) {
 
 		return jsToGoCache[hint], nil
 	case reflect.UnsafePointer:
-		slog.Error("unsafe pointers are not supported as argument types. value will not get converted")
-		return nil, nil
+		return nil, errors.New("unsafe pointers are not supported as argument types")
 	}
 
 	return func(_ js.Value) reflect.Value {

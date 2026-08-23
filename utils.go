@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-func SortedKeys[T any](data map[string]T) []string {
+func sortedKeys[T any](data map[string]T) []string {
 	result := make([]string, len(data))
 	i := 0
 	for s := range data {
