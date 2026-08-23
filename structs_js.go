@@ -10,6 +10,12 @@ import (
 
 var defineProperties js.Value
 
+// weakCache gives each Go struct a stable JS wrapper. Entries are keyed by the
+// struct's address, which stays valid because an entry cannot outlive its owner.
+//
+// Note that in practice entries are never evicted: the getters below capture
+// the struct through js.FuncOf, and those funcs are never Released, so the
+// struct stays reachable. Dropping them needs JS-side finalization.
 var weakCache *WeakCache[js.Value]
 
 func init() {
@@ -18,7 +24,7 @@ func init() {
 }
 
 func convertStruct(value reflect.Value) (interface{}, error) {
-	return weakCache.Fetch(value.UnsafeAddr(), func() (js.Value, error) {
+	return weakCache.Fetch(value.Addr().UnsafePointer(), func() (js.Value, error) {
 		definitions := make(map[string]interface{})
 
 		for i := 0; i < value.NumField(); i++ {
@@ -84,10 +90,8 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 			name := method.Name
 			promise := promiseFuncs[name]
 
-			if inner, ok := ignored[value.Type().String()]; ok {
-				if inner[name] {
-					continue
-				}
+			if isIgnored(value.Type().String(), name) {
+				continue
 			}
 
 			if !promise {
@@ -104,9 +108,7 @@ func convertStruct(value reflect.Value) (interface{}, error) {
 			}
 
 			if !promise {
-				if inner, ok := promisified[value.Type().String()]; ok {
-					promise = inner[name]
-				}
+				promise = isPromise(value.Type().String(), name)
 			}
 
 			val, err := mapInternal(addr.Method(i), promise, false)

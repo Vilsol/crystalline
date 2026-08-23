@@ -5,14 +5,21 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 )
 
+// Markers are registered up front but read during conversion, which happens on
+// promise goroutines as well as the main one.
 var (
+	markerMutex sync.RWMutex
 	promisified = make(map[string]map[string]bool)
 	ignored     = make(map[string]map[string]bool)
 )
 
 func MarkIgnored(entity string, fn string) {
+	markerMutex.Lock()
+	defer markerMutex.Unlock()
+
 	if _, ok := ignored[entity]; !ok {
 		ignored[entity] = make(map[string]bool)
 	}
@@ -21,11 +28,28 @@ func MarkIgnored(entity string, fn string) {
 }
 
 func MarkPromise(entity string, fn string) {
+	markerMutex.Lock()
+	defer markerMutex.Unlock()
+
 	if _, ok := promisified[entity]; !ok {
 		promisified[entity] = make(map[string]bool)
 	}
 
 	promisified[entity][fn] = true
+}
+
+func isIgnored(entity string, fn string) bool {
+	markerMutex.RLock()
+	defer markerMutex.RUnlock()
+
+	return ignored[entity][fn]
+}
+
+func isPromise(entity string, fn string) bool {
+	markerMutex.RLock()
+	defer markerMutex.RUnlock()
+
+	return promisified[entity][fn]
 }
 
 func MapOrPanic(data interface{}) interface{} {
@@ -67,8 +91,15 @@ func mapInternal(value reflect.Value, promise bool, nonNil bool) (interface{}, e
 		}
 		fallthrough
 	case reflect.Array:
-		if value.Type().String() == "[]uint8" {
-			return convertByteArray(value.Interface().([]uint8))
+		if value.Type().Elem().Kind() == reflect.Uint8 {
+			if value.Kind() == reflect.Slice {
+				return convertByteArray(value.Bytes())
+			}
+
+			// Arrays are not always addressable, so Bytes is unavailable.
+			data := make([]byte, value.Len())
+			reflect.Copy(reflect.ValueOf(data), value)
+			return convertByteArray(data)
 		}
 
 		out := make([]interface{}, value.Len())
@@ -204,5 +235,5 @@ func mapInternal(value reflect.Value, promise bool, nonNil bool) (interface{}, e
 		return value.Pointer(), nil
 	}
 
-	panic("unknown reflect type")
+	return nil, fmt.Errorf("unsupported reflect kind: %s", value.Kind())
 }

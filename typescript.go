@@ -19,7 +19,7 @@ type Definition struct {
 	Nested      map[string]*Definition
 	FuncMeta    map[string]map[string]*FuncMeta
 	Promises    map[string]bool
-	NotNil      map[string]bool
+	NotNil      map[string]map[string]bool
 }
 
 var (
@@ -110,9 +110,9 @@ func (d *Definition) Serialize(ctx context.Context, appName string, path []strin
 	return tsdFile.String(), jsFile.String(), nil
 }
 
-func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef reflect.Type) string {
+func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef reflect.Type) (string, error) {
 	if typeDef.Kind() != reflect.Struct {
-		panic("cannot be converted to interface: " + typeDef.Kind().String())
+		return "", fmt.Errorf("%s cannot be converted to an interface: %s", name, typeDef.Kind())
 	}
 
 	var result strings.Builder
@@ -128,12 +128,15 @@ func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef r
 			continue
 		}
 
-		jsName, optional := d.typeToJSName(withContextStep(interfaceCtx, field.Name), "", field.Type, false, name, false)
+		jsName, optional, err := d.typeToJSName(withContextStep(interfaceCtx, field.Name), "", field.Type, false, name, false)
+		if err != nil {
+			return "", err
+		}
 
 		result.WriteString("  ")
 		result.WriteString(field.Name)
 		if optional {
-			if d.NotNil == nil || !d.NotNil[field.Name] {
+			if !d.NotNil[name][field.Name] {
 				result.WriteString("?")
 			}
 		}
@@ -149,27 +152,30 @@ func (d *Definition) typeToInterface(ctx context.Context, name string, typeDef r
 			continue
 		}
 
-		if inner, ok := ignored[typeDef.String()]; ok {
-			if inner[typeMethod.Name] {
-				continue
-			}
+		if isIgnored(typeDef.String(), typeMethod.Name) {
+			continue
 		}
 
 		instanceMethod := newInstance.Method(i)
-		jsName, _ := d.typeToJSName(withContextStep(interfaceCtx, typeMethod.Name), typeMethod.Name, instanceMethod.Type(), true, name, false)
+		jsName, _, err := d.typeToJSName(withContextStep(interfaceCtx, typeMethod.Name), typeMethod.Name, instanceMethod.Type(), true, name, false)
+		if err != nil {
+			return "", err
+		}
+
 		result.WriteString("  ")
 		result.WriteString(jsName)
 		result.WriteString(";\n")
 	}
 
 	result.WriteString("}\n")
-	return result.String()
+
+	return result.String(), nil
 }
 
-func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef reflect.Type, topLevel bool, interfaceName string, returnsPromise bool) (string, bool) {
+func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef reflect.Type, topLevel bool, interfaceName string, returnsPromise bool) (string, bool, error) {
 	switch typeDef.Kind() {
 	case reflect.Bool:
-		return "boolean", false
+		return "boolean", false, nil
 	case reflect.Int:
 		fallthrough
 	case reflect.Int8:
@@ -197,24 +203,29 @@ func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef refl
 	case reflect.Float64:
 		fallthrough
 	case reflect.UnsafePointer:
-		return "number", false
+		return "number", false, nil
 	case reflect.Slice:
 		fallthrough
 	case reflect.Array:
 		var result strings.Builder
 
-		if typeDef.String() == "[]uint8" {
-			return "Uint8Array", true
+		if typeDef.Elem().Kind() == reflect.Uint8 {
+			return "Uint8Array", true, nil
 		}
 
 		result.WriteString("Array<")
-		jsName, undefined := d.typeToJSName(ctx, "", typeDef.Elem(), false, "", false)
+		jsName, undefined, err := d.typeToJSName(ctx, "", typeDef.Elem(), false, "", false)
+		if err != nil {
+			return "", false, err
+		}
+
 		result.WriteString(jsName)
 		if undefined {
 			result.WriteString(" | undefined")
 		}
 		result.WriteString(">")
-		return result.String(), true
+
+		return result.String(), true, nil
 	case reflect.Func:
 		var result strings.Builder
 
@@ -248,7 +259,10 @@ func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef refl
 				returnsPromise = true
 			}
 
-			jsName, optional := d.typeToJSName(withContextStep(ctx, in.Name()), in.Name(), in, false, "", true)
+			jsName, optional, err := d.typeToJSName(withContextStep(ctx, in.Name()), in.Name(), in, false, "", true)
+			if err != nil {
+				return "", false, err
+			}
 
 			argName := fmt.Sprintf("arg%d", i+1)
 
@@ -299,7 +313,11 @@ func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef refl
 				}
 
 				out := typeDef.Out(i)
-				jsName, optional := d.typeToJSName(withContextStep(ctx, out.Name()), out.Name(), out, false, "", false)
+				jsName, optional, err := d.typeToJSName(withContextStep(ctx, out.Name()), out.Name(), out, false, "", false)
+				if err != nil {
+					return "", false, err
+				}
+
 				if optional {
 					result.WriteString("(")
 					result.WriteString(jsName)
@@ -320,12 +338,16 @@ func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef refl
 			result.WriteString(">")
 		}
 
-		return result.String(), false
+		return result.String(), false, nil
 	case reflect.Map:
 		var result strings.Builder
 		result.WriteString("Record<")
 
-		keyJsName, optional := d.typeToJSName(ctx, "", typeDef.Key(), false, "", false)
+		keyJsName, optional, err := d.typeToJSName(ctx, "", typeDef.Key(), false, "", false)
+		if err != nil {
+			return "", false, err
+		}
+
 		result.WriteString(keyJsName)
 		if optional {
 			result.WriteString(" | undefined")
@@ -333,30 +355,39 @@ func (d *Definition) typeToJSName(ctx context.Context, name string, typeDef refl
 
 		result.WriteString(", ")
 
-		valueJsName, optional := d.typeToJSName(ctx, "", typeDef.Elem(), false, "", false)
+		valueJsName, optional, err := d.typeToJSName(ctx, "", typeDef.Elem(), false, "", false)
+		if err != nil {
+			return "", false, err
+		}
+
 		result.WriteString(valueJsName)
 		if optional {
 			result.WriteString(" | undefined")
 		}
 
 		result.WriteString(">")
-		return result.String(), true
+
+		return result.String(), true, nil
 	case reflect.Pointer:
-		jsName, _ := d.typeToJSName(withContextStep(ctx, name), name, typeDef.Elem(), false, "", false)
-		return jsName, true
+		jsName, _, err := d.typeToJSName(withContextStep(ctx, name), name, typeDef.Elem(), false, "", false)
+		if err != nil {
+			return "", false, err
+		}
+
+		return jsName, true, nil
 	case reflect.String:
-		return "string", false
+		return "string", false, nil
 	case reflect.Struct:
 		noTypesName, _, _ := strings.Cut(typeDef.String(), "[")
-		return noTypesName, false
+		return noTypesName, false, nil
 	case reflect.Interface:
 		if typeDef.String() == "error" {
-			return "Error", false
+			return "Error", false, nil
 		}
-		return "unknown", true
+		return "unknown", true, nil
 	}
 
-	panic(fmt.Sprintf("un-convertable type: \"%s\" - %s (%s)", getContextSteps(ctx), typeDef.Kind().String(), typeDef.String()))
+	return "", false, fmt.Errorf("un-convertable type: %q - %s (%s)", getContextSteps(ctx), typeDef.Kind(), typeDef)
 }
 
 func (d *Definition) serializeDefinitions(ctx context.Context, definitions map[string]reflect.Type, path []string) (string, error) {
@@ -364,7 +395,11 @@ func (d *Definition) serializeDefinitions(ctx context.Context, definitions map[s
 
 	for _, name := range SortedKeys(definitions) {
 		typeDef := definitions[name]
-		jsType := d.typeToInterface(withContextStep(ctx, strings.Join(path, ".")), name, typeDef)
+		jsType, err := d.typeToInterface(withContextStep(ctx, strings.Join(path, ".")), name, typeDef)
+		if err != nil {
+			return "", err
+		}
+
 		indentation := strings.Repeat("  ", len(path))
 
 		splitLines := strings.Split(strings.TrimSpace(jsType), "\n")
@@ -385,7 +420,11 @@ func (d *Definition) serializeEntities(ctx context.Context, entities map[string]
 
 	for i, name := range SortedKeys(entities) {
 		typeDef := entities[name]
-		jsType, optional := d.typeToJSName(withContextStep(ctx, name), name, typeDef, true, "", false)
+		jsType, optional, err := d.typeToJSName(withContextStep(ctx, name), name, typeDef, true, "", false)
+		if err != nil {
+			return "", "", err
+		}
+
 		if len(path) == 0 {
 			jsFile.WriteString(strings.Replace(fmt.Sprintf(`%s = globalThis["go"]["%s"]["%s"];`, name, appName, name)+"\n", "\"", JSQuoteStyle, -1))
 			if optional {

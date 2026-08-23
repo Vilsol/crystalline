@@ -1,6 +1,6 @@
 module github.com/Vilsol/crystalline
 
-go 1.21
+go 1.27
 
 require github.com/MarvinJWendt/testza v0.5.0
 

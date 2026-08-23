@@ -50,12 +50,9 @@ func (e *Exposer) ExposeFuncPromise(entity any, promise bool) error {
 	pointer := value.Pointer()
 	e.processFunctionMeta(pointer, "")
 
-	splitDef := strings.Split(path.Base(runtime.FuncForPC(pointer).Name()), ".")
-	pkgName := splitDef[0]
-	valueName := splitDef[1]
-
-	if valueName == "" || pkgName == "" {
-		return errors.New("could not determine function name or package")
+	pkgName, valueName, err := splitFuncName(runtime.FuncForPC(pointer).Name())
+	if err != nil {
+		return err
 	}
 
 	setNamespace(e.appName, pkgName, valueName, MapOrPanicPromise(entity, promise))
@@ -74,6 +71,29 @@ func (e *Exposer) Expose(entity any, packageName string, name string) error {
 }
 
 var namespaceCleaner = regexp.MustCompile(`(\W)`)
+
+// methodValueSuffix is appended by the runtime to bound method values,
+// e.g. pkg.Type.Method-fm.
+const methodValueSuffix = "-fm"
+
+// splitFuncName resolves a runtime function name into its package and its own
+// name. The trailing segment is always the function, so methods and method
+// values resolve to the method rather than to the receiver type.
+func splitFuncName(fullName string) (string, string, error) {
+	splitDef := strings.Split(path.Base(fullName), ".")
+	if len(splitDef) < 2 {
+		return "", "", fmt.Errorf("could not determine function name or package from %q", fullName)
+	}
+
+	pkgName := splitDef[0]
+	valueName := strings.TrimSuffix(splitDef[len(splitDef)-1], methodValueSuffix)
+
+	if pkgName == "" || valueName == "" {
+		return "", "", fmt.Errorf("could not determine function name or package from %q", fullName)
+	}
+
+	return pkgName, valueName, nil
+}
 
 func (e *Exposer) AddEntity(namespace []string, name string, typeDef reflect.Type, promise bool) error {
 	layer := e.ensureNamespaceExists(namespace)
@@ -96,9 +116,7 @@ func (e *Exposer) AddEntity(namespace []string, name string, typeDef reflect.Typ
 		layer.Promises[name] = promise
 	}
 
-	e.checkAddDefinition(typeDef)
-
-	return nil
+	return e.checkAddDefinition(typeDef)
 }
 
 func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
@@ -115,8 +133,14 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 		layer.Definitions = make(map[string]reflect.Type)
 	}
 
-	if _, ok := layer.Definitions[name]; ok {
-		return fmt.Errorf("namespace %s already contains definition %s", namespace, name)
+	if existing, ok := layer.Definitions[name]; ok {
+		if existing == typeDef {
+			return nil
+		}
+
+		// Generic instantiations flatten to the same bare name, so two of them
+		// would silently replace one another in the emitted declarations.
+		return fmt.Errorf("namespace %s already contains definition %s as %s, cannot also add %s", namespace, name, existing, typeDef)
 	}
 
 	layer.Definitions[name] = typeDef
@@ -130,13 +154,20 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 		if value, ok := field.Tag.Lookup("crystalline"); ok {
 			if strings.Contains(value, "not_nil") {
 				if layer.NotNil == nil {
-					layer.NotNil = make(map[string]bool)
+					layer.NotNil = make(map[string]map[string]bool)
 				}
 
-				layer.NotNil[field.Name] = true
+				if layer.NotNil[name] == nil {
+					layer.NotNil[name] = make(map[string]bool)
+				}
+
+				layer.NotNil[name][field.Name] = true
 			}
 		}
-		e.checkAddDefinition(field.Type)
+
+		if err := e.checkAddDefinition(field.Type); err != nil {
+			return err
+		}
 	}
 
 	for i := 0; i < typeDef.NumMethod(); i++ {
@@ -145,13 +176,14 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 			continue
 		}
 
-		if inner, ok := ignored[typeDef.String()]; ok {
-			if inner[method.Name] {
-				continue
-			}
+		if isIgnored(typeDef.String(), method.Name) {
+			continue
 		}
 
-		e.checkAddDefinition(method.Type)
+		if err := e.checkAddDefinition(method.Type); err != nil {
+			return err
+		}
+
 		e.processFunctionMeta(method.Func.Pointer(), name)
 	}
 
@@ -162,40 +194,51 @@ func (e *Exposer) AddDefinition(typeDef reflect.Type) error {
 			continue
 		}
 
-		if inner, ok := ignored[typeDef.String()]; ok {
-			if inner[method.Name] {
-				continue
-			}
+		if isIgnored(typeDef.String(), method.Name) {
+			continue
 		}
 
-		e.checkAddDefinition(method.Type)
+		if err := e.checkAddDefinition(method.Type); err != nil {
+			return err
+		}
+
 		e.processFunctionMeta(method.Func.Pointer(), name)
 	}
 
 	return nil
 }
 
-func (e *Exposer) checkAddDefinition(typeDef reflect.Type) {
+func (e *Exposer) checkAddDefinition(typeDef reflect.Type) error {
 	switch typeDef.Kind() {
 	case reflect.Struct:
-		_ = e.AddDefinition(typeDef)
+		return e.AddDefinition(typeDef)
 	case reflect.Map:
-		e.checkAddDefinition(typeDef.Key())
-		fallthrough
+		if err := e.checkAddDefinition(typeDef.Key()); err != nil {
+			return err
+		}
+
+		return e.checkAddDefinition(typeDef.Elem())
 	case reflect.Pointer:
 		fallthrough
 	case reflect.Slice:
 		fallthrough
 	case reflect.Array:
-		e.checkAddDefinition(typeDef.Elem())
+		return e.checkAddDefinition(typeDef.Elem())
 	case reflect.Func:
 		for i := 0; i < typeDef.NumIn(); i++ {
-			e.checkAddDefinition(typeDef.In(i))
+			if err := e.checkAddDefinition(typeDef.In(i)); err != nil {
+				return err
+			}
 		}
+
 		for i := 0; i < typeDef.NumOut(); i++ {
-			e.checkAddDefinition(typeDef.Out(i))
+			if err := e.checkAddDefinition(typeDef.Out(i)); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
 }
 
 func (e *Exposer) ensureNamespaceExists(namespace []string) *Definition {
@@ -251,11 +294,10 @@ func (e *Exposer) Build() (string, string, error) {
 }
 
 func (e *Exposer) processFunctionMeta(pointer uintptr, interfaceName string) {
-	pc := runtime.FuncForPC(pointer)
-
-	splitDef := strings.Split(path.Base(pc.Name()), ".")
-	pkgName := splitDef[0]
-	valueName := splitDef[len(splitDef)-1]
+	pkgName, valueName, err := splitFuncName(runtime.FuncForPC(pointer).Name())
+	if err != nil {
+		return
+	}
 
 	funcDecl := findFunction(pointer)
 	if funcDecl == nil {
