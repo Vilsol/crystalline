@@ -83,6 +83,14 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 		return "Error", false, nil
 	}
 
+	// An interface Go declares is supplied from JavaScript, so it is named
+	// rather than reduced to unknown.
+	if _, ok := t.Underlying().(*types.Interface); ok && !isErrorType(t) && !isContextType(t) {
+		if named, ok := t.(*types.Named); ok {
+			return qualifiedName(named), false, nil
+		}
+	}
+
 	// An enum keeps its own name, so a signature says which values are meant.
 	if named, ok := t.(*types.Named); ok && len(enumConstants(named)) > 0 {
 		return qualifiedName(named), false, nil
@@ -174,9 +182,15 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 			return
 		}
 
-		// An enum is declared too: its value set is what a caller may pass.
 		if _, ok := typed.Underlying().(*types.Struct); !ok {
-			if len(enumConstants(typed)) > 0 {
+			// An enum's value set and an interface's method set are both
+			// declared: they say what a caller may pass.
+			// error and context.Context are interfaces with a counterpart of
+			// their own, so neither is something JavaScript supplies.
+			_, isInterface := typed.Underlying().(*types.Interface)
+			supplied := isInterface && !isErrorType(typed) && !isContextType(typed)
+
+			if len(enumConstants(typed)) > 0 || supplied {
 				seen[typed] = true
 				*order = append(*order, typed)
 			}

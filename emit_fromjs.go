@@ -280,6 +280,15 @@ func (e *emitter) emitValueConverter(name string, t types.Type) (string, error) 
 			return e.emitStructConverter(name, t.(*types.Named))
 		}
 
+		// An interface Go declares is supplied by JavaScript: the object
+		// provides the methods, and Go calls out through them. Checked before
+		// unwrapping, because the adapter needs the name.
+		if declared, ok := t.Underlying().(*types.Interface); ok && !isErrorType(t) {
+			if named, ok := t.(*types.Named); ok {
+				return e.emitSuppliedConverter(name, named, declared)
+			}
+		}
+
 		return e.emitValueConverterFor(name, goType, t.Underlying())
 	case *types.Pointer:
 		return e.emitPointerConverter(name, goType, typed)
@@ -459,3 +468,96 @@ func (e *emitter) emitPointerConverter(name string, goType string, typed *types.
 }
 
 // qualifier renders a type as generated code must spell it.
+
+// emitSuppliedConverter renders an adapter letting Go call an object that came
+// from JavaScript.
+//
+// Each method is what a callback parameter already is, so the machinery is the
+// same one method at a time: arguments convert out, the result is awaited in
+// case JavaScript returned a promise, and it converts back.
+func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declared *types.Interface) (string, error) {
+	adapter := "crystallineJS" + named.Obj().Name()
+	goType := e.declaredName(named)
+
+	var out strings.Builder
+
+	out.WriteString("type " + adapter + " struct{ value js.Value }\n\n")
+
+	required := make([]string, 0, declared.NumMethods())
+
+	for i := range declared.NumMethods() {
+		method := declared.Method(i)
+		if !method.Exported() {
+			continue
+		}
+
+		sig, ok := method.Type().(*types.Signature)
+		if !ok {
+			continue
+		}
+
+		if sig.Results().Len() > 1 {
+			return "", fmt.Errorf("%s.%s returns %d values, and an object supplied from JavaScript returns one",
+				named.Obj().Name(), method.Name(), sig.Results().Len())
+		}
+
+		required = append(required, method.Name())
+
+		params := make([]string, 0, sig.Params().Len())
+		passed := make([]string, 0, sig.Params().Len())
+
+		for j := range sig.Params().Len() {
+			param := sig.Params().At(j)
+			local := "p" + strconv.Itoa(j)
+
+			params = append(params, local+" "+types.TypeString(param.Type(), e.qualifier))
+
+			converted, err := e.toJS(local, param.Type(), false)
+			if err != nil {
+				return "", fmt.Errorf("%s.%s parameter %d: %w", named.Obj().Name(), method.Name(), j+1, err)
+			}
+
+			passed = append(passed, converted)
+		}
+
+		invocation := "crystallineAwait(c.value.Call(" + strconv.Quote(method.Name())
+		if len(passed) > 0 {
+			invocation += ", " + strings.Join(passed, ", ")
+		}
+
+		invocation += "))"
+
+		out.WriteString("func (c " + adapter + ") " + method.Name() + "(" + strings.Join(params, ", ") + ")")
+
+		if sig.Results().Len() == 0 {
+			out.WriteString(" {\n\t" + invocation + "\n}\n\n")
+
+			continue
+		}
+
+		result := sig.Results().At(0).Type()
+
+		converted, err := e.fromJS("crystallineSupplied", result)
+		if err != nil {
+			return "", fmt.Errorf("%s.%s result: %w", named.Obj().Name(), method.Name(), err)
+		}
+
+		out.WriteString(" " + types.TypeString(result, e.qualifier) + " {\n")
+		out.WriteString("\tcrystallineSupplied := " + invocation + "\n\n")
+		out.WriteString("\treturn " + converted + "\n}\n\n")
+	}
+
+	out.WriteString("func " + name + "(value js.Value) (" + goType + ", error) {\n")
+	out.WriteString("\tif value.Type() != js.TypeObject {\n\t\treturn nil, errors.New(" +
+		strconv.Quote(named.Obj().Name()+": expected an object") + ")\n\t}\n\n")
+
+	for _, method := range required {
+		out.WriteString("\tif value.Get(" + strconv.Quote(method) + ").Type() != js.TypeFunction {\n")
+		out.WriteString("\t\treturn nil, errors.New(" +
+			strconv.Quote(named.Obj().Name()+": the object has no "+method+" method") + ")\n\t}\n\n")
+	}
+
+	out.WriteString("\treturn " + adapter + "{value: value}, nil\n}\n\n")
+
+	return out.String(), nil
+}

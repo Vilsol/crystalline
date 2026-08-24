@@ -44,6 +44,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
   a hand-written `syscall/js` binding doing the same conversions.
+- An interface parameter is supplied from JavaScript: Go declares the methods
+  it needs and the app hands in an object providing them, checked on arrival.
+  This is the narrow form of calling out, reusing what a callback parameter
+  already does one method at a time.
 - `-profile` and `WithProfiling` count and time every call made through the
   module, reported by `stats()`. The advice to count crossings rather than
   conversions had nothing to count them with. Off by default.

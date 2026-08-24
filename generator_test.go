@@ -617,3 +617,22 @@ func TestProfilingCountsCrossings(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(out.JavaScript, "performance.now()"),
 		"and time each crossing:\n"+out.JavaScript)
 }
+
+// TestInterfaceParametersComeFromJS pins the narrow form of the other
+// direction: Go declares an interface, JavaScript supplies an object with those
+// methods.
+//
+// It reuses what a callback parameter already does, one method at a time, so it
+// is a bundle of existing pieces rather than a second generator for binding
+// arbitrary browser APIs.
+func TestInterfaceParametersComeFromJS(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Replay(r: sample.Recorder, events: Array<string> | undefined): Promise<number>;"),
+		"an interface parameter must take the declared type:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "interface Recorder {"),
+		"which must be declared:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "Record(event: string): void;"),
+		"with the methods it needs:\n"+out.TypeScript)
+}

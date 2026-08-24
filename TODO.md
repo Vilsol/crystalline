@@ -7,11 +7,9 @@ Declined items carry their reasoning so they are not re-argued from scratch.
 
 ### Broad JS to Go imports
 
-A narrow form ships in 0.1.0: a Go interface marked `//crystalline:imports`
-gets an implementation backed by a JavaScript object supplied once at start-up,
-plus the TypeScript interface that object has to satisfy. It reuses what
-callback parameters already do, so it is a bundle of existing pieces rather
-than a new direction.
+The narrow form shipped in 0.1.0, as an interface parameter: Go declares what it
+needs and JavaScript passes an object with those methods. No directive was
+needed in the end, because a parameter already says where the value comes from.
 
 The broad form is binding arbitrary browser APIs from Go, the way wasm-bindgen's
 `extern` blocks do. That is a second product: its own error mapping, its own

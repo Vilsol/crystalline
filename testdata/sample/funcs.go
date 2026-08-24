@@ -348,3 +348,19 @@ func Advance(p Phase) Phase {
 
 	return p + 1
 }
+
+// Recorder is supplied by JavaScript. Go declares what it needs, and the app
+// hands in an object providing it: the other direction from everything else
+// here, without a second generator to bind arbitrary browser APIs.
+type Recorder interface {
+	Record(event string)
+	Level() int
+}
+
+func Replay(r Recorder, events []string) int {
+	for _, event := range events {
+		r.Record(event)
+	}
+
+	return r.Level()
+}

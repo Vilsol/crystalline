@@ -56,6 +56,7 @@ export const initializeCrystalline = () => {
     OnlyFails: wrap('sample.OnlyFails', globalThis['go']['app']['sample']['OnlyFails']),
     Phase: globalThis['go']['app']['sample']['Phase'],
     Readings: wrap('sample.Readings', globalThis['go']['app']['sample']['Readings']),
+    Replay: wrap('sample.Replay', globalThis['go']['app']['sample']['Replay']),
     Rich: wrap('sample.Rich', globalThis['go']['app']['sample']['Rich']),
     Stream: wrap('sample.Stream', globalThis['go']['app']['sample']['Stream']),
     Streamable: wrap('sample.Streamable', globalThis['go']['app']['sample']['Streamable']),

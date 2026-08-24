@@ -180,6 +180,13 @@ func (g *Generator) renderNamespace(namespace string, declared []*types.Named, e
 
 		rendered, err := g.renderInterface(named)
 		if err != nil {
+			// An interface JavaScript cannot supply is left undeclared rather
+			// than failing the whole build, the same way the bindings leave out
+			// what they cannot bind.
+			if _, isInterface := named.Underlying().(*types.Interface); isInterface {
+				continue
+			}
+
 			return "", err
 		}
 
@@ -275,6 +282,13 @@ func (g *Generator) renderNamespaceJS(namespace string, bound []Entry, enums []s
 }
 
 func (g *Generator) renderInterface(named *types.Named) (string, error) {
+	// A Go interface is supplied from JavaScript, so it declares the methods
+	// the object must have and nothing else: no fields, and nothing to release,
+	// because Go holds no resources for it.
+	if declared, ok := named.Underlying().(*types.Interface); ok {
+		return g.renderSupplied(named, declared)
+	}
+
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
@@ -357,6 +371,33 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 	result.WriteString("  }\n")
 
 	return result.String(), nil
+}
+
+// renderSupplied declares an interface JavaScript has to provide.
+func (g *Generator) renderSupplied(named *types.Named, declared *types.Interface) (string, error) {
+	var result strings.Builder
+
+	result.WriteString("  interface " + named.Obj().Name() + " {\n")
+
+	methods := make([]*types.Func, 0, declared.NumMethods())
+	for i := range declared.NumMethods() {
+		if method := declared.Method(i); method.Exported() {
+			methods = append(methods, method)
+		}
+	}
+
+	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
+
+	for _, method := range methods {
+		signature, err := g.renderSignature(method.Name(), method.Type().(*types.Signature), true, false)
+		if err != nil {
+			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), method.Name(), err)
+		}
+
+		result.WriteString("    " + signature + ";\n")
+	}
+
+	return result.String() + "  }\n", nil
 }
 
 // renderSignature renders a function type. Named signatures become

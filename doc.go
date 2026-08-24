@@ -187,6 +187,32 @@
 // thirty methods and no readable data, and a real Date passed to it was
 // silently read as the zero time.
 //
+// # Calling out to JavaScript
+//
+// Everything else here goes one way: Go exports, JavaScript calls in. An
+// interface parameter goes the other way. Go declares what it needs, and the
+// app supplies an object with those methods:
+//
+//	type Recorder interface {
+//		Record(event string)
+//		Level() int
+//	}
+//
+//	func Replay(r Recorder, events []string) int
+//
+//	// await api.Replay({ Record: (e) => log(e), Level: () => 7 }, events)
+//
+// The object is checked for the methods when it arrives, so a missing one is
+// reported rather than found later. Each method is what a callback parameter
+// already is: arguments convert out, the result is awaited in case JavaScript
+// returned a promise, and it converts back. That makes the whole call a
+// promise, as a callback does.
+//
+// A method returning more than one value is refused, since a JavaScript
+// function returns one. This is deliberately the narrow form: it is not a way
+// to bind arbitrary browser APIs from Go, which is a second generator's worth
+// of work and the wrong shape for the cost of a crossing.
+//
 // # Enums
 //
 // Go spells an enum as a named integer or string type, a block of constants of

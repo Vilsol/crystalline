@@ -104,6 +104,7 @@ api.Apply({ Timeout: 30 });       // literals work too, validated field by field
 | `chan T`, `<-chan T` return | `AsyncIterable<T>` |
 | `<-chan T` parameter | `AsyncIterable<T>` the caller supplies |
 | `context.Context` first parameter | `AbortSignal` |
+| `interface` parameter | object JavaScript supplies, with those methods |
 | `panic` | thrown or rejected `Error` with the Go stack |
 
 A struct arrives as a *live view*: each field read and write is a call into Go,

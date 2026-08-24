@@ -113,6 +113,9 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"EnumIdle=0",
 		"EnumDone=2",
 		"EnumAdvance=1",
+		"SuppliedLevel=7",
+		"SuppliedSeen=a,b",
+		"SuppliedMissing=threw",
 		"PairString=a",
 		"PairSwapped=b",
 		"PairNumber=2",
@@ -525,6 +528,24 @@ func main() {
 		out.push("EnumIdle=" + s.Phase.PhaseIdle);
 		out.push("EnumDone=" + s.Phase.PhaseDone);
 		out.push("EnumAdvance=" + s.Advance(s.Phase.PhaseIdle));
+
+		// The other direction: Go declares what it needs, JavaScript supplies
+		// an object with those methods and Go calls out through it.
+		const recorded = [];
+		const level = await s.Replay({
+			Record: (event) => { recorded.push(event); },
+			Level: () => 7,
+		}, ["a", "b"]);
+		out.push("SuppliedLevel=" + level);
+		out.push("SuppliedSeen=" + recorded.join(","));
+
+		let missingMethod = "accepted";
+		try {
+			await s.Replay({ Record: () => {} }, []);
+		} catch (e) {
+			missingMethod = "threw";
+		}
+		out.push("SuppliedMissing=" + missingMethod);
 
 		// Distinct instantiations of one generic type, actually called.
 		out.push("PairString=" + g.Strings().First);

@@ -600,7 +600,7 @@ func qualified(qualifier string, name string) string {
 // The declarations and the bindings both read this one answer, so they cannot
 // disagree about which calls are promises.
 func asyncSignature(sig *types.Signature) bool {
-	if hasCallback(sig) || takesChannel(sig) {
+	if hasCallback(sig) || takesChannel(sig) || takesSupplied(sig) {
 		return true
 	}
 
@@ -618,6 +618,22 @@ func takesContext(sig *types.Signature) bool {
 func takesChannel(sig *types.Signature) bool {
 	for i := 0; i < sig.Params().Len(); i++ {
 		if channel, ok := sig.Params().At(i).Type().Underlying().(*types.Chan); ok && channel.Dir() == types.RecvOnly {
+			return true
+		}
+	}
+
+	return false
+}
+
+// takesSupplied reports whether the signature takes an interface JavaScript
+// supplies, whose methods cannot be called without yielding to the event loop.
+func takesSupplied(sig *types.Signature) bool {
+	for i := range sig.Params().Len() {
+		param := sig.Params().At(i).Type()
+
+		// A context is an interface too, and it is not supplied: it becomes an
+		// abort signal, which decides on its own whether the call is async.
+		if _, ok := param.Underlying().(*types.Interface); ok && !isErrorType(param) && !isContextType(param) {
 			return true
 		}
 	}

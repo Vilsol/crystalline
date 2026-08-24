@@ -75,6 +75,10 @@ export declare namespace sample {
     readonly Values?: Array<number>;
     readonly Peak: sample.Sample;
   }
+  interface Recorder {
+    Level(): number;
+    Record(event: string): void;
+  }
   interface Richer {
     Blob?: Uint8Array;
     Lookup?: Record<string, number>;
@@ -123,6 +127,7 @@ export declare namespace sample {
   function NewTicker(): sample.Ticker;
   function OnlyFails(ok: boolean): Result<void>;
   function Readings(count: number): (Array<sample.Reading> | undefined);
+  function Replay(r: sample.Recorder, events: Array<string> | undefined): Promise<number>;
   function Rich(): sample.Richer;
   function Stream(count: number): AsyncIterable<string>;
   function Streamable(signal: AbortSignal, ok: boolean): Result<AsyncIterable<number>>;
