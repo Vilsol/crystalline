@@ -59,6 +59,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   its linters expect at the top of them.
 - `Output.Skipped`, so a caller that only builds the declarations still sees
   what could not be bound. The report was reachable from `BuildGo` alone.
+- Skips and warnings carry the position of what they name, rendered the way a
+  compiler does and relative to the working directory, so an editor or CI can
+  turn one into an annotation. The position is where the symbol is declared
+  rather than where the manifest mentioned it.
 - `Warnings` on both builders, for what was bound at a cost rather than not
   bound at all. The first is 64-bit integers: `int64` and `uint64` stay
   JavaScript numbers, since refusing them would break ordinary Go, and every

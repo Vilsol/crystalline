@@ -520,3 +520,33 @@ func TestCustomMarshallerMapsAType(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(out.TypeScript, "interface Colour"),
 		"and must not also be declared as a struct:\n"+out.TypeScript)
 }
+
+// TestDiagnosticsCarryTheirPosition pins that a report says where in the source
+// the problem is.
+//
+// go/packages hands over a position for every symbol and the file set to render
+// it against, and both were being thrown away, so a skip named a symbol and
+// left the reader to find it. Editors and CI annotate a file:line:col prefix
+// without being taught anything.
+func TestDiagnosticsCarryTheirPosition(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/nobind/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+	testza.AssertTrue(t, len(out.Skipped) > 0, "the fixture must produce a skip")
+
+	reported := out.Skipped[0].String()
+
+	// The position is where the symbol is declared, not where the manifest
+	// mentioned it, which is the one a reader has to go and edit.
+	testza.AssertTrue(t, strings.Contains(reported, "testdata/unbindable/unbindable.go:"),
+		"a skip must name the file it came from, got: "+reported)
+	testza.AssertFalse(t, strings.HasPrefix(reported, "/"),
+		"and relative to the working directory, got: "+reported)
+	testza.AssertTrue(t, strings.Contains(reported, "Send"),
+		"and still name the symbol, got: "+reported)
+}

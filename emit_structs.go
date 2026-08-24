@@ -53,7 +53,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 
 		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
 		if err != nil {
-			e.skip(name+"."+field.Name(), err.Error())
+			e.skipAt(field.Pos(), name+"."+field.Name(), err.Error())
 
 			continue
 		}
@@ -83,7 +83,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 
 		bound, err := e.emitMethod(named, method)
 		if err != nil {
-			e.skip(name+"."+method.Name(), err.Error())
+			e.skipAt(method.Pos(), name+"."+method.Name(), err.Error())
 
 			continue
 		}
@@ -163,7 +163,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 
 		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
 		if err != nil {
-			e.skip(name+"."+field.Name(), err.Error())
+			e.skipAt(field.Pos(), name+"."+field.Name(), err.Error())
 
 			continue
 		}
@@ -175,7 +175,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 	// difference between a documented trade and a silent one.
 	for _, method := range exportedMethods(named) {
 		if !e.isIgnored(named, method.Name()) {
-			e.skip(name+"."+method.Name(), "not bound: "+name+" is marshalled as plain data")
+			e.skipAt(method.Pos(), name+"."+method.Name(), "not bound: "+name+" is marshalled as plain data")
 		}
 	}
 

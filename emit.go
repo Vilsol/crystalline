@@ -5,6 +5,7 @@ package crystalline
 import (
 	"fmt"
 	"go/format"
+	"go/token"
 	"go/types"
 	"strconv"
 	"strings"
@@ -17,10 +18,24 @@ import (
 type Skipped struct {
 	Name   string
 	Reason string
+
+	// Pos is where in the source the subject is declared, empty when there is
+	// no position to report.
+	Pos string
 }
 
 func (s Skipped) String() string {
-	return s.Name + ": " + s.Reason
+	return withPosition(s.Pos, s.Name, s.Reason)
+}
+
+// withPosition renders a report the way a compiler does, so that an editor or
+// CI can turn it into an annotation without being taught the format.
+func withPosition(pos string, name string, reason string) string {
+	if pos == "" {
+		return name + ": " + reason
+	}
+
+	return pos + ": " + name + ": " + reason
 }
 
 // Warning records something that was bound, but with a cost worth knowing
@@ -29,10 +44,14 @@ func (s Skipped) String() string {
 type Warning struct {
 	Name   string
 	Reason string
+
+	// Pos is where in the source the subject is declared, empty when there is
+	// no position to report.
+	Pos string
 }
 
 func (w Warning) String() string {
-	return w.Name + ": " + w.Reason
+	return withPosition(w.Pos, w.Name, w.Reason)
 }
 
 // wideIntegers reports the 64-bit integer types reachable from t.
@@ -139,7 +158,7 @@ func (g *Generator) BuildGo(declarations Declarations, packageName string, selfP
 		Package:  packageName,
 		Source:   string(formatted),
 		Skipped:  e.skipped,
-		Warnings: wideIntegerWarnings(e.marks, declarations, droppedNames(e.skipped)),
+		Warnings: wideIntegerWarnings(e.marks, declarations, droppedNames(e.skipped), g.position),
 	}, nil
 }
 
@@ -184,8 +203,17 @@ func (g *Generator) analyse(declarations Declarations) (analysis, error) {
 		skipped:  e.skipped,
 		readonly: e.readonly,
 		dropped:  dropped,
-		warnings: wideIntegerWarnings(e.marks, declarations, dropped),
+		warnings: wideIntegerWarnings(e.marks, declarations, dropped, g.position),
 	}, nil
+}
+
+// entryPos is where a declared entry was written, when it names a symbol.
+func entryPos(entry Entry) token.Pos {
+	if entry.Object == nil {
+		return token.NoPos
+	}
+
+	return entry.Object.Pos()
 }
 
 // droppedNames indexes a skip report by the member it names.
@@ -200,7 +228,7 @@ func droppedNames(skipped []Skipped) map[string]bool {
 }
 
 // wideIntegerWarnings names each bound member that traffics in 64-bit integers.
-func wideIntegerWarnings(m marks, declarations Declarations, dropped map[string]bool) []Warning {
+func wideIntegerWarnings(m marks, declarations Declarations, dropped map[string]bool, position func(token.Pos) string) []Warning {
 	var warnings []Warning
 
 	said := make(map[string]bool)
@@ -221,6 +249,7 @@ func wideIntegerWarnings(m marks, declarations Declarations, dropped map[string]
 		warnings = append(warnings, Warning{
 			Name:   name,
 			Reason: found[0] + " is bound as a JavaScript number, which cannot represent values beyond 2^53 exactly",
+			Pos:    position(entryPos(entry)),
 		})
 	}
 
@@ -252,8 +281,10 @@ type emitter struct {
 	converters map[string]string
 }
 
-func (e *emitter) skip(name string, reason string) {
-	e.skipped = append(e.skipped, Skipped{Name: name, Reason: reason})
+// skipAt records something that could not be bound, along with where it is
+// declared.
+func (e *emitter) skipAt(pos token.Pos, name string, reason string) {
+	e.skipped = append(e.skipped, Skipped{Name: name, Reason: reason, Pos: e.gen.position(pos)})
 }
 
 // emitBindings renders the whole generated file.
@@ -269,7 +300,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 		case EntryFunc:
 			wrapper, err := e.emitDeclaredFunc(entry)
 			if err != nil {
-				e.skip(entry.Namespace+"."+entry.Name, err.Error())
+				e.skipAt(entryPos(entry), entry.Namespace+"."+entry.Name, err.Error())
 
 				continue
 			}
@@ -280,7 +311,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 		case EntryValue:
 			branch, err := e.emitDeclaredValue(entry)
 			if err != nil {
-				e.skip(entry.Namespace+"."+entry.Name, err.Error())
+				e.skipAt(entryPos(entry), entry.Namespace+"."+entry.Name, err.Error())
 
 				continue
 			}
@@ -311,7 +342,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 
 		body, err := marshal(named)
 		if err != nil {
-			e.skip(named.Obj().Name(), err.Error())
+			e.skipAt(named.Obj().Pos(), named.Obj().Name(), err.Error())
 
 			continue
 		}

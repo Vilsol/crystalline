@@ -5,8 +5,12 @@ package crystalline
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -34,6 +38,10 @@ type Generator struct {
 	banner string
 
 	// marks carries the method decisions the current build declared.
+	// fset renders the positions go/packages records, so a report can say
+	// where in the source a problem is rather than only which symbol.
+	fset *token.FileSet
+
 	marks marks
 
 	// readonly names the fields that can be read but not written, filled in
@@ -83,11 +91,31 @@ func WithTrailingComma() GeneratorOption {
 
 // NewGenerator creates a Generator publishing under the global go.<appName>
 // object on the JS side.
+// position renders a source position, empty when there is none to render.
+func (g *Generator) position(pos token.Pos) string {
+	if g.fset == nil || !pos.IsValid() {
+		return ""
+	}
+
+	at := g.fset.Position(pos)
+
+	// Relative where possible: an absolute path is noise in a terminal, and CI
+	// annotations are resolved against the workspace root.
+	if cwd, err := os.Getwd(); err == nil {
+		if relative, err := filepath.Rel(cwd, at.Filename); err == nil && !strings.HasPrefix(relative, "..") {
+			at.Filename = relative
+		}
+	}
+
+	return at.String()
+}
+
 func NewGenerator(appName string, opts ...GeneratorOption) *Generator {
 	g := &Generator{
 		appName:  appName,
 		style:    defaultStyle(),
 		promises: make(map[string]bool),
+		fset:     token.NewFileSet(),
 	}
 
 	for _, opt := range opts {
@@ -116,6 +144,10 @@ func (g *Generator) load(dir string, patterns ...string) ([]*packages.Package, e
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles,
 		Dir:  dir,
+
+		// Shared across every load, so a position from one package renders
+		// against the same file set as any other.
+		Fset: g.fset,
 	}
 
 	pkgs, err := packages.Load(cfg, patterns...)
