@@ -422,3 +422,39 @@ func TestWideIntegersAreWarnedAbout(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(joined, "2^53"),
 		"and why it matters, got:\n"+joined)
 }
+
+// TestWrappersDeclareTheirDisposer pins that a live wrapper says it holds
+// resources.
+//
+// The runtime sets release and Symbol.dispose on every wrapper, the README
+// advertises "using config = api.LoadConfig()", and the declarations mentioned
+// neither: our own example called release() on a type that did not declare it.
+// Plain data holds nothing, so it must not claim to.
+func TestWrappersDeclareTheirDisposer(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	wrapper := interfaceBlock(t, out.TypeScript, "FnSample")
+
+	testza.AssertTrue(t, strings.Contains(wrapper, "release(): void;"),
+		"a wrapper must declare its disposer:\n"+wrapper)
+	testza.AssertTrue(t, strings.Contains(wrapper, "[Symbol.dispose](): void;"),
+		"and the one a using-declaration calls:\n"+wrapper)
+
+	plain := interfaceBlock(t, out.TypeScript, "Reading")
+
+	testza.AssertFalse(t, strings.Contains(plain, "release"),
+		"plain data holds nothing to release:\n"+plain)
+}
+
+// interfaceBlock returns the body of one declared interface.
+func interfaceBlock(t *testing.T, source string, name string) string {
+	t.Helper()
+
+	start := strings.Index(source, "  interface "+name+" {")
+	testza.AssertNotEqual(t, -1, start, "no interface named "+name+" in:\n"+source)
+
+	body := source[start:]
+
+	return body[:strings.Index(body, "\n  }")]
+}

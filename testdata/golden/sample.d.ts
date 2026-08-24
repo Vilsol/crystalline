@@ -21,6 +21,9 @@ export declare namespace sample {
     One(): string;
     Three(): number;
     Two(): number;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
   }
   interface Reading {
     readonly Label: string;
@@ -38,6 +41,10 @@ export declare namespace sample {
     Configure(s: sample.FnSample): string;
     Fails(): Result<void>;
     WithCallback(cb: (v: string) => Promise<number>): Promise<boolean>;
+    WithText(cb: (v: string) => Promise<string>): Promise<string>;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
   }
   interface Sample {
     readonly At: string;
@@ -46,6 +53,9 @@ export declare namespace sample {
   interface Ticker {
     Name: string;
     readonly Events: AsyncIterable<string>;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
   }
   function Basic(): number;
   function Big(n: number): number;

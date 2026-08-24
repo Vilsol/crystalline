@@ -298,6 +298,16 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 		result.WriteString("    " + signature + ";\n")
 	}
 
+	// A wrapper is a live view backed by Go, and holds a slot in the bridge for
+	// every field and method until it is let go. Both of these exist at run
+	// time; leaving them out of the declarations meant the deterministic
+	// release the documentation recommends did not typecheck.
+	if !plain {
+		result.WriteString("    /** Releases the Go resources behind this wrapper. */\n")
+		result.WriteString("    release(): void;\n")
+		result.WriteString("    [Symbol.dispose](): void;\n")
+	}
+
 	result.WriteString("  }\n")
 
 	return result.String(), nil

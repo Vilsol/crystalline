@@ -68,7 +68,11 @@ func (e *emitter) callbackFromJS(expr string, t types.Type, sig *types.Signature
 
 	result := sig.Results().At(0).Type()
 
-	converted, err := e.jsValueToGo("crystallineCallbackResult", result)
+	// Through the same converters a parameter uses. The inline accessors do not
+	// validate, and js.Value.String() is the one that does not even panic on
+	// the wrong type: a callback returning nothing handed Go the literal
+	// "<undefined>" as if it were the answer.
+	converted, err := e.fromJS("crystallineCallbackResult", result)
 	if err != nil {
 		return "", fmt.Errorf("callback result: %w", err)
 	}
@@ -136,7 +140,10 @@ func (e *emitter) emitStructConverter(fn string, named *types.Named) (string, er
 
 	body.WriteString("func " + fn + "(value js.Value) (" + goType + ", error) {\n")
 	body.WriteString("\tvar out " + goType + "\n\n")
-	body.WriteString("\tif value.IsUndefined() || value.IsNull() {\n\t\treturn out, nil\n\t}\n\n")
+	// A pointer position handles its own nil before reaching here, so a null
+	// arriving at a struct is a value nobody asked for rather than an absence.
+	body.WriteString("\tif value.IsUndefined() || value.IsNull() {\n\t\treturn out, errors.New(" +
+		strconv.Quote(name+": expected an object, got null") + ")\n\t}\n\n")
 	body.WriteString("\tif handle, ok := crystallineHandleOf(value); ok {\n")
 	body.WriteString("\t\tresolved, found := crystallineResolve(handle)\n")
 	body.WriteString("\t\tif !found {\n\t\t\treturn out, errors.New(" + strconv.Quote(name+": the value behind this handle has been released") + ")\n\t\t}\n\n")
@@ -306,9 +313,9 @@ func (e *emitter) emitBasicConverter(name string, goType string, basic *types.Ba
 func emitBytesConverter(name string, goType string) string {
 	return "func " + name + "(value js.Value) (" + goType + ", error) {\n" +
 		"\tif value.IsUndefined() || value.IsNull() {\n\t\treturn nil, nil\n\t}\n\n" +
-		"\tif value.Get(\"byteLength\").Type() != js.TypeNumber {\n\t\treturn nil, errors.New(\"expected a Uint8Array\")\n\t}\n\n" +
+		"\tif !value.InstanceOf(js.Global().Get(\"Uint8Array\")) {\n\t\treturn nil, errors.New(\"expected a Uint8Array\")\n\t}\n\n" +
 		"\tout := make(" + goType + ", value.Get(\"length\").Int())\n" +
-		"\tjs.CopyBytesToGo(out, value)\n\n" +
+		"\tif copied := js.CopyBytesToGo(out, value); copied != len(out) {\n\t\treturn nil, errors.New(\"expected a Uint8Array\")\n\t}\n\n" +
 		"\treturn out, nil\n}\n\n"
 }
 
@@ -425,27 +432,6 @@ func (e *emitter) emitPointerConverter(name string, goType string, typed *types.
 		"\tbuilt, err := " + inner + "(value)\n" +
 		"\tif err != nil {\n\t\treturn nil, err\n\t}\n\n" +
 		"\treturn &built, nil\n}\n\n", nil
-}
-
-// jsValueToGo converts an already-resolved js.Value into a Go value.
-func (e *emitter) jsValueToGo(expr string, t types.Type) (string, error) {
-	basic, ok := t.Underlying().(*types.Basic)
-	if !ok {
-		return "", fmt.Errorf("type %s is not supported", t)
-	}
-
-	name := types.TypeString(t, e.qualifier)
-
-	switch {
-	case basic.Kind() == types.Bool:
-		return name + "(" + expr + ".Bool())", nil
-	case basic.Kind() == types.String:
-		return name + "(" + expr + ".String())", nil
-	case basic.Info()&types.IsNumeric != 0:
-		return name + "(" + expr + ".Float())", nil
-	}
-
-	return "", fmt.Errorf("type %s is not supported", t)
 }
 
 // qualifier renders a type as generated code must spell it.

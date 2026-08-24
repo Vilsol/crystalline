@@ -114,6 +114,19 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - Fields declared `readonly` when they cannot be written back, and plain data
   declared `readonly` throughout.
 - Minimum Go version is 1.26.
+- A wrapper declares `release()` and `[Symbol.dispose]()`. The runtime set
+  both on every wrapper and the declarations mentioned neither, so the
+  deterministic release the documentation recommends did not typecheck.
+  Plain data holds nothing, so it declares neither.
+- A callback's return value is validated like any other value crossing into
+  Go. `js.Value.String()` is the one accessor that does not panic on the
+  wrong type, so a callback returning nothing handed Go the literal
+  `"<undefined>"` as though it were the answer.
+- `null` where a struct is expected is an error rather than a zero value.
+  A pointer position handles its own nil before reaching the struct.
+- A `[]byte` parameter checks that it was given a `Uint8Array`. Every typed
+  array has a `byteLength`, so the old check never rejected anything and the
+  failure surfaced as a `syscall/js` panic instead of a named error.
 
 #### Removed
 

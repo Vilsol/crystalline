@@ -65,6 +65,13 @@ func (r Richer) WithCallback(cb func(v string) int) bool {
 	return cb("x") > 0
 }
 
+// WithText takes a callback returning a string. js.Value.String() is the one
+// accessor that does not panic on the wrong type: it renders undefined as the
+// literal "<undefined>", which used to reach Go as a real value.
+func (r Richer) WithText(cb func(v string) string) string {
+	return cb("x")
+}
+
 func Rich() Richer {
 	return Richer{Pointed: &FnSample{FirstValue: "pointed"}}
 }

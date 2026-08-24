@@ -19,6 +19,9 @@ export declare namespace account {
     Snapshot(): account.Statement;
     Statement(): string;
     Withdraw(amount: number): Result<void>;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
   }
   interface Statement {
     readonly Owner: string;

@@ -59,6 +59,11 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"Fails=true",
 		// The callback is invoked from Go and its result awaited.
 		"Callback=true",
+		"CallbackBad=threw",
+		"TextBad=threw",
+		"TextGood=x!",
+		"NullStruct=threw",
+		"WrongBytes=threw",
 		// Assigning a field from JS must reach the Go value behind it.
 		"WriteThrough=written",
 		// A field write that cannot be converted used to be discarded in
@@ -258,6 +263,48 @@ func main() {
 		out.push("Lookup=" + JSON.stringify(r.Lookup));
 		out.push("Fails=" + r.Fails().ok);
 		out.push("Callback=" + await r.WithCallback((v) => v.length));
+
+		// A callback that returns nothing must not be read as a value. Go used
+		// to take js.Value.String() of undefined, which is the literal
+		// "<undefined>", and Float() of it, which is NaN.
+		let callbackBad = "accepted";
+		try {
+			await r.WithCallback((v) => {});
+		} catch (e) {
+			callbackBad = "threw";
+		}
+		out.push("CallbackBad=" + callbackBad);
+
+		// The string case is the one that was silent: Go received the literal
+		// "<undefined>" and carried on.
+		let textBad = "accepted";
+		try {
+			await r.WithText((v) => {});
+		} catch (e) {
+			textBad = "threw";
+		}
+		out.push("TextBad=" + textBad);
+		out.push("TextGood=" + await r.WithText((v) => v + "!"));
+
+		// A struct parameter is not optional: null must not arrive in Go as a
+		// zero value nobody asked for.
+		let nullStruct = "accepted";
+		try {
+			r.Configure(null);
+		} catch (e) {
+			nullStruct = "threw";
+		}
+		out.push("NullStruct=" + nullStruct);
+
+		// Every typed array has a byteLength, so checking for one accepted any
+		// of them and then copied nothing.
+		let wrongBytes = "accepted";
+		try {
+			r.Apply({Blob: new Int32Array([1, 2, 3])});
+		} catch (e) {
+			wrongBytes = "threw";
+		}
+		out.push("WrongBytes=" + wrongBytes);
 		const live = s.FooBar();
 		live.FirstValue = "written";
 		out.push("WriteThrough=" + live.One());

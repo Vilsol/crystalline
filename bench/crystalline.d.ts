@@ -22,6 +22,9 @@ export declare namespace payload {
     Origin: payload.Anchor;
     Norm(): number;
     Shift(dx: number, dy: number): void;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
   }
   interface Reading {
     readonly X: number;

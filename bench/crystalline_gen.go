@@ -940,7 +940,7 @@ func crystallineToAnchor(value js.Value) (payload.Anchor, error) {
 	var out payload.Anchor
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, nil
+		return out, errors.New("Anchor: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
@@ -1001,12 +1001,14 @@ func crystallineToBytes(value js.Value) ([]byte, error) {
 		return nil, nil
 	}
 
-	if value.Get("byteLength").Type() != js.TypeNumber {
+	if !value.InstanceOf(js.Global().Get("Uint8Array")) {
 		return nil, errors.New("expected a Uint8Array")
 	}
 
 	out := make([]byte, value.Get("length").Int())
-	js.CopyBytesToGo(out, value)
+	if copied := js.CopyBytesToGo(out, value); copied != len(out) {
+		return nil, errors.New("expected a Uint8Array")
+	}
 
 	return out, nil
 }
@@ -1065,7 +1067,7 @@ func crystallineToPoint(value js.Value) (payload.Point, error) {
 	var out payload.Point
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, nil
+		return out, errors.New("Point: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {

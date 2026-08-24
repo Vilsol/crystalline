@@ -755,7 +755,7 @@ func crystallineToAccount(value js.Value) (account.Account, error) {
 	var out account.Account
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, nil
+		return out, errors.New("Account: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
