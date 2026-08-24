@@ -944,35 +944,35 @@ func crystallineToAccountAccount(value js.Value) (account.Account, error) {
 	var out account.Account
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("AccountAccount: expected an object, got null")
+		return out, errors.New("account.Account: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
 		resolved, found := crystallineResolve(handle)
 		if !found {
-			return out, errors.New("AccountAccount: the value behind this handle has been released")
+			return out, errors.New("account.Account: the value behind this handle has been released")
 		}
 
 		typed, ok := resolved.(*account.Account)
 		if !ok {
-			return out, errors.New("AccountAccount: handle refers to a different type")
+			return out, errors.New("account.Account: handle refers to a different type")
 		}
 
 		return *typed, nil
 	}
 
 	if value.Type() != js.TypeObject {
-		return out, errors.New("AccountAccount: expected an object")
+		return out, errors.New("account.Account: expected an object")
 	}
 
-	if err := crystallineUnknownProperty(value, "AccountAccount", crystallineKnownAccountAccount); err != nil {
+	if err := crystallineUnknownProperty(value, "account.Account", crystallineKnownAccountAccount); err != nil {
 		return out, err
 	}
 
 	if property := value.Get("Owner"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToString(property)
 		if err != nil {
-			return out, errors.New("AccountAccount.Owner: " + err.Error())
+			return out, errors.New("account.Account.Owner: " + err.Error())
 		}
 
 		out.Owner = converted
@@ -981,7 +981,7 @@ func crystallineToAccountAccount(value js.Value) (account.Account, error) {
 	if property := value.Get("Balance"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToInt(property)
 		if err != nil {
-			return out, errors.New("AccountAccount.Balance: " + err.Error())
+			return out, errors.New("account.Account.Balance: " + err.Error())
 		}
 
 		out.Balance = converted
@@ -990,7 +990,7 @@ func crystallineToAccountAccount(value js.Value) (account.Account, error) {
 	if property := value.Get("History"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToSliceOfString(property)
 		if err != nil {
-			return out, errors.New("AccountAccount.History: " + err.Error())
+			return out, errors.New("account.Account.History: " + err.Error())
 		}
 
 		out.History = converted

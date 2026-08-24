@@ -64,10 +64,10 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"CallbackBad=threw",
 		"TextBad=threw",
 		"TextGood=x!",
-		"BadPromiseArg=rejected",
-		"AfterBadPromise=420",
 		"NullStruct=threw",
 		"WrongBytes=threw",
+		"BadPromiseArg=rejected",
+		"AfterBadPromise=420",
 		// Assigning a field from JS must reach the Go value behind it.
 		"WriteThrough=written",
 		// A field write that cannot be converted used to be discarded in
@@ -337,7 +337,7 @@ func main() {
 		try {
 			await r.WithCallback((v) => {});
 		} catch (e) {
-			callbackBad = "threw";
+			callbackBad = e.message.includes("expected a number") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("CallbackBad=" + callbackBad);
 
@@ -347,7 +347,7 @@ func main() {
 		try {
 			await r.WithText((v) => {});
 		} catch (e) {
-			textBad = "threw";
+			textBad = e.message.includes("expected a string") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("TextBad=" + textBad);
 		out.push("TextGood=" + await r.WithText((v) => v + "!"));
@@ -374,7 +374,7 @@ func main() {
 		try {
 			r.Configure(null);
 		} catch (e) {
-			nullStruct = "threw";
+			nullStruct = e.message.includes("expected an object, got null") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("NullStruct=" + nullStruct);
 
@@ -384,7 +384,7 @@ func main() {
 		try {
 			r.Apply({Blob: new Int32Array([1, 2, 3])});
 		} catch (e) {
-			wrongBytes = "threw";
+			wrongBytes = e.message.includes("expected a Uint8Array") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("WrongBytes=" + wrongBytes);
 		const live = s.FooBar();
@@ -487,7 +487,7 @@ func main() {
 		try {
 			r.Configure({FirstVlaue: "typo"});
 		} catch (e) {
-			rejected = "yes";
+			rejected = e.message.includes('unknown property "FirstVlaue"') ? "yes" : "wrong:" + e.message;
 		}
 		out.push("TypoRejected=" + rejected);
 
@@ -580,7 +580,7 @@ func main() {
 		try {
 			s.TakesTime({});
 		} catch (e) {
-			badTime = "threw";
+			badTime = e.message.includes("expected a Date") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("BadTime=" + badTime);
 
@@ -598,7 +598,7 @@ func main() {
 		try {
 			m.Brighten("nonsense");
 		} catch (e) {
-			badColour = "threw";
+			badColour = e.message.includes("expected a colour like #aabbcc") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("BadColour=" + badColour);
 
@@ -622,7 +622,7 @@ func main() {
 		try {
 			await s.Replay({ Record: () => {} }, []);
 		} catch (e) {
-			missingMethod = "threw";
+			missingMethod = e.message.includes("the object has no Level method") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("SuppliedMissing=" + missingMethod);
 
@@ -641,7 +641,7 @@ func main() {
 		try {
 			await s.Sum([1, "two", 3]);
 		} catch (e) {
-			badFeed = "threw";
+			badFeed = e.message.includes("values: expected a number") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("BadFeed=" + badFeed);
 
@@ -1311,4 +1311,34 @@ func TestCamelCaseNamesWorkAtRuntime(t *testing.T) {
 		key, value, _ := strings.Cut(expected, "=")
 		testza.AssertEqual(t, value, reported[key], key+" was wrong in:\n"+string(output))
 	}
+}
+
+// The identifier a converter is named after and the name a person reads are two
+// different things, and one string was doing both. The identifier carries the
+// package so that two packages may each declare a Config, which makes it
+// SampleFnSample — a name that appears nowhere in the Go and cannot be searched
+// for.
+func TestConverterMessagesNameTheGoType(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	body := bodyOf(t, bindings.Source, "crystallineToSampleFnSample")
+
+	for _, expected := range []string{
+		`"sample.FnSample: expected an object"`,
+		`"sample.FnSample: expected an object, got null"`,
+		`"sample.FnSample: the value behind this handle has been released"`,
+		`crystallineUnknownProperty(value, "sample.FnSample"`,
+	} {
+		testza.AssertTrue(t, strings.Contains(body, expected),
+			"missing "+expected+" in:\n"+body)
+	}
+
+	testza.AssertFalse(t, strings.Contains(body, `"SampleFnSample:`),
+		"no message may use the generated identifier:\n"+body)
+
+	// The identifier itself still carries the package, or two packages each
+	// declaring a type of one name would share a converter.
+	testza.AssertTrue(t, strings.Contains(bindings.Source, "crystallineKnownSampleFnSample"),
+		"the identifier must stay unique across packages")
 }

@@ -188,7 +188,7 @@ func (e *emitter) emitStructConverter(fn string, named *types.Named) (string, er
 
 		known = append(known, strconv.Quote(jsField)+": true")
 
-		check, err := e.fieldFromJS("out."+field.Name(), name+"."+jsField, field.Type())
+		check, err := e.fieldFromJS("out."+field.Name(), typeIdentity(named)+"."+jsField, field.Type())
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
 		}
@@ -202,20 +202,26 @@ func (e *emitter) emitStructConverter(fn string, named *types.Named) (string, er
 
 	body.WriteString("var crystallineKnown" + name + " = map[string]bool{" + strings.Join(known, ", ") + "}\n\n")
 
+	// The identifier and the name a person reads are different jobs. The
+	// identifier carries the package so that two packages may each declare a
+	// Config, which spells it SampleFnSample: a name that appears nowhere in
+	// the Go and cannot be searched for.
+	subject := typeIdentity(named)
+
 	body.WriteString("func " + fn + "(value js.Value) (" + goType + ", error) {\n")
 	body.WriteString("\tvar out " + goType + "\n\n")
 	// A pointer position handles its own nil before reaching here, so a null
 	// arriving at a struct is a value nobody asked for rather than an absence.
 	body.WriteString("\tif value.IsUndefined() || value.IsNull() {\n\t\treturn out, errors.New(" +
-		strconv.Quote(name+": expected an object, got null") + ")\n\t}\n\n")
+		strconv.Quote(subject+": expected an object, got null") + ")\n\t}\n\n")
 	body.WriteString("\tif handle, ok := crystallineHandleOf(value); ok {\n")
 	body.WriteString("\t\tresolved, found := crystallineResolve(handle)\n")
-	body.WriteString("\t\tif !found {\n\t\t\treturn out, errors.New(" + strconv.Quote(name+": the value behind this handle has been released") + ")\n\t\t}\n\n")
+	body.WriteString("\t\tif !found {\n\t\t\treturn out, errors.New(" + strconv.Quote(subject+": the value behind this handle has been released") + ")\n\t\t}\n\n")
 	body.WriteString("\t\ttyped, ok := resolved.(*" + goType + ")\n")
-	body.WriteString("\t\tif !ok {\n\t\t\treturn out, errors.New(" + strconv.Quote(name+": handle refers to a different type") + ")\n\t\t}\n\n")
+	body.WriteString("\t\tif !ok {\n\t\t\treturn out, errors.New(" + strconv.Quote(subject+": handle refers to a different type") + ")\n\t\t}\n\n")
 	body.WriteString("\t\treturn *typed, nil\n\t}\n\n")
-	body.WriteString("\tif value.Type() != js.TypeObject {\n\t\treturn out, errors.New(" + strconv.Quote(name+": expected an object") + ")\n\t}\n\n")
-	body.WriteString("\tif err := crystallineUnknownProperty(value, " + strconv.Quote(name) + ", crystallineKnown" + name + "); err != nil {\n\t\treturn out, err\n\t}\n\n")
+	body.WriteString("\tif value.Type() != js.TypeObject {\n\t\treturn out, errors.New(" + strconv.Quote(subject+": expected an object") + ")\n\t}\n\n")
+	body.WriteString("\tif err := crystallineUnknownProperty(value, " + strconv.Quote(subject) + ", crystallineKnown" + name + "); err != nil {\n\t\treturn out, err\n\t}\n\n")
 	body.WriteString(fields.String())
 	body.WriteString("\treturn out, nil\n}\n\n")
 
@@ -632,12 +638,12 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 
 	out.WriteString("func " + name + "(value js.Value) (" + goType + ", error) {\n")
 	out.WriteString("\tif value.Type() != js.TypeObject {\n\t\treturn nil, errors.New(" +
-		strconv.Quote(named.Obj().Name()+": expected an object") + ")\n\t}\n\n")
+		strconv.Quote(typeIdentity(named)+": expected an object") + ")\n\t}\n\n")
 
 	for _, method := range required {
 		out.WriteString("\tif value.Get(" + strconv.Quote(method) + ").Type() != js.TypeFunction {\n")
 		out.WriteString("\t\treturn nil, errors.New(" +
-			strconv.Quote(named.Obj().Name()+": the object has no "+method+" method") + ")\n\t}\n\n")
+			strconv.Quote(typeIdentity(named)+": the object has no "+method+" method") + ")\n\t}\n\n")
 	}
 
 	out.WriteString("\treturn " + adapter + "{value: value}, nil\n}\n\n")

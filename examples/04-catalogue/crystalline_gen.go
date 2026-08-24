@@ -924,35 +924,35 @@ func crystallineToCatalogueAudited(value js.Value) (catalogue.Audited, error) {
 	var out catalogue.Audited
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("CatalogueAudited: expected an object, got null")
+		return out, errors.New("catalogue.Audited: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
 		resolved, found := crystallineResolve(handle)
 		if !found {
-			return out, errors.New("CatalogueAudited: the value behind this handle has been released")
+			return out, errors.New("catalogue.Audited: the value behind this handle has been released")
 		}
 
 		typed, ok := resolved.(*catalogue.Audited)
 		if !ok {
-			return out, errors.New("CatalogueAudited: handle refers to a different type")
+			return out, errors.New("catalogue.Audited: handle refers to a different type")
 		}
 
 		return *typed, nil
 	}
 
 	if value.Type() != js.TypeObject {
-		return out, errors.New("CatalogueAudited: expected an object")
+		return out, errors.New("catalogue.Audited: expected an object")
 	}
 
-	if err := crystallineUnknownProperty(value, "CatalogueAudited", crystallineKnownCatalogueAudited); err != nil {
+	if err := crystallineUnknownProperty(value, "catalogue.Audited", crystallineKnownCatalogueAudited); err != nil {
 		return out, err
 	}
 
 	if property := value.Get("CreatedAt"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToTimeTime(property)
 		if err != nil {
-			return out, errors.New("CatalogueAudited.CreatedAt: " + err.Error())
+			return out, errors.New("catalogue.Audited.CreatedAt: " + err.Error())
 		}
 
 		out.CreatedAt = converted
@@ -967,35 +967,35 @@ func crystallineToCatalogueItem(value js.Value) (catalogue.Item, error) {
 	var out catalogue.Item
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("CatalogueItem: expected an object, got null")
+		return out, errors.New("catalogue.Item: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
 		resolved, found := crystallineResolve(handle)
 		if !found {
-			return out, errors.New("CatalogueItem: the value behind this handle has been released")
+			return out, errors.New("catalogue.Item: the value behind this handle has been released")
 		}
 
 		typed, ok := resolved.(*catalogue.Item)
 		if !ok {
-			return out, errors.New("CatalogueItem: handle refers to a different type")
+			return out, errors.New("catalogue.Item: handle refers to a different type")
 		}
 
 		return *typed, nil
 	}
 
 	if value.Type() != js.TypeObject {
-		return out, errors.New("CatalogueItem: expected an object")
+		return out, errors.New("catalogue.Item: expected an object")
 	}
 
-	if err := crystallineUnknownProperty(value, "CatalogueItem", crystallineKnownCatalogueItem); err != nil {
+	if err := crystallineUnknownProperty(value, "catalogue.Item", crystallineKnownCatalogueItem); err != nil {
 		return out, err
 	}
 
 	if property := value.Get("Audited"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToCatalogueAudited(property)
 		if err != nil {
-			return out, errors.New("CatalogueItem.Audited: " + err.Error())
+			return out, errors.New("catalogue.Item.Audited: " + err.Error())
 		}
 
 		out.Audited = converted
@@ -1004,7 +1004,7 @@ func crystallineToCatalogueItem(value js.Value) (catalogue.Item, error) {
 	if property := value.Get("Name"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToString(property)
 		if err != nil {
-			return out, errors.New("CatalogueItem.Name: " + err.Error())
+			return out, errors.New("catalogue.Item.Name: " + err.Error())
 		}
 
 		out.Name = converted
@@ -1013,7 +1013,7 @@ func crystallineToCatalogueItem(value js.Value) (catalogue.Item, error) {
 	if property := value.Get("Price"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToCatalogueMoney(property)
 		if err != nil {
-			return out, errors.New("CatalogueItem.Price: " + err.Error())
+			return out, errors.New("catalogue.Item.Price: " + err.Error())
 		}
 
 		out.Price = converted
@@ -1022,7 +1022,7 @@ func crystallineToCatalogueItem(value js.Value) (catalogue.Item, error) {
 	if property := value.Get("Status"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToCatalogueStatus(property)
 		if err != nil {
-			return out, errors.New("CatalogueItem.Status: " + err.Error())
+			return out, errors.New("catalogue.Item.Status: " + err.Error())
 		}
 
 		out.Status = converted
@@ -1050,11 +1050,11 @@ func (c crystallineJSNotifier) Notify(p0 string) {
 
 func crystallineToCatalogueNotifier(value js.Value) (catalogue.Notifier, error) {
 	if value.Type() != js.TypeObject {
-		return nil, errors.New("Notifier: expected an object")
+		return nil, errors.New("catalogue.Notifier: expected an object")
 	}
 
 	if value.Get("Notify").Type() != js.TypeFunction {
-		return nil, errors.New("Notifier: the object has no Notify method")
+		return nil, errors.New("catalogue.Notifier: the object has no Notify method")
 	}
 
 	return crystallineJSNotifier{value: value}, nil
