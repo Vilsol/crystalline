@@ -5,6 +5,9 @@ Declined items carry their reasoning so they are not re-argued from scratch.
 
 ## Planned
 
+Nothing. Everything decided has been built; what is below was considered and
+turned down, with the reasoning, so it is not re-argued from scratch.
+
 ## Declined
 
 ### Generated batching
