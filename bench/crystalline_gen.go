@@ -749,7 +749,7 @@ func crystallineFnPayloadMakePoints(this js.Value, args []js.Value) (result any)
 
 		out := make([]any, 0, len(r0))
 		for _, v := range r0 {
-			out = append(out, crystallineMarshalPoint(&v))
+			out = append(out, crystallineMarshalPayloadPoint(&v))
 		}
 
 		return out
@@ -772,7 +772,7 @@ func crystallineFnPayloadMakeReadings(this js.Value, args []js.Value) (result an
 
 		out := make([]any, 0, len(r0))
 		for _, v := range r0 {
-			out = append(out, crystallineMarshalReading(&v))
+			out = append(out, crystallineMarshalPayloadReading(&v))
 		}
 
 		return out
@@ -788,7 +788,7 @@ func crystallineFnPayloadNewPoint(this js.Value, args []js.Value) (result any) {
 
 	r0 := payload.NewPoint(crystallineMust(crystallineToString(args[0])))
 
-	return crystallineMarshalPoint(r0)
+	return crystallineMarshalPayloadPoint(r0)
 }
 
 func crystallineFnPayloadTakePoint(this js.Value, args []js.Value) (result any) {
@@ -798,7 +798,7 @@ func crystallineFnPayloadTakePoint(this js.Value, args []js.Value) (result any) 
 		return crystallineFail("TakePoint: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.TakePoint(crystallineMust(crystallineToPoint(args[0])))
+	r0 := payload.TakePoint(crystallineMust(crystallineToPayloadPoint(args[0])))
 
 	return float64(r0)
 }
@@ -873,7 +873,7 @@ func crystallineFnPayloadRounds(this js.Value, args []js.Value) (result any) {
 	})
 }
 
-func crystallineMarshalAnchor(v *payload.Anchor) any {
+func crystallineMarshalPayloadAnchor(v *payload.Anchor) any {
 	if v == nil {
 		return nil
 	}
@@ -886,7 +886,7 @@ func crystallineMarshalAnchor(v *payload.Anchor) any {
 	return out
 }
 
-func crystallineMarshalPoint(v *payload.Point) any {
+func crystallineMarshalPayloadPoint(v *payload.Point) any {
 	if v == nil {
 		return nil
 	}
@@ -915,12 +915,12 @@ func crystallineMarshalPoint(v *payload.Point) any {
 	crystallineDefine(scope, out, "Origin", func() any {
 		if !crystallineCachedOrigin {
 			crystallineCachedOrigin = true
-			crystallineCacheOrigin = crystallineMarshalAnchor(&v.Origin)
+			crystallineCacheOrigin = crystallineMarshalPayloadAnchor(&v.Origin)
 		}
 
 		return crystallineCacheOrigin
 	}, func(value js.Value) {
-		v.Origin = crystallineMust(crystallineToAnchor(value))
+		v.Origin = crystallineMust(crystallineToPayloadAnchor(value))
 	})
 	out.Set("Norm", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
@@ -950,7 +950,7 @@ func crystallineMarshalPoint(v *payload.Point) any {
 	return out
 }
 
-func crystallineMarshalReading(v *payload.Reading) any {
+func crystallineMarshalPayloadReading(v *payload.Reading) any {
 	if v == nil {
 		return nil
 	}
@@ -960,61 +960,9 @@ func crystallineMarshalReading(v *payload.Reading) any {
 	out.Set("X", float64(v.X))
 	out.Set("Y", float64(v.Y))
 	out.Set("Label", string(v.Label))
-	out.Set("Origin", crystallineMarshalAnchor(&v.Origin))
+	out.Set("Origin", crystallineMarshalPayloadAnchor(&v.Origin))
 
 	return out
-}
-
-var crystallineKnownAnchor = map[string]bool{"X": true, "Y": true}
-
-func crystallineToAnchor(value js.Value) (payload.Anchor, error) {
-	var out payload.Anchor
-
-	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("Anchor: expected an object, got null")
-	}
-
-	if handle, ok := crystallineHandleOf(value); ok {
-		resolved, found := crystallineResolve(handle)
-		if !found {
-			return out, errors.New("Anchor: the value behind this handle has been released")
-		}
-
-		typed, ok := resolved.(*payload.Anchor)
-		if !ok {
-			return out, errors.New("Anchor: handle refers to a different type")
-		}
-
-		return *typed, nil
-	}
-
-	if value.Type() != js.TypeObject {
-		return out, errors.New("Anchor: expected an object")
-	}
-
-	if err := crystallineUnknownProperty(value, "Anchor", crystallineKnownAnchor); err != nil {
-		return out, err
-	}
-
-	if property := value.Get("X"); !property.IsUndefined() && !property.IsNull() {
-		converted, err := crystallineToFloat64(property)
-		if err != nil {
-			return out, errors.New("Anchor.X: " + err.Error())
-		}
-
-		out.X = converted
-	}
-
-	if property := value.Get("Y"); !property.IsUndefined() && !property.IsNull() {
-		converted, err := crystallineToFloat64(property)
-		if err != nil {
-			return out, errors.New("Anchor.Y: " + err.Error())
-		}
-
-		out.Y = converted
-	}
-
-	return out, nil
 }
 
 func crystallineToBool(value js.Value) (bool, error) {
@@ -1092,41 +1040,41 @@ func crystallineToMapOfStringToInt(value js.Value) (map[string]int, error) {
 	return out, nil
 }
 
-var crystallineKnownPoint = map[string]bool{"X": true, "Y": true, "Label": true, "Origin": true}
+var crystallineKnownPayloadAnchor = map[string]bool{"X": true, "Y": true}
 
-func crystallineToPoint(value js.Value) (payload.Point, error) {
-	var out payload.Point
+func crystallineToPayloadAnchor(value js.Value) (payload.Anchor, error) {
+	var out payload.Anchor
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("Point: expected an object, got null")
+		return out, errors.New("PayloadAnchor: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
 		resolved, found := crystallineResolve(handle)
 		if !found {
-			return out, errors.New("Point: the value behind this handle has been released")
+			return out, errors.New("PayloadAnchor: the value behind this handle has been released")
 		}
 
-		typed, ok := resolved.(*payload.Point)
+		typed, ok := resolved.(*payload.Anchor)
 		if !ok {
-			return out, errors.New("Point: handle refers to a different type")
+			return out, errors.New("PayloadAnchor: handle refers to a different type")
 		}
 
 		return *typed, nil
 	}
 
 	if value.Type() != js.TypeObject {
-		return out, errors.New("Point: expected an object")
+		return out, errors.New("PayloadAnchor: expected an object")
 	}
 
-	if err := crystallineUnknownProperty(value, "Point", crystallineKnownPoint); err != nil {
+	if err := crystallineUnknownProperty(value, "PayloadAnchor", crystallineKnownPayloadAnchor); err != nil {
 		return out, err
 	}
 
 	if property := value.Get("X"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToFloat64(property)
 		if err != nil {
-			return out, errors.New("Point.X: " + err.Error())
+			return out, errors.New("PayloadAnchor.X: " + err.Error())
 		}
 
 		out.X = converted
@@ -1135,7 +1083,59 @@ func crystallineToPoint(value js.Value) (payload.Point, error) {
 	if property := value.Get("Y"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToFloat64(property)
 		if err != nil {
-			return out, errors.New("Point.Y: " + err.Error())
+			return out, errors.New("PayloadAnchor.Y: " + err.Error())
+		}
+
+		out.Y = converted
+	}
+
+	return out, nil
+}
+
+var crystallineKnownPayloadPoint = map[string]bool{"X": true, "Y": true, "Label": true, "Origin": true}
+
+func crystallineToPayloadPoint(value js.Value) (payload.Point, error) {
+	var out payload.Point
+
+	if value.IsUndefined() || value.IsNull() {
+		return out, errors.New("PayloadPoint: expected an object, got null")
+	}
+
+	if handle, ok := crystallineHandleOf(value); ok {
+		resolved, found := crystallineResolve(handle)
+		if !found {
+			return out, errors.New("PayloadPoint: the value behind this handle has been released")
+		}
+
+		typed, ok := resolved.(*payload.Point)
+		if !ok {
+			return out, errors.New("PayloadPoint: handle refers to a different type")
+		}
+
+		return *typed, nil
+	}
+
+	if value.Type() != js.TypeObject {
+		return out, errors.New("PayloadPoint: expected an object")
+	}
+
+	if err := crystallineUnknownProperty(value, "PayloadPoint", crystallineKnownPayloadPoint); err != nil {
+		return out, err
+	}
+
+	if property := value.Get("X"); !property.IsUndefined() && !property.IsNull() {
+		converted, err := crystallineToFloat64(property)
+		if err != nil {
+			return out, errors.New("PayloadPoint.X: " + err.Error())
+		}
+
+		out.X = converted
+	}
+
+	if property := value.Get("Y"); !property.IsUndefined() && !property.IsNull() {
+		converted, err := crystallineToFloat64(property)
+		if err != nil {
+			return out, errors.New("PayloadPoint.Y: " + err.Error())
 		}
 
 		out.Y = converted
@@ -1144,16 +1144,16 @@ func crystallineToPoint(value js.Value) (payload.Point, error) {
 	if property := value.Get("Label"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToString(property)
 		if err != nil {
-			return out, errors.New("Point.Label: " + err.Error())
+			return out, errors.New("PayloadPoint.Label: " + err.Error())
 		}
 
 		out.Label = converted
 	}
 
 	if property := value.Get("Origin"); !property.IsUndefined() && !property.IsNull() {
-		converted, err := crystallineToAnchor(property)
+		converted, err := crystallineToPayloadAnchor(property)
 		if err != nil {
-			return out, errors.New("Point.Origin: " + err.Error())
+			return out, errors.New("PayloadPoint.Origin: " + err.Error())
 		}
 
 		out.Origin = converted

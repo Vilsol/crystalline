@@ -311,7 +311,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), field.Name(), err)
 		}
 
-		if g.dropped[instantiatedName(named)+"."+field.Name()] {
+		if g.dropped[memberIdentity(named, field.Name())] {
 			continue
 		}
 
@@ -329,7 +329,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 		// is a snapshot, so the declaration says so instead of inviting a write
 		// that goes nowhere.
 		prefix := ""
-		if plain || g.readonly[instantiatedName(named)+"."+field.Name()] {
+		if plain || g.readonly[memberIdentity(named, field.Name())] {
 			prefix = "readonly "
 		}
 
@@ -344,7 +344,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 	}
 
 	for _, method := range methods {
-		if g.marks.ignored[markKey(named, method.Name())] || g.dropped[instantiatedName(named)+"."+method.Name()] {
+		if g.marks.ignored[markKey(named, method.Name())] || g.dropped[memberIdentity(named, method.Name())] {
 			continue
 		}
 

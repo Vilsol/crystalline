@@ -85,6 +85,11 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   bound at all. The first is 64-bit integers: `int64` and `uint64` stay
   JavaScript numbers, since refusing them would break ordinary Go, and every
   member carrying one is named at generate time.
+- Two packages may each declare a type of the same name. Generated identifiers
+  were built from the bare Go name, so `api.Config` and `db.Config` produced
+  one marshaller called with both. `format.Source` only parses, so nothing
+  noticed: the generator reported no error and wrote a file that failed to
+  compile in the consumer's own build. Type identity now has one owner.
 
 #### Changed
 

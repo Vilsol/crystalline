@@ -347,11 +347,11 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 		named := e.pending[0]
 		e.pending = e.pending[1:]
 
-		if _, done := e.marshallers[instantiatedName(named)]; done {
+		if _, done := e.marshallers[e.imports.goTypeName(named)]; done {
 			continue
 		}
 
-		e.marshallers[instantiatedName(named)] = ""
+		e.marshallers[e.imports.goTypeName(named)] = ""
 
 		marshal := e.emitMarshaller
 		if e.marks.isPlain(named) {
@@ -365,7 +365,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			continue
 		}
 
-		e.marshallers[instantiatedName(named)] = body
+		e.marshallers[e.imports.goTypeName(named)] = body
 	}
 
 	var helpers strings.Builder

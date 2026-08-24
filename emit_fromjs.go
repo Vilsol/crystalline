@@ -109,7 +109,7 @@ func (e *emitter) emitStructConverter(fn string, named *types.Named) (string, er
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
 	}
 
-	name := instantiatedName(named)
+	name := e.imports.goTypeName(named)
 	goType := e.declaredName(named)
 
 	var known []string
@@ -178,16 +178,16 @@ func (e *emitter) fieldFromJS(target string, label string, t types.Type) (string
 
 // typeKey renders a type as a Go identifier fragment, so each one gets exactly
 // one generated converter.
-func typeKey(t types.Type) (string, error) {
+func (e *emitter) typeKey(t types.Type) (string, error) {
 	switch typed := t.(type) {
 	case *types.Basic:
 		return strings.Title(typed.Name()), nil //nolint:staticcheck
 	case *types.Named:
-		return instantiatedName(typed), nil
+		return e.imports.goTypeName(typed), nil
 	case *types.Alias:
 		return typed.Obj().Name(), nil
 	case *types.Pointer:
-		inner, err := typeKey(typed.Elem())
+		inner, err := e.typeKey(typed.Elem())
 
 		return "Ptr" + inner, err
 	case *types.Slice:
@@ -195,20 +195,20 @@ func typeKey(t types.Type) (string, error) {
 			return "Bytes", nil
 		}
 
-		inner, err := typeKey(typed.Elem())
+		inner, err := e.typeKey(typed.Elem())
 
 		return "SliceOf" + inner, err
 	case *types.Array:
-		inner, err := typeKey(typed.Elem())
+		inner, err := e.typeKey(typed.Elem())
 
 		return "ArrayOf" + strconv.FormatInt(typed.Len(), 10) + inner, err
 	case *types.Map:
-		key, err := typeKey(typed.Key())
+		key, err := e.typeKey(typed.Key())
 		if err != nil {
 			return "", err
 		}
 
-		value, err := typeKey(typed.Elem())
+		value, err := e.typeKey(typed.Elem())
 
 		return "MapOf" + key + "To" + value, err
 	}
@@ -219,7 +219,7 @@ func typeKey(t types.Type) (string, error) {
 // ensureValueConverter generates the JS to Go conversion for a type, once, and
 // returns the name of the generated function.
 func (e *emitter) ensureValueConverter(t types.Type) (string, error) {
-	key, err := typeKey(t)
+	key, err := e.typeKey(t)
 	if err != nil {
 		return "", err
 	}

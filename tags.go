@@ -69,6 +69,25 @@ func sortedKeys[T any](data map[string]T) []string {
 // both after the bare generic collides: the declarations end up with two
 // interfaces of one name, and the Go bindings with one marshaller doing duty
 // for both.
+// typeIdentity is the one answer to "which named type is this", for anything
+// that has to find a decision about a type again later.
+//
+// The bare name is not an answer: two packages may each declare a Config, and
+// keying anything on the short name silently merges them.
+func typeIdentity(named *types.Named) string {
+	pkg := ""
+	if named.Obj().Pkg() != nil {
+		pkg = named.Obj().Pkg().Name() + "."
+	}
+
+	return pkg + instantiatedName(named)
+}
+
+// memberIdentity names one field or method of a type.
+func memberIdentity(named *types.Named, member string) string {
+	return typeIdentity(named) + "." + member
+}
+
 func instantiatedName(named *types.Named) string {
 	name := named.Obj().Name()
 

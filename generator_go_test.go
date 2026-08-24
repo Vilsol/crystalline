@@ -717,3 +717,30 @@ func TestSelfPackageBindingsCompile(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(pkg.Source, ":= .Owned()"),
 		"the empty qualifier must not leave a stray dot:\n"+pkg.Source)
 }
+
+// TestSameNamedTypesStayDistinct pins that two packages may each declare a type
+// of the same name.
+//
+// Generated identifiers were built from the bare Go name, so api.Config and
+// db.Config produced one marshaller, called with both. format.Source only
+// parses, so nothing noticed: BuildGo returned no error and an empty skip list,
+// and the file it wrote failed to compile in the consumer's own build.
+func TestSameNamedTypesStayDistinct(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/collide2/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	pkg, err := g.BuildGo(declarations, "main", "example.com/main")
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(pkg.Source, "(v *alpha.Config)"),
+		"each package needs its own marshaller:\n"+pkg.Source)
+	testza.AssertTrue(t, strings.Contains(pkg.Source, "(v *beta.Config)"),
+		"including the second one:\n"+pkg.Source)
+
+	// The names have to differ, or the file declares one function twice.
+	testza.AssertEqual(t, 0, strings.Count(pkg.Source, "func crystallineMarshalConfig("),
+		"the bare name is ambiguous:\n"+pkg.Source)
+}

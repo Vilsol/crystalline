@@ -116,3 +116,18 @@ func sanitiseAlias(name string) string {
 
 	return out.String()
 }
+
+// goTypeName is the identifier fragment generated Go uses for a named type.
+//
+// It carries the package, because two packages may each declare a Config and
+// one function cannot marshal both. The import alias is used rather than the
+// package name, since the alias is already unique across every path this file
+// refers to.
+func (i *imports) goTypeName(named *types.Named) string {
+	pkg := named.Obj().Pkg()
+	if pkg == nil {
+		return instantiatedName(named)
+	}
+
+	return capitalise(i.add(pkg.Path(), pkg.Name())) + instantiatedName(named)
+}

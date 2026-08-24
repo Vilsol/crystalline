@@ -31,7 +31,8 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
 	}
 
-	name := instantiatedName(named)
+	name := e.imports.goTypeName(named)
+	identity := typeIdentity(named)
 
 	var body strings.Builder
 
@@ -53,7 +54,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 
 		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
 		if err != nil {
-			e.skipAt(field.Pos(), name+"."+field.Name(), err.Error())
+			e.skipAt(field.Pos(), identity+"."+field.Name(), err.Error())
 
 			continue
 		}
@@ -62,10 +63,10 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 		if err != nil {
 			// A field that cannot be written back is still readable. Saying so
 			// on the way past beats accepting the write and dropping it.
-			e.readonly[name+"."+field.Name()] = true
+			e.readonly[identity+"."+field.Name()] = true
 
 			setter = "func(js.Value) {\n\t\tpanic(" +
-				strconv.Quote(name+"."+field.Name()+" cannot be written from JavaScript: "+err.Error()) + ")\n\t}"
+				strconv.Quote(identity+"."+field.Name()+" cannot be written from JavaScript: "+err.Error()) + ")\n\t}"
 		}
 
 		preamble, getter := e.fieldGetter(field.Name(), "v."+field.Name(), field.Type(), expr)
@@ -83,7 +84,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 
 		bound, err := e.emitMethod(named, method)
 		if err != nil {
-			e.skipAt(method.Pos(), name+"."+method.Name(), err.Error())
+			e.skipAt(method.Pos(), identity+"."+method.Name(), err.Error())
 
 			continue
 		}
@@ -139,7 +140,8 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
 	}
 
-	name := instantiatedName(named)
+	name := e.imports.goTypeName(named)
+	identity := typeIdentity(named)
 
 	var body strings.Builder
 
@@ -163,7 +165,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 
 		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
 		if err != nil {
-			e.skipAt(field.Pos(), name+"."+field.Name(), err.Error())
+			e.skipAt(field.Pos(), identity+"."+field.Name(), err.Error())
 
 			continue
 		}
@@ -175,7 +177,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 	// difference between a documented trade and a silent one.
 	for _, method := range exportedMethods(named) {
 		if !e.isIgnored(named, method.Name()) {
-			e.skipAt(method.Pos(), name+"."+method.Name(), "not bound: "+name+" is marshalled as plain data")
+			e.skipAt(method.Pos(), identity+"."+method.Name(), "not bound: "+identity+" is marshalled as plain data")
 		}
 	}
 
@@ -266,7 +268,7 @@ func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, er
 }
 
 func (e *emitter) queue(named *types.Named) {
-	if _, done := e.marshallers[instantiatedName(named)]; done {
+	if _, done := e.marshallers[e.imports.goTypeName(named)]; done {
 		return
 	}
 

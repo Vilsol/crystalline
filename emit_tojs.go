@@ -19,7 +19,7 @@ func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
 			if _, isStruct := named.Underlying().(*types.Struct); isStruct {
 				e.queue(named)
 
-				return marshalName(instantiatedName(named)) + "(" + expr + ")", nil
+				return marshalName(e.imports.goTypeName(named)) + "(" + expr + ")", nil
 			}
 		}
 
@@ -107,7 +107,7 @@ func (e *emitter) namedToJSExpr(expr string, t types.Type) (string, error) {
 	if _, ok := named.Underlying().(*types.Struct); ok {
 		e.queue(named)
 
-		return marshalName(instantiatedName(named)) + "(&" + expr + ")", nil
+		return marshalName(e.imports.goTypeName(named)) + "(&" + expr + ")", nil
 	}
 
 	return e.toJS(expr, named.Underlying(), false)

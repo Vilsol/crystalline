@@ -50,7 +50,8 @@ func TestGenericBindingsCompile(t *testing.T) {
 	bindings, err := g.BuildGo(declarations, "gen", "example.com/gen")
 	testza.AssertNoError(t, err, "generic bindings must render as valid Go")
 
-	// One marshaller per instantiation, each typed to its own instantiation.
-	testza.AssertTrue(t, strings.Contains(bindings.Source, "func crystallineMarshalPairOfString(v *generic.Pair[string])"), bindings.Source)
-	testza.AssertTrue(t, strings.Contains(bindings.Source, "func crystallineMarshalPairOfInt(v *generic.Pair[int])"), bindings.Source)
+	// One marshaller per instantiation, each typed to its own instantiation and
+	// each carrying the package, since two packages may both declare a Pair.
+	testza.AssertTrue(t, strings.Contains(bindings.Source, "func crystallineMarshalGenericPairOfString(v *generic.Pair[string])"), bindings.Source)
+	testza.AssertTrue(t, strings.Contains(bindings.Source, "func crystallineMarshalGenericPairOfInt(v *generic.Pair[int])"), bindings.Source)
 }

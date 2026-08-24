@@ -612,7 +612,7 @@ func crystallineFnAccountOpen(this js.Value, args []js.Value) (result any) {
 
 	r0 := account.Open(crystallineMust(crystallineToString(args[0])), crystallineMust(crystallineToInt(args[1])))
 
-	return crystallineMarshalAccount(r0)
+	return crystallineMarshalAccountAccount(r0)
 }
 
 func crystallineFnAccountTransfer(this js.Value, args []js.Value) (result any) {
@@ -622,7 +622,7 @@ func crystallineFnAccountTransfer(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("Transfer: expected 3 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := account.Transfer(crystallineMust(crystallineToPtrAccount(args[0])), crystallineMust(crystallineToPtrAccount(args[1])), crystallineMust(crystallineToInt(args[2])))
+	r0 := account.Transfer(crystallineMust(crystallineToPtrAccountAccount(args[0])), crystallineMust(crystallineToPtrAccountAccount(args[1])), crystallineMust(crystallineToInt(args[2])))
 
 	if r0 != nil {
 		return crystallineErr(r0)
@@ -638,7 +638,7 @@ func crystallineFnAccountSummarise(this js.Value, args []js.Value) (result any) 
 		return crystallineFail("Summarise: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := account.Summarise(crystallineMust(crystallineToAccount(args[0])))
+	r0 := account.Summarise(crystallineMust(crystallineToAccountAccount(args[0])))
 
 	return string(r0)
 }
@@ -659,7 +659,7 @@ func crystallineFnAccountParseAmount(this js.Value, args []js.Value) (result any
 	return crystallineOk(float64(r0))
 }
 
-func crystallineMarshalAccount(v *account.Account) any {
+func crystallineMarshalAccountAccount(v *account.Account) any {
 	if v == nil {
 		return nil
 	}
@@ -717,7 +717,7 @@ func crystallineMarshalAccount(v *account.Account) any {
 
 		r0 := v.Snapshot()
 
-		return crystallineMarshalStatement(&r0)
+		return crystallineMarshalAccountStatement(&r0)
 	})))
 	out.Set("Statement", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
@@ -751,7 +751,7 @@ func crystallineMarshalAccount(v *account.Account) any {
 	return out
 }
 
-func crystallineMarshalStatement(v *account.Statement) any {
+func crystallineMarshalAccountStatement(v *account.Statement) any {
 	if v == nil {
 		return nil
 	}
@@ -776,41 +776,41 @@ func crystallineMarshalStatement(v *account.Statement) any {
 	return out
 }
 
-var crystallineKnownAccount = map[string]bool{"Owner": true, "Balance": true, "History": true}
+var crystallineKnownAccountAccount = map[string]bool{"Owner": true, "Balance": true, "History": true}
 
-func crystallineToAccount(value js.Value) (account.Account, error) {
+func crystallineToAccountAccount(value js.Value) (account.Account, error) {
 	var out account.Account
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("Account: expected an object, got null")
+		return out, errors.New("AccountAccount: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
 		resolved, found := crystallineResolve(handle)
 		if !found {
-			return out, errors.New("Account: the value behind this handle has been released")
+			return out, errors.New("AccountAccount: the value behind this handle has been released")
 		}
 
 		typed, ok := resolved.(*account.Account)
 		if !ok {
-			return out, errors.New("Account: handle refers to a different type")
+			return out, errors.New("AccountAccount: handle refers to a different type")
 		}
 
 		return *typed, nil
 	}
 
 	if value.Type() != js.TypeObject {
-		return out, errors.New("Account: expected an object")
+		return out, errors.New("AccountAccount: expected an object")
 	}
 
-	if err := crystallineUnknownProperty(value, "Account", crystallineKnownAccount); err != nil {
+	if err := crystallineUnknownProperty(value, "AccountAccount", crystallineKnownAccountAccount); err != nil {
 		return out, err
 	}
 
 	if property := value.Get("Owner"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToString(property)
 		if err != nil {
-			return out, errors.New("Account.Owner: " + err.Error())
+			return out, errors.New("AccountAccount.Owner: " + err.Error())
 		}
 
 		out.Owner = converted
@@ -819,7 +819,7 @@ func crystallineToAccount(value js.Value) (account.Account, error) {
 	if property := value.Get("Balance"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToInt(property)
 		if err != nil {
-			return out, errors.New("Account.Balance: " + err.Error())
+			return out, errors.New("AccountAccount.Balance: " + err.Error())
 		}
 
 		out.Balance = converted
@@ -828,7 +828,7 @@ func crystallineToAccount(value js.Value) (account.Account, error) {
 	if property := value.Get("History"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToSliceOfString(property)
 		if err != nil {
-			return out, errors.New("Account.History: " + err.Error())
+			return out, errors.New("AccountAccount.History: " + err.Error())
 		}
 
 		out.History = converted
@@ -847,7 +847,7 @@ func crystallineToInt(value js.Value) (int, error) {
 	return int(value.Float()), nil
 }
 
-func crystallineToPtrAccount(value js.Value) (*account.Account, error) {
+func crystallineToPtrAccountAccount(value js.Value) (*account.Account, error) {
 	if value.IsUndefined() || value.IsNull() {
 		return nil, nil
 	}
@@ -866,7 +866,7 @@ func crystallineToPtrAccount(value js.Value) (*account.Account, error) {
 		return typed, nil
 	}
 
-	built, err := crystallineToAccount(value)
+	built, err := crystallineToAccountAccount(value)
 	if err != nil {
 		return nil, err
 	}
