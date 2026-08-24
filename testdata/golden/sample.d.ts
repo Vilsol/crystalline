@@ -134,6 +134,7 @@ export declare namespace sample {
   function Middle(first: sample.FnSample | undefined, label: string): string;
   function NewTicker(): sample.Ticker;
   function OnlyFails(ok: boolean): Result<void>;
+  function Rates(): (Record<time.Duration, string> | undefined);
   function Readings(count: number): (Array<sample.Reading> | undefined);
   function Replay(r: sample.Recorder, events: Array<string> | undefined): Promise<number>;
   function Rich(): sample.Richer;
@@ -145,5 +146,16 @@ export declare namespace sample {
   const Titles: Record<number, string> | undefined;
   function Total(nums: Array<number> | undefined): number;
 }
-export function boot(wasm: string | URL | BufferSource): Promise<{ generic: typeof generic; marshal: typeof marshal; sample: typeof sample }>;
+export declare namespace time {
+  type Duration = 1 | 1000 | 1000000 | 1000000000 | 60000000000 | 3600000000000;
+  const Duration: {
+    readonly Nanosecond: 1;
+    readonly Microsecond: 1000;
+    readonly Millisecond: 1000000;
+    readonly Second: 1000000000;
+    readonly Minute: 60000000000;
+    readonly Hour: 3600000000000;
+  };
+}
+export function boot(wasm: string | URL | BufferSource): Promise<{ generic: typeof generic; marshal: typeof marshal; sample: typeof sample; time: typeof time }>;
 export const initializeCrystalline: () => void;

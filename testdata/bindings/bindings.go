@@ -31,6 +31,7 @@ func Exports(r bind.Registry) {
 	r.Func(sample.TakesTime)
 	r.Func(sample.MakeStamped)
 	r.Func(sample.MaybeStamp)
+	r.Func(sample.Rates)
 	r.Func(sample.Advance)
 	r.Func(sample.Replay)
 

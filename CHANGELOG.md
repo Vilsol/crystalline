@@ -112,6 +112,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   that mapping `time.Time` exists to avoid, while the declarations said
   `Date`. Dereferencing is also parenthesised now, since the element's own
   conversion may call a method on it.
+- A mapped type used as a map key runs its mapping. Keys read through to the
+  underlying basic type, so the same `time.Duration` was milliseconds as a
+  value and nanoseconds as a key, both declared `number`. A mapping that
+  cannot become a property name, such as one to a `Date`, is refused.
 
 #### Changed
 

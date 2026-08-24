@@ -160,7 +160,7 @@ func (e *emitter) arrayToJSExpr(expr string, typed *types.Array, nonNil bool) (s
 }
 
 func (e *emitter) mapToJSExpr(expr string, typed *types.Map, nonNil bool) (string, error) {
-	key, err := mapKeyToString("k", typed.Key())
+	key, err := e.mapKeyToString("k", typed.Key())
 	if err != nil {
 		return "", err
 	}
@@ -180,7 +180,15 @@ func (e *emitter) mapToJSExpr(expr string, typed *types.Map, nonNil bool) (strin
 
 // mapKeyToString renders a map key as a JS property name without reaching for
 // fmt, which would drag reflect back into the binary.
-func mapKeyToString(expr string, t types.Type) (string, error) {
+//
+// A mapped type runs its mapping first. Reading through to the underlying basic
+// type instead meant the same value crossed two ways: a time.Duration was
+// milliseconds as a value and nanoseconds as a key, both declared as a number.
+func (e *emitter) mapKeyToString(expr string, t types.Type) (string, error) {
+	if mapped, ok := e.marks.marshallerFor(t); ok {
+		return e.mappedKeyToString(expr, t, mapped)
+	}
+
 	basic, ok := t.Underlying().(*types.Basic)
 	if !ok {
 		return "", fmt.Errorf("map keys of type %s are not supported", t)
@@ -200,6 +208,42 @@ func mapKeyToString(expr string, t types.Type) (string, error) {
 	}
 
 	return "", fmt.Errorf("map keys of type %s are not supported", t)
+}
+
+// mappedKeyToString renders a mapped type as a property name.
+//
+// A property name is a string, so the mapping has to produce something that can
+// become one. A mapping to a Date has no honest spelling as a key, and is
+// refused rather than quietly rendered as whatever the underlying value was.
+func (e *emitter) mappedKeyToString(expr string, t types.Type, mapped marshaller) (string, error) {
+	crossed, err := e.toJS(expr, t, false)
+	if err != nil {
+		return "", err
+	}
+
+	produced := mapped.intermediate
+	if produced == nil {
+		// A built-in mapping says what it crosses as rather than naming a type.
+		if mapped.declared == tsNumber {
+			return "strconv.FormatFloat(float64(" + crossed + "), 'f', -1, 64)", nil
+		}
+
+		return "", fmt.Errorf("a %s cannot be a map key: it crosses as a %s", t, mapped.declared)
+	}
+
+	basic, ok := produced.Underlying().(*types.Basic)
+	if !ok {
+		return "", fmt.Errorf("a %s cannot be a map key: it crosses as %s", t, produced)
+	}
+
+	switch {
+	case basic.Kind() == types.String:
+		return "string(" + crossed + ")", nil
+	case basic.Info()&types.IsNumeric != 0 && basic.Info()&types.IsComplex == 0:
+		return "strconv.FormatFloat(float64(" + crossed + "), 'f', -1, 64)", nil
+	}
+
+	return "", fmt.Errorf("a %s cannot be a map key: it crosses as %s", t, produced)
 }
 
 // fromJS renders a Go expression converting a js.Value into a Go value.

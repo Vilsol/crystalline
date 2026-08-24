@@ -110,6 +110,7 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"BadTime=threw",
 		"MaybeStamp=2020-01-02T03:04:05.000Z",
 		"MaybeStampNil=null",
+		"RateKey=1500",
 		"Colour=#203040",
 		"BadColour=threw",
 		"EnumIdle=0",
@@ -517,6 +518,9 @@ func main() {
 		// A pointer to a mapped type crosses as its counterpart, or as null.
 		out.push("MaybeStamp=" + s.MaybeStamp(true).toISOString());
 		out.push("MaybeStampNil=" + JSON.stringify(s.MaybeStamp(false)));
+
+		// A mapped type used as a key crosses the same way it does as a value.
+		out.push("RateKey=" + Object.keys(s.Rates())[0]);
 
 		// A declared mapping: Colour crosses as a string, both ways.
 		const m = globalThis.go.app.marshal;

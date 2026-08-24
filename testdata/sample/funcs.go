@@ -377,3 +377,10 @@ func MaybeStamp(ok bool) *time.Time {
 
 	return &at
 }
+
+// Rates is keyed by a mapped type. A key is a string on the other side, so the
+// mapping has to run before it becomes one: without that, the same duration was
+// milliseconds as a value and nanoseconds as a key.
+func Rates() map[time.Duration]string {
+	return map[time.Duration]string{1500 * time.Millisecond: "slow"}
+}

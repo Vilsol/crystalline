@@ -27,6 +27,7 @@ const pending = (name) => new Proxy({}, {
 export let generic = pending('generic');
 export let marshal = pending('marshal');
 export let sample = pending('sample');
+export let time = pending('time');
 
 export const initializeCrystalline = () => {
   if (globalThis['go']?.['app'] === undefined) {
@@ -56,6 +57,7 @@ export const initializeCrystalline = () => {
     NewTicker: wrap('sample.NewTicker', globalThis['go']['app']['sample']['NewTicker']),
     OnlyFails: wrap('sample.OnlyFails', globalThis['go']['app']['sample']['OnlyFails']),
     Phase: globalThis['go']['app']['sample']['Phase'],
+    Rates: wrap('sample.Rates', globalThis['go']['app']['sample']['Rates']),
     Readings: wrap('sample.Readings', globalThis['go']['app']['sample']['Readings']),
     Replay: wrap('sample.Replay', globalThis['go']['app']['sample']['Replay']),
     Rich: wrap('sample.Rich', globalThis['go']['app']['sample']['Rich']),
@@ -66,6 +68,9 @@ export const initializeCrystalline = () => {
     Ticks: wrap('sample.Ticks', globalThis['go']['app']['sample']['Ticks']),
     Titles: globalThis['go']['app']['sample']['Titles'],
     Total: wrap('sample.Total', globalThis['go']['app']['sample']['Total'])
+  };
+  time = {
+    Duration: globalThis['go']['app']['time']['Duration']
   };
 
   initialized = true;
@@ -89,5 +94,5 @@ export const boot = async (wasm) => {
 
   initializeCrystalline();
 
-  return { generic, marshal, sample };
+  return { generic, marshal, sample, time };
 };
