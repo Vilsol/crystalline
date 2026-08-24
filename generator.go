@@ -39,6 +39,10 @@ type Generator struct {
 	// profile counts and times every call made through the module.
 	profile bool
 
+	// camel renames members for JavaScript rather than keeping the Go
+	// spelling.
+	camel bool
+
 	// optionErr holds what an option could not accept. An option cannot
 	// return, and a generator that renders JavaScript with a quote character
 	// it does not have would produce a module nobody can import, so the
@@ -112,6 +116,43 @@ func WithQuoteStyle(style QuoteStyle) GeneratorOption {
 
 		g.style.quote = style
 	}
+}
+
+// WithCamelCase renames exported members for JavaScript: Timeout becomes
+// timeout, ID becomes id, HTTPServer becomes httpServer.
+//
+// Off by default, and worth leaving off. A name identical on both sides means
+// one grep finds every use of it across two languages, which is a live
+// debugging aid that costs nothing. Turn it on for a surface whose consumers
+// will never read the Go.
+//
+// Type names, namespaces, enum constants and the names given to r.Value are
+// left alone: the first three are not members, and the last was written out by
+// hand and is already whatever it was meant to be. A single field can be named
+// outright with `crystalline:"name=timeout"`, with or without this option.
+func WithCamelCase() GeneratorOption {
+	return func(g *Generator) {
+		g.camel = true
+	}
+}
+
+// jsMemberName is the one answer to what a Go member is called on the other
+// side.
+//
+// Everything that writes a name into the module, the declarations or the
+// bindings asks here, because the module and the declarations describing
+// different names is the failure this project keeps having: a name computed
+// twice is a name that can differ.
+func (g *Generator) jsMemberName(goName string, tag string) string {
+	if named, ok := tagValue(tag, tagRename); ok {
+		return named
+	}
+
+	if !g.camel {
+		return goName
+	}
+
+	return camelise(goName)
 }
 
 // WithBanner prepends text to the generated JavaScript and declarations, for

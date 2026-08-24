@@ -85,7 +85,7 @@ export declare namespace sample {
     ID: bigint;
     Balance: bigint;
     Rounded: number;
-    Note: string;
+    memo: string;
     /** Releases the Go resources behind this wrapper. */
     release(): void;
     [Symbol.dispose](): void;

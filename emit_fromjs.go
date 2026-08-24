@@ -5,6 +5,7 @@ package crystalline
 import (
 	"fmt"
 	"go/types"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -182,14 +183,17 @@ func (e *emitter) emitStructConverter(fn string, named *types.Named) (string, er
 			continue
 		}
 
-		known = append(known, strconv.Quote(field.Name())+": true")
+		tag := reflect.StructTag(structType.Tag(i)).Get(tagName)
+		jsField := e.gen.jsMemberName(field.Name(), tag)
 
-		check, err := e.fieldFromJS("out."+field.Name(), name+"."+field.Name(), field.Type())
+		known = append(known, strconv.Quote(jsField)+": true")
+
+		check, err := e.fieldFromJS("out."+field.Name(), name+"."+jsField, field.Type())
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
 		}
 
-		fields.WriteString("\tif property := value.Get(" + strconv.Quote(field.Name()) + "); !property.IsUndefined() && !property.IsNull() {\n")
+		fields.WriteString("\tif property := value.Get(" + strconv.Quote(jsField) + "); !property.IsUndefined() && !property.IsNull() {\n")
 		fields.WriteString(check)
 		fields.WriteString("\t}\n\n")
 	}
@@ -580,7 +584,7 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 				named.Obj().Name(), method.Name())
 		}
 
-		required = append(required, method.Name())
+		required = append(required, e.gen.jsMemberName(method.Name(), ""))
 
 		params := make([]string, 0, sig.Params().Len())
 		passed := make([]string, 0, sig.Params().Len())
@@ -599,7 +603,7 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 			passed = append(passed, converted)
 		}
 
-		invocation := "crystallineAwait(c.value.Call(" + strconv.Quote(method.Name())
+		invocation := "crystallineAwait(c.value.Call(" + strconv.Quote(e.gen.jsMemberName(method.Name(), ""))
 		if len(passed) > 0 {
 			invocation += ", " + strings.Join(passed, ", ")
 		}

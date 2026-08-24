@@ -257,6 +257,31 @@
 // into the outer object: reaching e.Base.Tag is one step further than Go's
 // e.Tag, and it needs no rule about which field wins when names collide.
 //
+// # Naming
+//
+// An exported Go name is the JavaScript name, so one grep finds every use of it
+// across both languages. That is the default because it is a live debugging aid
+// in a two-language codebase, and it costs nothing.
+//
+// A surface whose consumers will never read the Go can ask for the other
+// convention:
+//
+//	crystalline -case camel ...
+//
+// Timeout becomes timeout, ID becomes id, HTTPServer becomes httpServer. It
+// applies to fields, methods and functions. Type names, namespaces, enum
+// constants and the names given to r.Value are left alone: the first three are
+// not members, and the last was written out by hand and is already whatever it
+// was meant to be.
+//
+// A single member can be named outright instead, with or without the flag:
+//
+//	type Config struct {
+//		TimeoutSeconds int `crystalline:"name=timeout"`
+//	}
+//
+// The name has to be a JavaScript identifier, which is checked when generating.
+//
 // # Struct tags
 //
 // A nil slice or map maps to null, which JS code expecting a collection

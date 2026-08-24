@@ -406,7 +406,7 @@ type Ledger struct {
 	ID      int64  `crystalline:"bigint"`
 	Balance uint64 `crystalline:"bigint"`
 	Rounded int64
-	Note    string
+	Note    string `crystalline:"name=memo"`
 }
 
 // NewLedger builds a ledger whose numbers are past what a double can hold.

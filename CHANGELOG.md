@@ -30,6 +30,13 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `WithQuoteStyle` takes a `QuoteStyle` rather than a string, and `-quote`
   takes `single` or `double`. Any string was accepted before, and a typo
   produced a module that does not parse, found by whoever imported it.
+- `-case camel` and `WithCamelCase` rename fields, methods and functions for
+  JavaScript: Timeout to timeout, ID to id, HTTPServer to httpServer. Off by
+  default, because an exported Go name being the JavaScript name means one grep
+  finds both sides. Type names, namespaces, enum constants and the names given
+  to `r.Value` keep their spelling either way.
+- `crystalline:"name=timeout"` names one field outright, with or without that
+  flag. The name is checked to be a JavaScript identifier when generating.
 - `crystalline:"bigint"` on an `int64` or `uint64` field carries the value
   across as a JavaScript `BigInt` rather than as a number, exactly and in both
   directions. The field is declared `bigint`, a write that is not one is

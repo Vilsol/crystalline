@@ -37,6 +37,7 @@ func run() error {
 		watching     = flag.Bool("watch", false, "regenerate whenever a Go file under -dir changes")
 		quote        = flag.String("quote", "single", "quote style used in the generated JavaScript: single or double")
 		trailing     = flag.Bool("trailing-comma", false, "emit trailing commas in the generated JavaScript")
+		naming       = flag.String("case", "go", "how members are named in JavaScript: go or camel")
 	)
 
 	flag.Parse()
@@ -57,7 +58,16 @@ func run() error {
 		return err
 	}
 
+	camel, err := camelCase(*naming)
+	if err != nil {
+		return err
+	}
+
 	options := []crystalline.GeneratorOption{crystalline.WithQuoteStyle(style)}
+	if camel {
+		options = append(options, crystalline.WithCamelCase())
+	}
+
 	if *trailing {
 		options = append(options, crystalline.WithTrailingComma())
 	}
@@ -100,6 +110,19 @@ func quoteStyle(flag string) (crystalline.QuoteStyle, error) {
 	}
 
 	return 0, fmt.Errorf("-quote must be single or double, got %q", flag)
+}
+
+// camelCase reads the flag, which is the one place the naming is a string
+// rather than a choice.
+func camelCase(flag string) (bool, error) {
+	switch flag {
+	case "go":
+		return false, nil
+	case "camel":
+		return true, nil
+	}
+
+	return false, fmt.Errorf("-case must be go or camel, got %q", flag)
 }
 
 // build runs one generation, from loaded packages to written files.

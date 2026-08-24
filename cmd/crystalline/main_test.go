@@ -132,3 +132,16 @@ func TestQuoteFlagIsAChoice(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(err.Error(), "single or double"),
 		"the error must say what is accepted, got: "+err.Error())
 }
+
+func TestCaseFlagIsAChoice(t *testing.T) {
+	for name, expected := range map[string]bool{"go": false, "camel": true} {
+		got, err := camelCase(name)
+		testza.AssertNoError(t, err, name+" must be accepted")
+		testza.AssertEqual(t, expected, got, name+" must resolve to the right naming")
+	}
+
+	_, err := camelCase("snake")
+	testza.AssertNotNil(t, err, "an unknown naming must be reported")
+	testza.AssertTrue(t, strings.Contains(err.Error(), "go or camel"),
+		"the error must say what is accepted, got: "+err.Error())
+}

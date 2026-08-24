@@ -219,7 +219,7 @@ func (g *Generator) renderEntity(namespace string, entry entry) (string, error) 
 			promise = promise || g.isPromise(entry.Object)
 		}
 
-		rendered, err := g.renderSignature(entry.Name, sig, true, promise)
+		rendered, err := g.renderSignature(g.jsMemberName(entry.Name, ""), sig, true, promise)
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", namespace, entry.Name, err)
 		}
@@ -256,13 +256,21 @@ func (g *Generator) renderNamespaceJS(namespace string, bound []entry, enums []s
 	accessors := make(map[string]string, len(bound)+len(enums))
 
 	for _, entry := range bound {
-		access := prefix + "[" + g.style.quoted(entry.Name) + "]"
-		if _, isFunc := entry.Type.(*types.Signature); isFunc {
-			access = "wrap(" + g.style.quoted(namespace+"."+entry.Name) + ", " + access + ")"
+		// The name the bindings published, which is what this has to read back
+		// out of the object graph. A value carries the name its manifest gave
+		// it; a function carries whatever its members are called.
+		published := entry.Name
+		if entry.Kind == entryFunc {
+			published = g.jsMemberName(entry.Name, "")
 		}
 
-		names = append(names, entry.Name)
-		accessors[entry.Name] = access
+		access := prefix + "[" + g.style.quoted(published) + "]"
+		if _, isFunc := entry.Type.(*types.Signature); isFunc {
+			access = "wrap(" + g.style.quoted(namespace+"."+published) + ", " + access + ")"
+		}
+
+		names = append(names, published)
+		accessors[published] = access
 	}
 
 	// An enum's constants are a value like any other, and not callable, so they
@@ -346,7 +354,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 			prefix = "readonly "
 		}
 
-		result.WriteString("    " + prefix + field.Name() + marker + ": " + jsName + ";\n")
+		result.WriteString("    " + prefix + g.jsMemberName(field.Name(), tag) + marker + ": " + jsName + ";\n")
 	}
 
 	// Plain data carries no methods, so declaring them would promise something
@@ -363,7 +371,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 
 		promise := g.marks.promised[markKey(named, method.Name())] || g.isPromise(method)
 
-		signature, err := g.renderSignature(method.Name(), method.Type().(*types.Signature), true, promise)
+		signature, err := g.renderSignature(g.jsMemberName(method.Name(), ""), method.Type().(*types.Signature), true, promise)
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), method.Name(), err)
 		}
@@ -415,7 +423,7 @@ func (g *Generator) renderSupplied(named *types.Named, declared *types.Interface
 	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
 
 	for _, method := range methods {
-		signature, err := g.renderSignature(method.Name(), method.Type().(*types.Signature), true, false)
+		signature, err := g.renderSignature(g.jsMemberName(method.Name(), ""), method.Type().(*types.Signature), true, false)
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), method.Name(), err)
 		}

@@ -391,7 +391,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			}
 
 			registrations.WriteString("\tcrystallineNamespace(" + strconv.Quote(e.gen.appName) + ", " + strconv.Quote(entry.Namespace) + ").Set(" +
-				strconv.Quote(entry.Name) + ", crystallineWrap(js.FuncOf(" + wrapperName(entry) + ")))\n")
+				strconv.Quote(e.gen.jsMemberName(entry.Name, "")) + ", crystallineWrap(js.FuncOf(" + wrapperName(entry) + ")))\n")
 			wrappers.WriteString(wrapper)
 		case entryValue:
 			branch, err := e.emitDeclaredValue(entry)

@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -95,6 +97,9 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"BigWrite=9007199254740995",
 		"BigBad=threw",
 		"BigRange=threw",
+		"Renamed=exact",
+		"RenamedGone=true",
+		"RenamedWrites=written",
 		"StructIdentity=written",
 		"StructLiteral=literal",
 		"TypoRejected=yes",
@@ -456,6 +461,12 @@ func main() {
 			bigBad = e.message.includes("expected a bigint") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("BigBad=" + bigBad);
+
+		// A field named outright, with camelCase off. The Go name must be gone
+		// rather than there as well.
+		out.push("Renamed=" + ledger.memo);
+		out.push("RenamedGone=" + (ledger.Note === undefined));
+		out.push("RenamedWrites=" + (() => { ledger.memo = "written"; return ledger.memo; })());
 
 		let bigRange = "accepted";
 		try {
@@ -1023,4 +1034,124 @@ func TestBigIntFieldsAreNotWarnedAbout(t *testing.T) {
 	}
 
 	testza.AssertTrue(t, warned, "Ledger.Rounded is an untagged int64 and must still be named")
+}
+
+// camelCase has to reach every place a Go name becomes a JavaScript one, and
+// there are a dozen of them across the module, the declarations and the
+// bindings. A spot check would pass while one of them still spelled the name
+// the other way, which is the shape of every serious bug this project has had.
+//
+// So this asserts completeness rather than a sample: it collects every
+// JS-visible member name out of the generated output and fails naming the ones
+// that are still spelled in Go. Type names, namespaces, enum constants and the
+// names given to r.Value are excluded deliberately — see WithCamelCase.
+func TestCamelCaseReachesEveryName(t *testing.T) {
+	g := NewGenerator("app", WithCamelCase())
+	testza.AssertNoError(t, g.Load(".", "./testdata/bindings/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	rendered, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	bindings, err := g.BuildGo(declarations)
+	testza.AssertNoError(t, err)
+
+	capitalised := func(name string) bool {
+		return name != "" && name[0] >= 'A' && name[0] <= 'Z'
+	}
+
+	var wrong []string
+
+	// The bindings: every name published into the JS object graph.
+	for _, pattern := range []*regexp.Regexp{
+		regexp.MustCompile(`crystallineDefine\(scope, out, "([^"]+)"`),
+		regexp.MustCompile(`out\.Set\("([^"]+)"`),
+		regexp.MustCompile(`\)\.Set\("([^"]+)", crystallineWrap`),
+		regexp.MustCompile(`value\.Get\("([^"]+)"\)`),
+		regexp.MustCompile(`c\.value\.Call\("([^"]+)"`),
+	} {
+		for _, found := range pattern.FindAllStringSubmatch(bindings.Source, -1) {
+			if capitalised(found[1]) {
+				wrong = append(wrong, "bindings: "+found[1])
+			}
+		}
+	}
+
+	// An enum's constants keep their Go names deliberately, and they render in
+	// the same shape as an interface member, so they come out before the scan
+	// rather than being excused inside it.
+	enums := regexp.MustCompile(`(?s)  const \w+: \{.*?\n  \};\n`)
+	declared := enums.ReplaceAllString(rendered.TypeScript, "")
+
+	// The declarations: members of an interface, and exported functions.
+	for _, pattern := range []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^    (?:readonly )?([A-Za-z_$][\w$]*)[?]?(?:\(|:)`),
+		regexp.MustCompile(`(?m)^  function ([A-Za-z_$][\w$]*)\(`),
+	} {
+		for _, found := range pattern.FindAllStringSubmatch(declared, -1) {
+			if capitalised(found[1]) {
+				wrong = append(wrong, "declarations: "+found[1])
+			}
+		}
+	}
+
+	slices.Sort(wrong)
+	wrong = slices.Compact(wrong)
+
+	testza.AssertEqual(t, 0, len(wrong),
+		"these names are still spelled in Go:\n"+strings.Join(wrong, "\n"))
+}
+
+// The module reads each binding back out of the JavaScript object graph by
+// name, and the bindings put it there by name. Those are two computations of
+// one string in two files, which is the shape of every serious bug this project
+// has had: renaming for camelCase changed one of them and left the module
+// reading a property that no longer existed.
+//
+// So rather than checking the spelling, this checks that they agree.
+func TestModuleReadsWhatTheBindingsPublish(t *testing.T) {
+	for _, spelling := range []struct {
+		name    string
+		options []GeneratorOption
+	}{
+		{name: "go names"},
+		{name: "camelCase", options: []GeneratorOption{WithCamelCase()}},
+	} {
+		g := NewGenerator("app", spelling.options...)
+		testza.AssertNoError(t, g.Load(".", "./testdata/bindings/..."))
+
+		declarations, err := g.Declarations()
+		testza.AssertNoError(t, err)
+
+		rendered, err := g.Build(declarations)
+		testza.AssertNoError(t, err)
+
+		bindings, err := g.BuildGo(declarations)
+		testza.AssertNoError(t, err)
+
+		published := make(map[string]bool)
+		for _, found := range regexp.MustCompile(`\)\.Set\("([^"]+)"`).FindAllStringSubmatch(bindings.Source, -1) {
+			published[found[1]] = true
+		}
+
+		testza.AssertTrue(t, len(published) > 0, spelling.name+": nothing was published")
+
+		// Every property the module reads off a namespace object.
+		read := regexp.MustCompile(`\['app'\]\['\w+'\]\['([^']+)'\]`)
+
+		var missing []string
+
+		for _, found := range read.FindAllStringSubmatch(rendered.JavaScript, -1) {
+			if !published[found[1]] {
+				missing = append(missing, found[1])
+			}
+		}
+
+		slices.Sort(missing)
+
+		testza.AssertEqual(t, 0, len(missing),
+			spelling.name+": the module reads names the bindings never published: "+strings.Join(slices.Compact(missing), ", "))
+	}
 }

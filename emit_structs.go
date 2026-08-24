@@ -102,7 +102,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 		preamble, getter := e.fieldGetter(field.Name(), "v."+field.Name(), field.Type(), expr)
 
 		body.WriteString(preamble)
-		body.WriteString("\tcrystallineDefine(scope, out, " + strconv.Quote(field.Name()) + ", " + getter + ", " + setter + ")\n")
+		body.WriteString("\tcrystallineDefine(scope, out, " + strconv.Quote(e.gen.jsMemberName(field.Name(), tag)) + ", " + getter + ", " + setter + ")\n")
 	}
 
 	methods := exportedMethods(named)
@@ -119,7 +119,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 			continue
 		}
 
-		body.WriteString("\tout.Set(" + strconv.Quote(method.Name()) + ", " + bound + ")\n")
+		body.WriteString("\tout.Set(" + strconv.Quote(e.gen.jsMemberName(method.Name(), "")) + ", " + bound + ")\n")
 	}
 
 	body.WriteString("\n\tcrystallineAttach(out, crystallineRetain(v, scope), scope)\n\n")
@@ -200,7 +200,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 			continue
 		}
 
-		body.WriteString("\tout.Set(" + strconv.Quote(field.Name()) + ", " + expr + ")\n")
+		body.WriteString("\tout.Set(" + strconv.Quote(e.gen.jsMemberName(field.Name(), tag)) + ", " + expr + ")\n")
 	}
 
 	// Methods have nowhere to live on plain data. Saying which ones went is the
@@ -289,7 +289,7 @@ func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, er
 	body.WriteString("crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {\n")
 	body.WriteString("\t\tdefer crystallineRecover(&result)\n\n")
 	body.WriteString("\t\tif len(args) != " + strconv.Itoa(sig.Params().Len()) + " {\n")
-	body.WriteString("\t\t\treturn crystallineFail(" + strconv.Quote(method.Name()+": expected "+strconv.Itoa(sig.Params().Len())+" arguments, got ") + " + strconv.Itoa(len(args)))\n")
+	body.WriteString("\t\t\treturn crystallineFail(" + strconv.Quote(e.gen.jsMemberName(method.Name(), "")+": expected "+strconv.Itoa(sig.Params().Len())+" arguments, got ") + " + strconv.Itoa(len(args)))\n")
 	body.WriteString("\t\t}\n\n")
 	body.WriteString(wrapPromise(returns, e.isPromised(named, method.Name(), method) || asyncSignature(sig), 2))
 	body.WriteString("\t}))")

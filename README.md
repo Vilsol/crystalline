@@ -24,6 +24,8 @@ Go to JavaScript bindings for WebAssembly, generated from source.
   packages may each declare a `Config`.
 * The generated module starts itself: `const { api } = await boot("app.wasm")`.
 * Skips and warnings carry `file:line`, so editors and CI annotate them.
+* Go names are the JavaScript names, so a grep finds both sides. `-case camel`
+  or `crystalline:"name=timeout"` when you would rather they were not.
 * `-watch` regenerates on save, `-profile` counts crossings, and the output
   files, quote style, trailing commas and banner are all configurable.
 * Builds under TinyGo too, at about a fifth of the size — with one caveat about
@@ -144,6 +146,7 @@ await api.Restock({ Notify: (m) => log(m) }, names);
 | `[]byte`, `[N]byte` | `Uint8Array` |
 | `[]T`, `[N]T` | `Array<T>` |
 | `[]T` with `crystalline:"not_nil"` | `Array<T>`, empty instead of null |
+| any field with `crystalline:"name=x"` | declared as `x` |
 | `map[K]V` | `Record<K, V>` |
 | `*T` | `T \| undefined` |
 | `struct` | `interface`, live fields and methods |

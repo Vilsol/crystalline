@@ -7,6 +7,7 @@ import (
 	"go/types"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // Struct tag options recognised on the `crystalline` key.
@@ -14,9 +15,10 @@ const (
 	tagName   = "crystalline"
 	tagNotNil = "not_nil"
 	tagBigInt = "bigint"
+	tagRename = "name"
 )
 
-var knownTagOptions = []string{tagNotNil, tagBigInt}
+var knownTagOptions = []string{tagNotNil, tagBigInt, tagRename + "=<name>"}
 
 // tagHasOption reports whether a crystalline struct tag carries an option.
 func tagHasOption(tag string, want string) bool {
@@ -47,6 +49,18 @@ func validateTag(tag string, t types.Type) error {
 
 		option = strings.TrimSpace(option)
 		if option == "" {
+			continue
+		}
+
+		if key, value, assigned := strings.Cut(option, "="); assigned {
+			if key != tagRename {
+				return fmt.Errorf("unknown %s tag option %q (known options: %s)", tagName, key, strings.Join(knownTagOptions, ", "))
+			}
+
+			if !isJSIdentifier(value) {
+				return fmt.Errorf("%s=%s is not a JavaScript identifier", tagRename, value)
+			}
+
 			continue
 		}
 
@@ -85,6 +99,52 @@ func isUnsignedWide(t types.Type) bool {
 	basic, ok := t.Underlying().(*types.Basic)
 
 	return ok && basic.Kind() == types.Uint64
+}
+
+// tagValue reads an option written as key=value.
+func tagValue(tag string, key string) (string, bool) {
+	for len(tag) > 0 {
+		var option string
+		option, tag, _ = strings.Cut(tag, ",")
+
+		if name, value, assigned := strings.Cut(strings.TrimSpace(option), "="); assigned && name == key {
+			return value, true
+		}
+	}
+
+	return "", false
+}
+
+// camelise lowers the leading run of capitals rather than only the first
+// letter, so ID becomes id and HTTPServer becomes httpServer. Lowering one
+// letter would give hTTPServer, which is nobody's convention.
+func camelise(name string) string {
+	if name == "" {
+		return name
+	}
+
+	runes := []rune(name)
+
+	upper := 0
+	for upper < len(runes) && unicode.IsUpper(runes[upper]) {
+		upper++
+	}
+
+	if upper == 0 {
+		return name
+	}
+
+	// A run that ends before the name does starts the next word, so it keeps
+	// its capital: the S of HTTPServer.
+	if upper > 1 && upper < len(runes) {
+		upper--
+	}
+
+	for i := range upper {
+		runes[i] = unicode.ToLower(runes[i])
+	}
+
+	return string(runes)
 }
 
 // sortedKeys returns a map's keys in a stable order.

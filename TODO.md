@@ -20,24 +20,6 @@ JavaScript render what Go computed.
 
 Revisit if someone shows a workload that genuinely has to originate in Go.
 
-### Opt-in bigint for 64-bit integers
-
-`int64` and `uint64` are bound as JavaScript numbers with a warning, because
-refusing them would break ordinary Go. A `crystalline:"bigint"` field tag would
-let a project carry the exact value where the range genuinely matters.
-
-Against it: `JSON.stringify` throws on a bigint, and mixing one with a number
-throws a `TypeError`, so the choice leaks into the caller's arithmetic. Opt-in
-rather than default for that reason.
-
-### Opt-in camelCase
-
-A `-case camel` flag, and a `crystalline:"name=timeout"` tag for individual
-members. The tag parser in `tags.go` already handles options.
-
-Not the default: an exported Go name being the JavaScript name means a grep
-finds both sides, which is a live debugging aid in a two-language codebase.
-
 ## Declined
 
 ### Generated batching
@@ -57,6 +39,17 @@ rather than assumed to be the first.
 The evidence against it is that the second hot spot in a real migration was a
 map read rather than a call, which batching cannot touch, and `r.Plain` fixed
 it for nothing.
+
+### bigint and camelCase as defaults
+
+Both shipped in 0.1.0 as opt-ins: `crystalline:"bigint"` on a field, and
+`-case camel` or `crystalline:"name=..."` for naming.
+
+Neither becomes the default. A bigint leaks into the caller's arithmetic —
+`JSON.stringify` throws on one and mixing it with a number is a `TypeError` — so
+every consumer would pay for a range most of them do not use. And an exported Go
+name being the JavaScript name means one grep finds both sides of a
+two-language codebase, which is worth more than matching a convention.
 
 ### Chasing full TinyGo support
 

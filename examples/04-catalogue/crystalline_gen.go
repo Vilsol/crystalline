@@ -591,6 +591,60 @@ func crystallineRecover(result *any) {
 	}
 }
 
+// crystallineBigInt and crystallineBigUint hand a 64-bit integer over as a
+// JavaScript BigInt, which carries it exactly where a number cannot.
+func crystallineBigInt(value int64) any {
+	return js.Global().Get("BigInt").Invoke(strconv.FormatInt(value, 10))
+}
+
+func crystallineBigUint(value uint64) any {
+	return js.Global().Get("BigInt").Invoke(strconv.FormatUint(value, 10))
+}
+
+// crystallineBigIntText reads the digits of a JavaScript BigInt, and reports
+// whether it was one.
+//
+// Nothing here may look at the value through syscall/js. Value.Type panics with
+// "bad type flag" on a BigInt — there is no type constant for one — and Get and
+// Call check the type first, so even asking what it is crashes. JavaScript is
+// asked instead, through calls that only pass the reference along.
+func crystallineBigIntText(value js.Value) (string, bool) {
+	tag := js.Global().Get("Object").Get("prototype").Get("toString").Call("call", value)
+	if tag.String() != "[object BigInt]" {
+		return "", false
+	}
+
+	return js.Global().Get("String").Invoke(value).String(), true
+}
+
+func crystallineToBigInt(value js.Value) (int64, error) {
+	text, ok := crystallineBigIntText(value)
+	if !ok {
+		return 0, errors.New("expected a bigint")
+	}
+
+	parsed, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return 0, errors.New(text + " does not fit in an int64")
+	}
+
+	return parsed, nil
+}
+
+func crystallineToBigUint(value js.Value) (uint64, error) {
+	text, ok := crystallineBigIntText(value)
+	if !ok {
+		return 0, errors.New("expected a bigint")
+	}
+
+	parsed, err := strconv.ParseUint(text, 10, 64)
+	if err != nil {
+		return 0, errors.New(text + " does not fit in a uint64")
+	}
+
+	return parsed, nil
+}
+
 // crystallineMust unwraps a conversion, turning a failure into a panic that the
 // wrapper's recover reports back to JS as a thrown Error.
 func crystallineMust[T any](value T, err error) T {
