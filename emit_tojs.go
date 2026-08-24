@@ -52,7 +52,14 @@ func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
 			return "", err
 		}
 
-		return "crystallineIterator(func() (any, bool) {\n\t\titem, ok := <-" + expr + "\n\t\tif !ok {\n\t\t\treturn nil, false\n\t\t}\n\n\t\treturn " + inner + ", true\n\t})", nil
+		// A returned stream outlives the call, so anything scoped to the call
+		// is handed to the stream to tear down instead.
+		stop := e.streamStop
+		if stop == "" {
+			stop = "func() {}"
+		}
+
+		return "crystallineIterator(func() (any, bool) {\n\t\titem, ok := <-" + expr + "\n\t\tif !ok {\n\t\t\treturn nil, false\n\t\t}\n\n\t\treturn " + inner + ", true\n\t}, " + stop + ")", nil
 	}
 
 	return "", fmt.Errorf("un-convertable type: %s", t)

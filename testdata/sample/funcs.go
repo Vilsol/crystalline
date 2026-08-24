@@ -147,3 +147,35 @@ func First(values <-chan int) int {
 
 	return -1
 }
+
+// Middle takes a pointer before a required parameter. A pointer means null is
+// allowed, not that the argument may be left out, so the declaration must not
+// mark it optional: a required parameter cannot follow an optional one.
+func Middle(first *FnSample, label string) string {
+	if first == nil {
+		return label
+	}
+
+	return first.FirstValue + label
+}
+
+// Ticks streams count values under a context. The context governs the stream
+// rather than the call that hands it back, so cancelling it must end the
+// stream, and leaving it alone must let the stream finish.
+func Ticks(ctx context.Context, count int) <-chan int {
+	out := make(chan int)
+
+	go func() {
+		defer close(out)
+
+		for i := range count {
+			select {
+			case out <- i:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return out
+}

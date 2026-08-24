@@ -100,13 +100,9 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, error) {
 	sig := method.Type().(*types.Signature)
 
-	call, preamble, err := e.emitArguments(sig)
-	if err != nil {
-		return "", err
-	}
-
-	returns, err := e.emitReturn("v."+method.Name()+"("+strings.Join(call, ", ")+")", sig.Results())
-	returns = preamble + returns
+	returns, err := e.emitCall(sig, func(call []string) string {
+		return "v." + method.Name() + "(" + strings.Join(call, ", ") + ")"
+	})
 	if err != nil {
 		return "", err
 	}

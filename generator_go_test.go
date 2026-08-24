@@ -79,6 +79,13 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"SumAsync=30",
 		"First=1",
 		"FeedStopped=true",
+		// A pointer parameter takes null as well as a value.
+		"MiddleNull=!",
+		"MiddleValue=hello!",
+		// A returned stream outlives the call that produced it.
+		"Ticks=0,1,2,3",
+		"TicksAborted=ended",
+		"TicksBroke=ok",
 		// Cancellation.
 		"Cancellable=live",
 		"Aborted=yes",
@@ -285,6 +292,34 @@ func main() {
 		}
 		out.push("Stream=" + streamed.join(","));
 
+		// A pointer parameter accepts null and a wrapper alike.
+		out.push("MiddleNull=" + s.Middle(null, "!"));
+		out.push("MiddleValue=" + s.Middle(s.FooBar(), "!"));
+
+		// A context governs a returned stream, not the call that hands it
+		// back, so the stream must survive the call returning.
+		const ticks = [];
+		for await (const tick of await s.Ticks(undefined, 4)) {
+			ticks.push(tick);
+		}
+		out.push("Ticks=" + ticks.join(","));
+
+		// Aborting must end a stream that would otherwise run for a long time.
+		const stopper = new AbortController();
+		let seen = 0;
+		for await (const tick of await s.Ticks(stopper.signal, 100000)) {
+			seen++;
+			if (seen === 2) { stopper.abort(); }
+		}
+		out.push("TicksAborted=" + (seen < 10 ? "ended" : "ran " + seen));
+
+		// Breaking out of the loop must not hang.
+		const broken = new AbortController();
+		for await (const tick of await s.Ticks(broken.signal, 100000)) {
+			break;
+		}
+		out.push("TicksBroke=ok");
+
 		out.push("Cancellable=" + (await s.Cancellable(undefined, "live")).unwrap());
 
 		// A channel parameter accepts anything iterable.
@@ -377,4 +412,37 @@ func TestUndirectedChannelParameterIsReported(t *testing.T) {
 
 	testza.AssertTrue(t, strings.Contains(joined, "must say its direction"),
 		"an undirected channel parameter must be reported, got:\n"+joined)
+}
+
+// TestStreamedContextOutlivesTheCall pins the lifetime rule a returned channel
+// needs: cancelling on the way out of the call ended the stream before
+// JavaScript had read anything from it, which showed up as an empty iterable
+// rather than as an error.
+func TestStreamedContextOutlivesTheCall(t *testing.T) {
+	pkg, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	streaming := wrapperBody(t, pkg.Source, "crystallineFnSampleTicks")
+
+	testza.AssertFalse(t, strings.Contains(streaming, "defer crystallineStop()"),
+		"a returned stream must not have its context cancelled when the call returns:\n"+streaming)
+	testza.AssertTrue(t, strings.Contains(streaming, "}, crystallineStop)"),
+		"the stream must take over the cancellation:\n"+streaming)
+
+	// A call that does not stream keeps the ordinary lifetime.
+	plain := wrapperBody(t, pkg.Source, "crystallineFnSampleCancellable")
+
+	testza.AssertTrue(t, strings.Contains(plain, "defer crystallineStop()"),
+		"a call that ends when it returns must still cancel on the way out:\n"+plain)
+}
+
+func wrapperBody(t *testing.T, source string, name string) string {
+	t.Helper()
+
+	start := strings.Index(source, "func "+name)
+	testza.AssertNotEqual(t, -1, start, "no wrapper named "+name)
+
+	body := source[start:]
+
+	return body[:strings.Index(body, "\n}\n")]
 }

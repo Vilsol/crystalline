@@ -17,4 +17,6 @@ func Exports(r bind.Registry) {
 	r.Func(sample.Cancellable)
 	r.Func(sample.Sum)
 	r.Func(sample.First)
+	r.Func(sample.Middle)
+	r.Func(sample.Ticks)
 }

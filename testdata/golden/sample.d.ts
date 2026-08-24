@@ -39,9 +39,11 @@ export declare namespace sample {
   function First(values: AsyncIterable<number>): Promise<number>;
   function FooBar(): sample.FnSample;
   function MayFail(ok: boolean): Result<string>;
+  function Middle(first: sample.FnSample | undefined, label: string): string;
   function OnlyFails(ok: boolean): Result<void>;
   function Rich(): sample.Richer;
   function Stream(count: number): AsyncIterable<string>;
   function Sum(values: AsyncIterable<number>): Promise<number>;
+  function Ticks(signal: AbortSignal, count: number): Promise<AsyncIterable<number>>;
 }
 export const initializeCrystalline: () => void;

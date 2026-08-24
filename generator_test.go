@@ -197,3 +197,19 @@ func TestBidirectionalChannelParameterIsRejected(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(err.Error(), "<-chan"),
 		"the error must say how to fix it, got: "+errText(err))
 }
+
+// TestPointerParametersStayRequired pins that a pointer parameter renders as a
+// union rather than an optional parameter.
+//
+// A pointer means null is allowed, not that the argument may be omitted, and
+// TypeScript rejects a required parameter that follows an optional one, so the
+// question-mark form produced a declaration file that would not compile.
+func TestPointerParametersStayRequired(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Middle(first: sample.FnSample | undefined, label: string): string;"),
+		"a pointer parameter must stay required:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "first?:"),
+		"a pointer parameter must not be marked optional:\n"+out.TypeScript)
+}

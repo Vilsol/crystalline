@@ -313,12 +313,14 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 			argName = fmt.Sprintf("arg%d", i+1)
 		}
 
-		marker := ": "
+		// A pointer means null is allowed, not that the argument may be left
+		// out, so it stays required and widens instead. Marking it optional
+		// would also make any required parameter after it a syntax error.
 		if optional {
-			marker = "?: "
+			jsName += orUndefined
 		}
 
-		result.WriteString(argName + marker + jsName)
+		result.WriteString(argName + ": " + jsName)
 
 		// A callback parameter forces the whole call to be asynchronous.
 		if _, isFunc := param.Type().Underlying().(*types.Signature); isFunc {

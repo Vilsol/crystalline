@@ -91,6 +91,17 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   explanatory error rather than a `TypeError`.
 - Coverage is collected in `atomic` mode; the flag was being parsed as a
   filename.
+- A pointer parameter is declared as `T | undefined` rather than as an
+  optional parameter. TypeScript rejects a required parameter that follows an
+  optional one, so any function with a pointer before another parameter
+  produced declarations that would not compile.
+- A context combined with a returned channel no longer cancels the stream
+  before anything has been read from it. The cancellation was scoped to the
+  call, which returns as soon as it has handed the stream over, so the
+  iterable arrived silently empty.
+- An async iterable returned from Go now has a `return` method, so breaking
+  out of a `for await` tears down whatever governs the stream instead of
+  leaving it running.
 
 ### Migrating from 0.0.15
 

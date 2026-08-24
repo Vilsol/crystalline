@@ -78,6 +78,10 @@ type emitter struct {
 	// marks carries the method decisions a manifest declared.
 	marks marks
 
+	// streamStop names the teardown a returned channel takes over, empty when
+	// the call has nothing that outlives it.
+	streamStop string
+
 	// marshallers holds the generated struct marshal helpers, keyed by type
 	// name so each is emitted once.
 	marshallers map[string]string
@@ -300,22 +304,12 @@ func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
 	body.WriteString("\t\treturn crystallineFail(" + strconv.Quote(fn.Name()+": expected "+strconv.Itoa(sig.Params().Len())+" arguments, got ") + " + strconv.Itoa(len(args)))\n")
 	body.WriteString("\t}\n\n")
 
-	call, preamble, err := e.emitArguments(sig)
+	returns, err := e.emitCall(sig, func(call []string) string {
+		return e.qualifier(fn.Pkg()) + "." + fn.Name() + "(" + strings.Join(call, ", ") + ")"
+	})
 	if err != nil {
 		return "", err
 	}
-
-	invocation := e.qualifier(fn.Pkg()) + "." + fn.Name() + "(" + strings.Join(call, ", ") + ")"
-
-	returns, err := e.emitReturn(invocation, sig.Results())
-	if err != nil {
-		return "", err
-	}
-
-	// The preamble sets up feeds and cancellation whose lifetime is the call,
-	// so it belongs inside the promise body. Left in the wrapper, its deferred
-	// teardown would run the moment the promise was handed back.
-	returns = preamble + returns
 
 	body.WriteString(wrapPromise(returns, entry.Promise || e.gen.isPromise(fn) || hasCallback(sig) || takesContext(sig) || takesChannel(sig), 1))
 	body.WriteString("}\n\n")
@@ -367,9 +361,56 @@ func wrapPromise(returns string, promise bool, depth int) string {
 	return indent + "return crystallinePromise(func() any {\n" + inner + "\n" + indent + "})\n"
 }
 
+// emitCall renders the argument conversions, the call itself and the conversion
+// of its results, with the preamble folded in.
+//
+// The preamble sets up feeds and cancellation, so it belongs inside the promise
+// body: left in the wrapper, its deferred teardown would run the moment the
+// promise was handed back.
+//
+// A context normally lives exactly as long as the call. When the result is a
+// stream, the caller reads it after the call has returned, so cancelling on the
+// way out would end the stream before anything had been read from it. The
+// cancellation is handed to the stream instead, which runs it once the stream
+// ends however it ends.
+func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) string) (string, error) {
+	streaming := takesContext(sig) && returnsChannel(sig)
+
+	call, preamble, err := e.emitArguments(sig, !streaming)
+	if err != nil {
+		return "", err
+	}
+
+	if streaming {
+		e.streamStop = "crystallineStop"
+		defer func() { e.streamStop = "" }()
+	}
+
+	returns, err := e.emitReturn(invoke(call), sig.Results())
+	if err != nil {
+		return "", err
+	}
+
+	return preamble + returns, nil
+}
+
+// returnsChannel reports whether the call hands back a stream, which the caller
+// reads after the call itself has returned.
+func returnsChannel(sig *types.Signature) bool {
+	results := sig.Results()
+
+	for i := range results.Len() {
+		if _, ok := results.At(i).Type().Underlying().(*types.Chan); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 // emitArguments renders the conversion of every parameter, plus any preamble
 // the conversions need.
-func (e *emitter) emitArguments(sig *types.Signature) ([]string, string, error) {
+func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string, string, error) {
 	call := make([]string, 0, sig.Params().Len())
 
 	var preamble strings.Builder
@@ -380,7 +421,12 @@ func (e *emitter) emitArguments(sig *types.Signature) ([]string, string, error) 
 		// A leading context is driven by an AbortSignal rather than converted.
 		if i == 0 && isContextType(param.Type()) {
 			preamble.WriteString("\tcrystallineCtx, crystallineStop := crystallineContext(args[0])\n")
-			preamble.WriteString("\tdefer crystallineStop()\n\n")
+
+			if deferStop {
+				preamble.WriteString("\tdefer crystallineStop()\n\n")
+			} else {
+				preamble.WriteString("\n")
+			}
 
 			call = append(call, "crystallineCtx")
 

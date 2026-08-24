@@ -114,8 +114,15 @@ func crystallineWrap(fn js.Func) js.Value {
 // same idea spelled the other language's way.
 //
 // next is called once per iteration and reports the value plus whether the
-// channel is still open.
-func crystallineIterator(next func() (any, bool)) any {
+// channel is still open. stop tears down whatever governs the stream, and runs
+// once the stream ends however it ends.
+func crystallineIterator(next func() (any, bool), stop func()) any {
+	var once sync.Once
+
+	finish := func() {
+		once.Do(stop)
+	}
+
 	iterator := js.Global().Get("Object").New()
 
 	iterator.Set("next", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -124,6 +131,8 @@ func crystallineIterator(next func() (any, bool)) any {
 
 			value, ok := next()
 			if !ok {
+				finish()
+
 				result.Set("done", true)
 				result.Set("value", nil)
 
@@ -135,6 +144,19 @@ func crystallineIterator(next func() (any, bool)) any {
 
 			return result
 		})
+	}))
+
+	// A consumer that stops early -- breaking out of a for await -- asks the
+	// iterator to return. That is the only notice Go gets that nobody is
+	// reading any more, so it is where an abandoned stream is torn down.
+	iterator.Set("return", js.FuncOf(func(this js.Value, args []js.Value) any {
+		finish()
+
+		result := js.Global().Get("Object").New()
+		result.Set("done", true)
+		result.Set("value", nil)
+
+		return result
 	}))
 
 	iterable := js.Global().Get("Object").New()
