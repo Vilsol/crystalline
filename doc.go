@@ -1,58 +1,91 @@
 // Package crystalline exposes Go code to JavaScript from a WebAssembly binary,
 // and generates the TypeScript declarations to go with it.
 //
-// A Go program compiled with GOOS=js GOARCH=wasm can already reach JavaScript
-// through syscall/js, but every binding has to be written by hand, lands in a
-// flat global, and carries no type information. Crystalline takes Go functions
-// and values, publishes them under a namespaced object graph, and emits an ES
-// module plus a .d.ts so the JavaScript side gets real autocompletion.
+// A Go program built with GOOS=js GOARCH=wasm can already reach JavaScript
+// through syscall/js, but every binding is hand-written, lands in a flat
+// global, and carries no type information. Crystalline reads your source and
+// emits the bindings, an ES module and a .d.ts.
 //
-// # Generating bindings
+// Nothing it produces uses reflect. Reflection would have to run inside the
+// wasm binary, which means shipping type metadata for everything reachable and
+// discovering mistakes when a user first calls in rather than when you build.
+// Reading the source instead keeps the binary smaller and moves every failure
+// to generate time.
 //
-// Build an Exposer, register what should be visible, and write the result:
+// # Declaring the surface
 //
-//	e := crystalline.NewExposer("myapp")
+// A manifest is an ordinary function, marked so the generator can find it:
 //
-//	e.MustExposeFunc(api.Greet)                   // go.myapp.api.Greet
-//	e.MustExposeFunc(api.Load, crystalline.AsPromise())
-//	e.MustExposeValue("Version", api.Version)     // go.myapp.<caller pkg>.Version
-//
-//	out, err := e.Build()
-//	if err != nil {
-//		log.Fatal(err)
+//	//crystalline:exports
+//	func Exports(r bind.Registry) {
+//		r.Func(api.Greet)
+//		r.Func(api.Load, bind.AsPromise())
+//		r.Ignore(vendor.Client{}, "internalHelper")
+//		r.Value("Version", api.Version)
 //	}
 //
-//	if err := out.WriteFiles("dist/crystalline.js", "dist/crystalline.d.ts"); err != nil {
-//		log.Fatal(err)
-//	}
+// Every symbol is checked by the compiler, so an upstream rename breaks the
+// build rather than silently dropping a binding. Because the manifest names
+// symbols rather than annotating them, it can expose packages you do not own.
 //
-// A function's name and package are recovered from the Go runtime, so there is
-// nothing to keep in sync by hand. A value carries no name at runtime, so
-// ExposeValue takes one; its namespace still defaults to the calling package.
+// The generator reads the function to learn the types involved; the function
+// itself runs at start-up to supply the values. Ordinary Go around the calls —
+// locals, loops, conversions — needs no support here, since only the static
+// type of each argument is required.
+//
+// For code you do own, //crystalline:export on a declaration is shorthand for a
+// manifest entry.
+//
+// # Generating
+//
+//	//go:generate crystalline -app myapp -out ./dist ./...
+//
+// The command writes crystalline.js and crystalline.d.ts to -out, and the Go
+// bindings next to the manifest that declared them. The same work is available
+// as a library through Generator, for callers that want to place the output
+// themselves.
 //
 // # Using the bindings
 //
-// The generated module exports one initializer, which has to run after the
-// wasm module has started:
+// The generated module exports one initializer, which must run after the wasm
+// module has started:
 //
-//	import { initializeCrystalline, api } from "./crystalline.js";
+//	import { initializeCrystalline, api } from "./dist/crystalline.js";
 //
 //	const go = new Go();
 //	const { instance } = await WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject);
-//	go.run(instance);          // publishes globalThis.go.myapp
-//	initializeCrystalline();   // binds the exported namespaces
+//	go.run(instance);
+//	initializeCrystalline();
 //
-//	api.Greet("world");
+// Calling it too early throws with an explanation rather than a TypeError.
 //
-// Calling initializeCrystalline before the module is running throws with an
-// explanation rather than a TypeError.
+// # How Go concepts arrive
+//
+// Failure, streams and cancellation exist in both languages, so each is mapped
+// to the counterpart that means the same thing rather than to Go's spelling of
+// it.
+//
+// A trailing error becomes a Result:
+//
+//	func Load(id string) (Config, error)   ->   Load(id: string): Result<Config>
+//
+// Result is one interface with unwrap and unwrapOr, not a union to narrow. A
+// call that can fail is not necessarily slow, so it stays synchronous and does
+// not force its callers to become async.
+//
+// A receive-only channel becomes an AsyncIterable, consumable with for await. A
+// leading context.Context becomes an AbortSignal, which is the only way to
+// interrupt Go work that would otherwise hold the single JS thread.
+//
+// A panic is different from an error: it arrives as a thrown or rejected Error
+// carrying the stack, because it is a bug rather than an expected outcome.
 //
 // # Promises
 //
-// A Go call blocks the single JS thread. Marking a function as a promise runs
-// it on its own goroutine and hands JavaScript a Promise instead:
+// A Go call blocks the single JS thread. Marking a function runs it on its own
+// goroutine and hands JavaScript a Promise instead:
 //
-//	e.MustExposeFunc(api.Load, crystalline.AsPromise())
+//	r.Func(api.Load, bind.AsPromise())
 //
 // Methods can be marked with a comment on the declaration, which also flows
 // into the generated types:
@@ -60,25 +93,27 @@
 //	// crystalline:promise
 //	func (s Service) Load() Result { ... }
 //
-// or programmatically, which validates that the method exists:
+// or from the manifest with r.Promise, which checks the method exists. Calls
+// taking a callback or a context are always promises, whether or not they are
+// marked: neither can be serviced without yielding to the event loop.
 //
-//	err := crystalline.MarkPromise(reflect.TypeOf(Service{}), "Load")
+// # Structs
 //
-// Any function taking a callback is always a promise, whether or not it is
-// marked: the callback cannot be serviced without yielding to the event loop.
+// A struct arrives as an object whose fields read and write through to the Go
+// value, with its methods bound alongside. Handing one back to Go resolves it
+// to the value it came from rather than a copy, and a plain object literal is
+// accepted in its place.
 //
-// # Errors
+// Wrappers hold resources in the Go/JS bridge. They are released when
+// JavaScript collects them, or deterministically:
 //
-// A Go panic surfaces in JavaScript as an Error carrying the panic message and
-// stack: thrown for a synchronous call, and as a rejection for a promise.
-//
-// A Go error return maps to a JS Error object.
+//	using config = api.LoadConfig();
 //
 // # Struct tags
 //
-// A nil slice or map maps to null, which JS code that expects a collection
+// A nil slice or map maps to null, which JS code expecting a collection
 // usually does not want. The not_nil option emits an empty collection instead,
-// and makes the field non optional in the generated types:
+// and makes the field non-optional in the generated types:
 //
 //	type Config struct {
 //		Hosts []string `crystalline:"not_nil"`
@@ -86,10 +121,10 @@
 //
 // Unrecognised options are rejected rather than ignored.
 //
-// # Unsupported types
+// # What it will not do
 //
-// Channels, complex numbers and unsafe pointers cannot cross the boundary, and
-// interfaces cannot be used as parameters. These are reported when the entity
-// is exposed, not when JavaScript first calls it, and the error names the path
-// to the offending field.
+// Send-only channels, complex numbers and unsafe pointers have no JS
+// counterpart. Anything that cannot be bound is reported by name and reason
+// rather than quietly omitted, and a struct that can only be partly converted
+// is declined outright, since dropping the rest would lose data silently.
 package crystalline

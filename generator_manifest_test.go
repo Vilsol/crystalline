@@ -1,0 +1,129 @@
+//go:build !js
+
+package crystalline
+
+import (
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/MarvinJWendt/testza"
+)
+
+func TestManifestIsRead(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/manifest", "./testdata/sample"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	testza.AssertEqual(t, 1, len(declarations.Manifests), "the annotated manifest must be found")
+
+	var found []string
+	for _, entry := range declarations.Entries {
+		found = append(found, entry.String())
+	}
+
+	joined := strings.Join(found, "\n")
+
+	for _, expected := range []string{
+		"func sample.Basic",
+		"func sample.FooBar promise",
+		"value manifest.Lookup map[string]int",
+		"value data.Index map[uint32]string",
+		"value data.Name string",
+		"ignore sample.FnSample.Three",
+		"promise sample.FnSample.Two",
+	} {
+		testza.AssertTrue(t, strings.Contains(joined, expected),
+			"missing "+expected+" in:\n"+joined)
+	}
+}
+
+func TestManifestRejectsComputedName(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badmanifest"))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err)
+	testza.AssertTrue(t, strings.Contains(err.Error(), "literal name"), err)
+}
+
+func TestNamespaceCollisionIsAnError(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/collide/..."))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err, "two packages claiming one namespace must be reported")
+	testza.AssertTrue(t, strings.Contains(err.Error(), "InNamespace"),
+		"the error must say how to fix it, got: "+errText(err))
+}
+
+func TestExportDirectiveIsShorthand(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/directive"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	var found []string
+	for _, entry := range declarations.Entries {
+		found = append(found, entry.String())
+	}
+
+	joined := strings.Join(found, "\n")
+
+	testza.AssertTrue(t, strings.Contains(joined, "func directive.Owned"), joined)
+	testza.AssertTrue(t, strings.Contains(joined, "func directive.Slow promise"), joined)
+	testza.AssertFalse(t, strings.Contains(joined, "Unmarked"),
+		"an unmarked function must not be exposed:\n"+joined)
+}
+
+func errText(err error) string {
+	if err == nil {
+		return "<nil>"
+	}
+
+	return err.Error()
+}
+
+// TestInterfacesLandInTheirOwnNamespace pins that a type is declared where it
+// is defined, not where it happened to be reached from. The reflect path does
+// this, and a mismatch produces declarations that reference a namespace which
+// never declares the type.
+func TestInterfacesLandInTheirOwnNamespace(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/crosspkg/manifest"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript,
+		"export declare namespace inner {\n  interface Payload {"),
+		"Payload must be declared in its own namespace:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Make(): inner.Payload;"),
+		"the reference must resolve:\n"+out.TypeScript)
+}
+
+// TestGeneratingIntoTheManifestPackage pins that the generated file can live
+// next to the manifest, which is the layout a consumer reaches for first.
+func TestGeneratingIntoTheManifestPackage(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/crosspkg/manifest"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	self := "github.com/Vilsol/crystalline/testdata/crosspkg/manifest"
+
+	bindings, err := g.BuildGo(declarations, "manifest", self)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(bindings.Source, "\tExports(crystallineRegistry{})"),
+		"the manifest must be called unqualified:\n"+bindings.Source)
+	testza.AssertFalse(t, strings.Contains(bindings.Source, strconv.Quote(self)),
+		"generated code must not import its own package:\n"+bindings.Source)
+}

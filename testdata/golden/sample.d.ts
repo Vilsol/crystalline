@@ -1,0 +1,47 @@
+export interface Result<T> {
+  /** Whether the call succeeded. */
+  readonly ok: boolean;
+  /** The value, when the call succeeded. */
+  readonly value?: T;
+  /** The error, when the call failed. */
+  readonly error?: Error;
+  /** Returns the value, throwing the error if the call failed. */
+  unwrap(): T;
+  /** Returns the value, or the fallback if the call failed. */
+  unwrapOr(fallback: T): T;
+}
+export declare namespace sample {
+  interface FnSample {
+    FirstValue: string;
+    SecondValue: number;
+    ThirdValue: number;
+    A(x: boolean): boolean;
+    B(x: boolean): boolean;
+    C(x: boolean): Promise<boolean>;
+    One(): string;
+    Three(): number;
+    Two(): number;
+  }
+  interface Richer {
+    Blob?: Uint8Array;
+    Lookup?: Record<string, number>;
+    MightBeNil?: Array<string>;
+    NeverNil: Array<string>;
+    Pointed?: sample.FnSample;
+    Inner: sample.FnSample;
+    Apply(other: sample.Richer): number;
+    Configure(s: sample.FnSample): string;
+    Fails(): Result<void>;
+    WithCallback(cb: (v: string) => Promise<number>): Promise<boolean>;
+  }
+  function Basic(): number;
+  function Cancellable(signal: AbortSignal, label: string): Promise<Result<string>>;
+  function First(values: AsyncIterable<number>): Promise<number>;
+  function FooBar(): sample.FnSample;
+  function MayFail(ok: boolean): Result<string>;
+  function OnlyFails(ok: boolean): Result<void>;
+  function Rich(): sample.Richer;
+  function Stream(count: number): AsyncIterable<string>;
+  function Sum(values: AsyncIterable<number>): Promise<number>;
+}
+export const initializeCrystalline: () => void;

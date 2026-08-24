@@ -1,0 +1,86 @@
+// Package bind declares what crystalline should expose to JavaScript.
+//
+// It is deliberately free of reflect, and of any dependency that pulls reflect
+// in, because a manifest written against it is compiled into the wasm binary.
+// Importing the root crystalline package from a manifest would drag the whole
+// reflection runtime back into the build.
+//
+// A manifest is an ordinary function, marked so the generator can find it:
+//
+//	//crystalline:exports
+//	func Exports(r bind.Registry) {
+//		r.Func(api.Greet)
+//		r.Func(api.Load, bind.AsPromise())
+//		r.Value("Version", api.Version)
+//	}
+//
+// The generator reads the function to learn the types involved; the function
+// itself runs at start-up to supply the values. Ordinary Go around the calls —
+// locals, loops, conversions — is left alone, since only the static type of
+// each argument is needed.
+package bind
+
+// Option customises how a single entity is exposed.
+type Option func(*Options)
+
+// Options is the resolved form of the options passed to a Registry call. It is
+// exported so that generated code can accept it.
+type Options struct {
+	// Promise makes the exposed function return a JS Promise.
+	Promise bool
+
+	// Namespace overrides the JS namespace, which otherwise follows the Go
+	// package the entity comes from.
+	Namespace string
+}
+
+// AsPromise makes an exposed function return a JS Promise, running the Go call
+// on its own goroutine so it does not block the JS event loop.
+func AsPromise() Option {
+	return func(o *Options) {
+		o.Promise = true
+	}
+}
+
+// InNamespace overrides the JS namespace an entity is placed under.
+func InNamespace(name string) Option {
+	return func(o *Options) {
+		o.Namespace = name
+	}
+}
+
+// Resolve folds a list of options into their resolved form.
+func Resolve(opts []Option) Options {
+	var resolved Options
+
+	for _, opt := range opts {
+		opt(&resolved)
+	}
+
+	return resolved
+}
+
+// Registry receives the declarations a manifest makes.
+//
+// The implementation is generated: at run time it publishes each entity into
+// the JS object graph. Names passed to Value, Ignore and Promise must be string
+// literals, so that the generator can resolve them without executing anything.
+type Registry interface {
+	// Func exposes a Go function under its own package and name.
+	Func(fn any, opts ...Option)
+
+	// Value exposes a value under the given name. A value carries no name at
+	// run time, so one has to be supplied.
+	Value(name string, value any, opts ...Option)
+
+	// Type declares a type so that it appears in the generated declarations
+	// even when no exposed entity mentions it. The argument is only read for
+	// its type; a zero value is the usual thing to pass.
+	Type(zero any)
+
+	// Ignore keeps a method off the JS surface of the given type.
+	Ignore(zero any, method string)
+
+	// Promise makes a method of the given type return a JS Promise.
+	Promise(zero any, method string)
+}
