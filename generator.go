@@ -160,8 +160,12 @@ func (g *Generator) Load(dir string, patterns ...string) error {
 
 func (g *Generator) load(dir string, patterns ...string) ([]*packages.Package, error) {
 	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles,
-		Dir:  dir,
+		// NeedDeps so that a type declared in a dependency carries its whole
+		// package with it: an enum's constants live in the declaring package's
+		// scope, and without this that scope holds only what was referenced.
+		Mode: packages.NeedName | packages.NeedTypes | packages.NeedSyntax |
+			packages.NeedTypesInfo | packages.NeedFiles | packages.NeedDeps,
+		Dir: dir,
 
 		// Shared across every load, so a position from one package renders
 		// against the same file set as any other.
@@ -187,6 +191,51 @@ func (g *Generator) load(dir string, patterns ...string) ([]*packages.Package, e
 // loadReferenced pulls in the packages the declarations reach into, so that
 // directives written on their declarations are seen. Without this a promise
 // comment on a bound method would be silently ignored.
+// collectPackages records the package of every named type reachable from t.
+func collectPackages(t types.Type, seen map[types.Type]bool, out *[]string) {
+	if t == nil || seen[t] {
+		return
+	}
+
+	seen[t] = true
+
+	if obj := namedObject(t); obj != nil {
+		if obj.Pkg() != nil {
+			*out = append(*out, obj.Pkg().Path())
+		}
+
+		collectPackages(t.Underlying(), seen, out)
+
+		return
+	}
+
+	switch typed := t.(type) {
+	case *types.Pointer:
+		collectPackages(typed.Elem(), seen, out)
+	case *types.Slice:
+		collectPackages(typed.Elem(), seen, out)
+	case *types.Array:
+		collectPackages(typed.Elem(), seen, out)
+	case *types.Chan:
+		collectPackages(typed.Elem(), seen, out)
+	case *types.Map:
+		collectPackages(typed.Key(), seen, out)
+		collectPackages(typed.Elem(), seen, out)
+	case *types.Struct:
+		for i := range typed.NumFields() {
+			collectPackages(typed.Field(i).Type(), seen, out)
+		}
+	case *types.Signature:
+		for i := range typed.Params().Len() {
+			collectPackages(typed.Params().At(i).Type(), seen, out)
+		}
+
+		for i := range typed.Results().Len() {
+			collectPackages(typed.Results().At(i).Type(), seen, out)
+		}
+	}
+}
+
 func (g *Generator) loadReferenced(entries []Entry) error {
 	known := make(map[string]bool, len(g.pkgs))
 	for _, pkg := range g.pkgs {
@@ -231,17 +280,13 @@ func referencedPackages(entry Entry) []string {
 		out = append(out, entry.Object.Pkg().Path())
 	}
 
-	seen := make(map[*types.Named]bool)
-	order := make([]*types.Named, 0)
-	// Empty marks: this runs before a manifest has been read, and it only
-	// decides which packages to load, so over-collecting costs nothing.
-	collectNamed(marks{}, entry.Type, seen, &order)
-
-	for _, named := range order {
-		if named.Obj().Pkg() != nil {
-			out = append(out, named.Obj().Pkg().Path())
-		}
-	}
+	// Every named type, whatever its shape. The walk that decides what to
+	// declare asks questions this cannot answer yet — whether a type has
+	// constants needs the package holding them to be loaded, which is what this
+	// is deciding. Using that walk here meant a package contributing only an
+	// enum was never loaded, so its constants were never found and it silently
+	// became a number.
+	collectPackages(entry.Type, make(map[types.Type]bool), &out)
 
 	return out
 }

@@ -9,4 +9,5 @@ import (
 //crystalline:exports
 func Exports(r bind.Registry) {
 	r.Func(outer.Make)
+	r.Func(outer.Switch)
 }

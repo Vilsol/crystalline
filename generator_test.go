@@ -666,3 +666,29 @@ func TestComplexIsRefusedByBothPaths(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Scale"),
 		"and left out of the declarations:\n"+out.TypeScript)
 }
+
+// TestEnumsAreFoundAcrossPackages pins that a type declared elsewhere still
+// arrives as an enum.
+//
+// The packages to load were chosen with the same walk that decides what to
+// declare, and that walk asks whether a type has constants — which cannot be
+// answered before the package holding them is loaded. So a package reached only
+// through another package's signature was never loaded, its constants were
+// never found, and its enum quietly became a number.
+func TestEnumsAreFoundAcrossPackages(t *testing.T) {
+	g := NewGenerator("app")
+
+	// Only the manifest is a root: inner is reached through outer's signature.
+	testza.AssertNoError(t, g.Load(".", "./testdata/crosspkg/manifest"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "type Mode = 0 | 1;"),
+		"an enum from a package reached indirectly must still be one:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Switch(m: inner.Mode): inner.Mode;"),
+		"and be used where it appears:\n"+out.TypeScript)
+}

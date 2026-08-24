@@ -105,8 +105,13 @@ func TestInterfacesLandInTheirOwnNamespace(t *testing.T) {
 	out, err := g.Build(declarations)
 	testza.AssertNoError(t, err)
 
-	testza.AssertTrue(t, strings.Contains(out.TypeScript,
-		"export declare namespace inner {\n  interface Payload {"),
+	// Which namespace block it falls in, rather than which line: the block also
+	// holds whatever else inner declares.
+	opens := strings.Index(out.TypeScript, "export declare namespace inner {")
+	closes := strings.Index(out.TypeScript[opens:], "\nexport declare namespace ")
+
+	testza.AssertNotEqual(t, -1, opens, "inner must have a namespace:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript[opens:opens+closes], "interface Payload {"),
 		"Payload must be declared in its own namespace:\n"+out.TypeScript)
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Make(): inner.Payload;"),
 		"the reference must resolve:\n"+out.TypeScript)

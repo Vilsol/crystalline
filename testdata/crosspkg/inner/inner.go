@@ -5,3 +5,12 @@ package inner
 type Payload struct {
 	Label string
 }
+
+// Mode is an enum in a package reached only through another package's
+// signature, which is where the constants have to be found from.
+type Mode int
+
+const (
+	ModeOff Mode = iota
+	ModeOn
+)

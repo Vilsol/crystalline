@@ -100,6 +100,11 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - The generated registry embeds `bind.Registry`, so a method added to that
   interface later does not stop an already-committed `crystalline_gen.go`
   compiling before it has been regenerated.
+- An enum declared in a package reached only through another package's
+  signature is still an enum. Which packages to load was decided with the
+  same walk that decides what to declare, and that walk asks whether a type
+  has constants, which cannot be answered before the package holding them is
+  loaded. The type quietly became a number.
 
 #### Changed
 
