@@ -11,6 +11,7 @@
   "files": [
     "01-hello/crystalline.d.ts",
     "02-accounts/crystalline.d.ts",
-    "03-pipeline/crystalline.d.ts"
+    "03-pipeline/crystalline.d.ts",
+    "04-catalogue/crystalline.d.ts"
   ]
 }

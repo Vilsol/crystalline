@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crystalline — catalogue</title>
+<link rel="stylesheet" href="../example.css">
+</head>
+<body>
+
+<h1>catalogue</h1>
+<p>Go's own way of modelling, arriving as JavaScript's.</p>
+
+<section>
+	<h2>The catalogue</h2>
+	<pre id="items"></pre>
+</section>
+
+<section>
+	<h2>An enum, named rather than numbered</h2>
+	<div class="row">
+		<select id="which"></select>
+		<select id="status"></select>
+		<button id="setStatus">Set status</button>
+	</div>
+	<output id="described"></output>
+</section>
+
+<section>
+	<h2>A value that crosses as its text</h2>
+	<div class="row">
+		<input id="price" value="12.34" autocomplete="off">
+		<button id="setPrice">Reprice</button>
+	</div>
+	<output id="priced"></output>
+</section>
+
+<section>
+	<h2>An interface Go asked for, supplied from here</h2>
+	<div class="row">
+		<button id="restock">Restock everything</button>
+	</div>
+	<output id="notices"></output>
+</section>
+
+<script src="wasm_exec.js"></script>
+<script type="module">
+import { boot } from "./crystalline.js";
+
+const { catalogue } = await boot("app.wasm");
+
+const $ = (id) => document.getElementById(id);
+
+// Each of these is a live view of the Go value behind it.
+const items = catalogue.All();
+
+// The enum's constants come across as an object, so the names are usable rather
+// than the numbers behind them.
+for (const [name, value] of Object.entries(catalogue.Status)) {
+	$("status").append(new Option(name.replace("Status", ""), value));
+}
+
+items.forEach((item, index) => $("which").append(new Option(item.Name, index)));
+
+const selected = () => items[Number($("which").value)];
+
+const render = () => {
+	// Price is a string on this side; Listed() is promoted from the embedded
+	// value, exactly as it is in Go.
+	$("items").textContent = items
+		.map((item) => `${item.Name}\n  ${item.Price} · ${catalogue.Status[Object.keys(catalogue.Status).find((k) => catalogue.Status[k] === item.Status)]} · listed ${item.Listed()}`)
+		.join("\n\n");
+};
+
+$("setStatus").onclick = () => {
+	selected().Status = Number($("status").value);
+
+	$("described").textContent = catalogue.Describe(selected());
+
+	render();
+};
+
+$("setPrice").onclick = () => {
+	// The same conversion runs on the way in, so it refuses what it cannot read.
+	try {
+		selected().Price = $("price").value;
+
+		$("priced").textContent = catalogue.Describe(selected());
+		$("priced").classList.remove("failed");
+	} catch (error) {
+		$("priced").textContent = error.message;
+		$("priced").classList.add("failed");
+	}
+
+	render();
+};
+
+$("restock").onclick = async () => {
+	// Go declared what it needs; this object provides it.
+	const notices = [];
+
+	const touched = await catalogue.Restock(
+		{ Notify: (message) => notices.push(message) },
+		items.map((item) => item.Name),
+	);
+
+	$("notices").textContent = `${touched} touched\n${notices.join("\n")}`;
+
+	render();
+};
+
+render();
+</script>
+
+</body>
+</html>
