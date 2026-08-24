@@ -219,3 +219,20 @@ const resultDeclarations = `export interface Result<T> {
   unwrapOr(fallback: T): T;
 }
 `
+
+// awaitable widens a callback's return type: Go awaits whatever comes back, so
+// a plain value and a promise are both fine, and declaring only the promise
+// made the ordinary spelling a type error.
+func awaitable(signature string) string {
+	arrow := strings.LastIndex(signature, " => ")
+	if arrow < 0 {
+		return signature
+	}
+
+	returned := signature[arrow+len(" => "):]
+	if returned == "void" {
+		return signature
+	}
+
+	return signature[:arrow+len(" => ")] + returned + " | PromiseLike<" + returned + ">"
+}

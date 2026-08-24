@@ -432,7 +432,10 @@ func (e *emitter) emitRegistry(values string) string {
 
 	out.WriteString("// crystallineRegistry receives what the manifests declare. Everything but a\n")
 	out.WriteString("// value is already bound above, so the rest are no-ops.\n")
-	out.WriteString("type crystallineRegistry struct{}\n\n")
+	out.WriteString("//\n")
+	out.WriteString("// The interface is embedded so that a method added to it later does not stop\n")
+	out.WriteString("// this file compiling before it has been regenerated.\n")
+	out.WriteString("type crystallineRegistry struct{ " + bindAlias + ".Registry }\n\n")
 	out.WriteString("func (crystallineRegistry) Func(fn any, opts ..." + bindAlias + ".Option) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Plain(zero any) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Marshal(to any, from any) {}\n\n")

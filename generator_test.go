@@ -32,7 +32,7 @@ func TestGeneratorNamesCallbackParameters(t *testing.T) {
 	out, err := staticBuild(t)
 	testza.AssertNoError(t, err)
 
-	testza.AssertTrue(t, strings.Contains(out.TypeScript, "cb: (v: string) => Promise<number>"),
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "cb: (v: string) => number | PromiseLike<number>"),
 		"callback parameter names must survive:\n"+out.TypeScript)
 }
 

@@ -449,10 +449,14 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 			err      error
 		)
 
-		// Go awaits whatever a JS callback returns, so a callback parameter is
-		// typed as returning a promise, and forces the whole call to be async.
+		// Go awaits whatever a JS callback returns, so it may hand back either a
+		// value or a promise. Declaring only the promise rejected the ordinary
+		// spelling: (v) => v.length had to be written async for no reason.
 		if callback, isFunc := param.Type().Underlying().(*types.Signature); isFunc {
-			jsName, err = g.renderSignature("", callback, false, true)
+			jsName, err = g.renderSignature("", callback, false, false)
+			if err == nil {
+				jsName = awaitable(jsName)
+			}
 		} else {
 			jsName, optional, err = g.tsType(param.Type())
 		}

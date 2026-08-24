@@ -94,6 +94,12 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   `types.IsNumeric` includes the complex kinds, so the converter accepted one
   and emitted `complex128(value.Float())` while the declarations refused it,
   and a package containing one generated nothing at all.
+- A callback parameter accepts a plain value as well as a promise. Go awaits
+  whatever comes back, so `(v) => v.length` always worked and the declaration
+  rejected it, forcing an `async` that did nothing.
+- The generated registry embeds `bind.Registry`, so a method added to that
+  interface later does not stop an already-committed `crystalline_gen.go`
+  compiling before it has been regenerated.
 
 #### Changed
 

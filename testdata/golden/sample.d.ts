@@ -89,8 +89,8 @@ export declare namespace sample {
     Apply(other: sample.Richer): number;
     Configure(s: sample.FnSample): string;
     Fails(): Result<void>;
-    WithCallback(cb: (v: string) => Promise<number>): Promise<boolean>;
-    WithText(cb: (v: string) => Promise<string>): Promise<string>;
+    WithCallback(cb: (v: string) => number | PromiseLike<number>): Promise<boolean>;
+    WithText(cb: (v: string) => string | PromiseLike<string>): Promise<string>;
     /** Releases the Go resources behind this wrapper. */
     release(): void;
     [Symbol.dispose](): void;

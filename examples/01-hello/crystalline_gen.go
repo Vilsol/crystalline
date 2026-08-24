@@ -24,7 +24,10 @@ func init() {
 
 // crystallineRegistry receives what the manifests declare. Everything but a
 // value is already bound above, so the rest are no-ops.
-type crystallineRegistry struct{}
+//
+// The interface is embedded so that a method added to it later does not stop
+// this file compiling before it has been regenerated.
+type crystallineRegistry struct{ bind.Registry }
 
 func (crystallineRegistry) Func(fn any, opts ...bind.Option) {}
 
