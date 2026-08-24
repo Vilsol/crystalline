@@ -34,7 +34,8 @@ assert.equal(bob.Balance, 50);
 assert.equal(account.Summarise({ Owner: "Carol", Balance: 7, History: [] }), "Carol holds 7");
 
 // A misspelled field is rejected rather than silently zeroed.
-assert.throws(() => account.Summarise({ Onwer: "Carol", Balance: 7, History: [] }));
+assert.throws(() => account.Summarise({ Onwer: "Carol", Balance: 7, History: [] }),
+	/unknown property "Onwer"/);
 
 // Result, both ways.
 assert.equal(account.ParseAmount("12").unwrap(), 12);

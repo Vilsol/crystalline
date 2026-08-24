@@ -27,27 +27,54 @@ The generated runtime needs `js.FuncOf`, channels, two goroutines, `sync.Once`,
 finalizers, which is the usual obstacle, and it is absent because the reflect
 runtime was removed for binary size.
 
-Spiked with `examples/tinygo.sh` on TinyGo 0.41.1, and it mostly works:
+Spiked with `examples/tinygo.sh` on TinyGo 0.41.1.
 
-| example | tinygo | go   | result                     |
-| ------- | ------ | ---- | -------------------------- |
-| 01-hello    | 420K | 2.2M | passes                 |
-| 02-accounts | 560K | -    | fails on release       |
-| 03-pipeline | 502K | 2.4M | passes                 |
+| example | tinygo | go   | result                            |
+| ------- | ------ | ---- | --------------------------------- |
+| 01-hello    | 420K | 2.2M | passes                        |
+| 02-accounts | 562K | -    | traps on every error path     |
+| 03-pipeline | 502K | 2.4M | passes                        |
 
-The part expected to break does not. 03-pipeline exercises promises, streams in
-both directions, aborting mid-stream and an explicit `AsPromise`, and it all
-works under `-scheduler=asyncify`, at about a fifth of the size. So
-`crystallineAwait` blocking a goroutine on a JS callback is fine.
+The async surface works. 03-pipeline exercises promises, streams in both
+directions, aborting mid-stream and an explicit `AsPromise`, all under
+`-scheduler=asyncify` at about a fifth of the size, so `crystallineAwait`
+blocking a goroutine on a JS callback is fine. `js.CopyBytesToGo` and
+`js.CopyBytesToJS` both copy correctly.
 
-What fails is one path: after `release()`, handing the wrapper back gives
-`RuntimeError: unreachable` rather than the error naming the released handle.
-Earlier `assert.throws` cases in the same file pass, so `recover` itself works;
-the suspect is `js.Func.Release` semantics, since releasing a wrapper releases
-the scope's funcs. Diagnose that before claiming support.
+**`recover()` is not implemented on TinyGo's wasm target.** Every panic prints
+and then traps, and JavaScript sees `RuntimeError: unreachable` rather than the
+Error the panic was meant to become. `runtime.panicOrGoexit` consults
+`supportsRecover()`, which is false because unwinding needs `tinygo_longjmp`,
+and `asm_tinygowasm.S` is the only architecture stub that does not define it —
+a wasm stack is not addressable, so there is nothing to jump to.
 
-Still unchecked: `js.CopyBytesToGo` and `js.CopyBytesToJS`, and whether
-TinyGo's collector disturbs the handle table.
+Measured rather than reasoned: the same probe recovers under `tinygo build` for
+linux/amd64 and traps under `-target wasm`, in `main` itself, through a callee
+and inside a goroutine, with the recovery written as a closure and as a named
+deferred function, from a plain callee and from a generic one. Six shapes, one
+outcome.
+
+So this is not one bad path. Every error crystalline reports from generated code
+travels through `panic` and `crystallineRecover`: a mistyped argument, an object
+literal with an unknown property, a released handle. All of them abort the
+module under TinyGo. 01-hello and 03-pipeline pass because their smoke tests
+never take an error path, and 02-accounts hid the same trap behind an
+`assert.throws` with no pattern, which `RuntimeError: unreachable` satisfies as
+happily as the real message. That assertion now names what it expects.
+
+Supporting TinyGo therefore means not raising panics in generated code:
+`crystallineMust` would return its error to the wrapper, which already knows how
+to fail, and the recover would be left to catch only what it cannot prevent.
+That is a change to every emitted wrapper and worth measuring, since it trades
+one deferred call for a branch per argument.
+
+A panic in the consumer's own Go code still cannot be reported under TinyGo. It
+aborts, and nothing crystalline emits can change that. Under the standard
+toolchain it is caught and thrown with the Go stack, so that is a real
+difference in what the two toolchains can promise.
+
+Still unchecked: whether TinyGo's conservative collector disturbs the handle
+table.
 
 ### Opt-in bigint for 64-bit integers
 
