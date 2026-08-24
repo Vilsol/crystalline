@@ -248,7 +248,21 @@ func (e *emitter) ensureValueConverter(t types.Type) (string, error) {
 func (e *emitter) emitValueConverter(name string, t types.Type) (string, error) {
 	goType := types.TypeString(t, e.qualifier)
 
-	if mapped, ok := marshallerFor(t); ok {
+	if mapped, ok := e.marks.marshallerFor(t); ok {
+		// A declared mapping reads what it crosses as, then hands that to the
+		// function the manifest named.
+		if mapped.declaredByManifest() {
+			inner, err := e.ensureValueConverter(mapped.intermediate)
+			if err != nil {
+				return "", fmt.Errorf("%s crosses as %s: %w", goType, mapped.intermediate, err)
+			}
+
+			return "func " + name + "(value js.Value) (" + goType + ", error) {\n" +
+				"\tcrystallineCrossed, err := " + inner + "(value)\n" +
+				"\tif err != nil {\n\t\tvar zero " + goType + "\n\n\t\treturn zero, err\n\t}\n\n" +
+				"\treturn " + qualified(e.qualifier(mapped.from.Pkg()), mapped.from.Name()) + "(crystallineCrossed)\n}\n\n", nil
+		}
+
 		pkg := ""
 		if path := marshallerPackage(t); path != "" {
 			pkg = e.imports.add(path, lastSegment(path))

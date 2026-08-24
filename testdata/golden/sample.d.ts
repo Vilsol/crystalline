@@ -30,6 +30,9 @@ export declare namespace generic {
   function Numbers(): generic.PairOfInt;
   function Strings(): generic.PairOfString;
 }
+export declare namespace marshal {
+  function Brighten(c: string): string;
+}
 export declare namespace sample {
   interface Base {
     Tag: string;

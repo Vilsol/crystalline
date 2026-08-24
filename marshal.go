@@ -16,15 +16,30 @@ import (
 //
 // The mapping is per type and applies wherever the type appears.
 type marshaller struct {
-	// declared is the TypeScript type the value crosses as.
+	// declared is the TypeScript type a built-in mapping crosses as.
 	declared string
 
 	// toJS renders a Go expression producing the JS value. %s is the value.
 	toJS string
 
 	// fromJS renders the body of a converter taking value js.Value and
-	// returning (T, error). %s is the Go type name, %q the package alias.
+	// returning (T, error).
 	fromJS func(goType string, pkg string) string
+
+	// to and from are the functions a manifest supplied, for a mapping the
+	// project declared rather than one built in.
+	to   types.Object
+	from types.Object
+
+	// intermediate is what a declared mapping crosses as: the result of to and
+	// the parameter of from, whatever that type maps to on its own.
+	intermediate types.Type
+}
+
+// declaredByManifest reports whether the mapping came from r.Marshal rather
+// than from the built-in table.
+func (m marshaller) declaredByManifest() bool {
+	return m.to != nil
 }
 
 // builtinMarshallers are the standard library types worth mapping. Each is a
@@ -40,7 +55,7 @@ var builtinMarshallers = map[string]marshaller{
 		},
 	},
 	"time.Duration": {
-		declared: "number",
+		declared: tsNumber,
 		toJS:     `float64(%s) / 1e6`,
 		fromJS: func(goType string, pkg string) string {
 			return "\tif value.Type() != js.TypeNumber {\n" +
@@ -50,8 +65,8 @@ var builtinMarshallers = map[string]marshaller{
 	},
 }
 
-// marshallerFor reports the mapping for a type, if it has one.
-func marshallerFor(t types.Type) (marshaller, bool) {
+// builtinMarshallerFor reports the standard library mapping for a type.
+func builtinMarshallerFor(t types.Type) (marshaller, bool) {
 	obj := namedObject(t)
 	if obj == nil || obj.Pkg() == nil {
 		return marshaller{}, false

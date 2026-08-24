@@ -4,6 +4,7 @@ package bindings
 import (
 	"github.com/Vilsol/crystalline/bind"
 	"github.com/Vilsol/crystalline/testdata/generic"
+	"github.com/Vilsol/crystalline/testdata/marshal"
 	"github.com/Vilsol/crystalline/testdata/sample"
 )
 
@@ -34,6 +35,10 @@ func Exports(r bind.Registry) {
 	// generate are compiled and run rather than only matched as text.
 	r.Func(generic.Strings)
 	r.Func(generic.Numbers)
+
+	// A type of the fixture's own, crossing as a string.
+	r.Marshal(marshal.ColourToHex, marshal.ColourFromHex)
+	r.Func(marshal.Brighten)
 
 	r.Plain(sample.Reading{})
 

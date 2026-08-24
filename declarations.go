@@ -38,6 +38,7 @@ const (
 	EntryIgnore  EntryKind = "ignore"
 	EntryPromise EntryKind = "promise"
 	EntryPlain   EntryKind = "plain"
+	EntryMarshal EntryKind = "marshal"
 )
 
 // hasDirective reports whether a doc comment carries the given directive.
@@ -88,6 +89,10 @@ type Entry struct {
 
 	// Object is the declared symbol, for entries that name one.
 	Object types.Object
+
+	// From is the second symbol an entry names, for a mapping that needs a way
+	// back as well as a way out.
+	From types.Object
 }
 
 func (e Entry) String() string {
@@ -121,6 +126,9 @@ type marks struct {
 	ignored  map[string]bool
 	promised map[string]bool
 	plain    map[string]bool
+
+	// custom maps a type onto a JS counterpart, keyed like the rest.
+	custom map[string]marshaller
 }
 
 func newMarks(declarations Declarations) marks {
@@ -128,6 +136,7 @@ func newMarks(declarations Declarations) marks {
 		ignored:  make(map[string]bool),
 		promised: make(map[string]bool),
 		plain:    make(map[string]bool),
+		custom:   make(map[string]marshaller),
 	}
 
 	for _, entry := range declarations.Entries {
@@ -141,6 +150,12 @@ func newMarks(declarations Declarations) marks {
 			m.ignored[markKey(named, entry.Method)] = true
 		case EntryPromise:
 			m.promised[markKey(named, entry.Method)] = true
+		case EntryMarshal:
+			m.custom[markKey(named, "")] = marshaller{
+				to:           entry.Object,
+				from:         entry.From,
+				intermediate: entry.Object.Type().(*types.Signature).Results().At(0).Type(),
+			}
 		case EntryPlain:
 			// Plainness reaches everything the type contains: a plain value
 			// cannot hold a live wrapper, so the whole reachable set converts
@@ -191,6 +206,18 @@ func plainReachable(named *types.Named) []*types.Named {
 	walk(named)
 
 	return order
+}
+
+// marshallerFor reports how a type crosses, preferring what the manifest
+// declared over the standard library defaults.
+func (m marks) marshallerFor(t types.Type) (marshaller, bool) {
+	if named, ok := t.(*types.Named); ok {
+		if found, ok := m.custom[markKey(named, "")]; ok {
+			return found, true
+		}
+	}
+
+	return builtinMarshallerFor(t)
 }
 
 // isPlain reports whether a type is marshalled as data rather than as a live

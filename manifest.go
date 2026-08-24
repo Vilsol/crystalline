@@ -76,6 +76,8 @@ func (g *Generator) readCall(pkg *packages.Package, manifest string, method stri
 		return g.readType(pkg, where, call, EntryType)
 	case "Plain":
 		return g.readType(pkg, where, call, EntryPlain)
+	case "Marshal":
+		return g.readMarshal(pkg, where, call)
 	case "Ignore":
 		return g.readMethodMark(pkg, where, call, EntryIgnore)
 	case "Promise":
@@ -217,6 +219,61 @@ func packageOf(t types.Type) string {
 	}
 
 	return ""
+}
+
+// readMarshal reads a declared mapping from the pair of functions that define
+// it.
+//
+// The signatures say everything: func(T) X gives the Go type and what it
+// crosses as, and func(X) (T, error) gives the way back and the admission that
+// it can refuse. Both are checked here rather than at run time, because a
+// mapping that does not line up would otherwise emit code that does not
+// compile, several steps away from the manifest that asked for it.
+func (g *Generator) readMarshal(pkg *packages.Package, where string, call *ast.CallExpr) (Entry, error) {
+	if len(call.Args) < 2 {
+		return Entry{}, fmt.Errorf("%s needs a function out and a function back", where)
+	}
+
+	to := referencedObject(pkg, call.Args[0])
+	from := referencedObject(pkg, call.Args[1])
+
+	if to == nil || from == nil {
+		return Entry{}, fmt.Errorf("%s needs both functions named directly, so that they can be resolved without running anything", where)
+	}
+
+	out, ok := to.Type().(*types.Signature)
+	if !ok || out.Params().Len() != 1 || out.Results().Len() != 1 {
+		return Entry{}, fmt.Errorf("%s: %s must take the type and return what it crosses as", where, to.Name())
+	}
+
+	back, ok := from.Type().(*types.Signature)
+	if !ok || back.Params().Len() != 1 || back.Results().Len() != 2 || !isErrorType(back.Results().At(1).Type()) {
+		return Entry{}, fmt.Errorf("%s: %s must take what it crosses as and return the type and an error", where, from.Name())
+	}
+
+	subject, ok := out.Params().At(0).Type().(*types.Named)
+	if !ok {
+		return Entry{}, fmt.Errorf("%s: %s must take a named type", where, to.Name())
+	}
+
+	if !types.Identical(subject, back.Results().At(0).Type()) {
+		return Entry{}, fmt.Errorf("%s: %s returns %s, but %s takes %s", where,
+			from.Name(), back.Results().At(0).Type(), to.Name(), subject)
+	}
+
+	if !types.Identical(out.Results().At(0).Type(), back.Params().At(0).Type()) {
+		return Entry{}, fmt.Errorf("%s: %s crosses as %s, but %s reads %s", where,
+			to.Name(), out.Results().At(0).Type(), from.Name(), back.Params().At(0).Type())
+	}
+
+	return Entry{
+		Kind:      EntryMarshal,
+		Namespace: subject.Obj().Pkg().Name(),
+		Name:      subject.Obj().Name(),
+		Type:      subject,
+		Object:    to,
+		From:      from,
+	}, nil
 }
 
 func (g *Generator) readMethodMark(pkg *packages.Package, where string, call *ast.CallExpr, kind EntryKind) (Entry, error) {

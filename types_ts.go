@@ -48,6 +48,9 @@ func (g *Generator) tsType(t types.Type) (string, bool, error) {
 	return "", false, fmt.Errorf("un-convertable type: %s", t)
 }
 
+// tsNumber is what every Go numeric type crosses as.
+const tsNumber = "number"
+
 func basicToJS(basic *types.Basic) (string, bool, error) {
 	switch basic.Kind() {
 	case types.Bool:
@@ -59,11 +62,11 @@ func basicToJS(basic *types.Basic) (string, bool, error) {
 	case types.Complex128:
 		return "", false, errors.New("complex128 cannot be converted to wasm")
 	case types.UnsafePointer:
-		return "number", false, nil
+		return tsNumber, false, nil
 	}
 
 	if basic.Info()&types.IsNumeric != 0 {
-		return "number", false, nil
+		return tsNumber, false, nil
 	}
 
 	return "", false, fmt.Errorf("un-convertable basic type: %s", basic)
@@ -80,8 +83,13 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 		return "Error", false, nil
 	}
 
-	// A mapped type crosses as its counterpart rather than as its structure.
-	if mapped, ok := marshallerFor(t); ok {
+	// A mapped type crosses as its counterpart rather than as its structure. A
+	// declared mapping crosses as whatever its own functions carry.
+	if mapped, ok := g.marks.marshallerFor(t); ok {
+		if mapped.declaredByManifest() {
+			return g.tsType(mapped.intermediate)
+		}
+
 		return mapped.declared, false, nil
 	}
 
@@ -154,7 +162,7 @@ func namedObject(t types.Type) *types.TypeName {
 
 // collectNamed walks a type for the named struct types reachable from it,
 // recording each one once in declaration-independent order.
-func collectNamed(t types.Type, seen map[*types.Named]bool, order *[]*types.Named) {
+func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*types.Named) {
 	switch typed := t.(type) {
 	case *types.Named:
 		if seen[typed] {
@@ -167,7 +175,7 @@ func collectNamed(t types.Type, seen map[*types.Named]bool, order *[]*types.Name
 
 		// A mapped type crosses as a JS counterpart, so declaring its fields
 		// and methods would describe something nobody receives.
-		if _, mapped := marshallerFor(typed); mapped {
+		if _, mapped := m.marshallerFor(typed); mapped {
 			return
 		}
 
@@ -176,28 +184,28 @@ func collectNamed(t types.Type, seen map[*types.Named]bool, order *[]*types.Name
 
 		structType := typed.Underlying().(*types.Struct)
 		for i := 0; i < structType.NumFields(); i++ {
-			collectNamed(structType.Field(i).Type(), seen, order)
+			collectNamed(m, structType.Field(i).Type(), seen, order)
 		}
 
 		for i := 0; i < typed.NumMethods(); i++ {
-			collectNamed(typed.Method(i).Type(), seen, order)
+			collectNamed(m, typed.Method(i).Type(), seen, order)
 		}
 	case *types.Pointer:
-		collectNamed(typed.Elem(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order)
 	case *types.Slice:
-		collectNamed(typed.Elem(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order)
 	case *types.Array:
-		collectNamed(typed.Elem(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order)
 	case *types.Map:
-		collectNamed(typed.Key(), seen, order)
-		collectNamed(typed.Elem(), seen, order)
+		collectNamed(m, typed.Key(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order)
 	case *types.Signature:
 		for i := 0; i < typed.Params().Len(); i++ {
-			collectNamed(typed.Params().At(i).Type(), seen, order)
+			collectNamed(m, typed.Params().At(i).Type(), seen, order)
 		}
 
 		for i := 0; i < typed.Results().Len(); i++ {
-			collectNamed(typed.Results().At(i).Type(), seen, order)
+			collectNamed(m, typed.Results().At(i).Type(), seen, order)
 		}
 	}
 }

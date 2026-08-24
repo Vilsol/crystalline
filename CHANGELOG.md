@@ -44,6 +44,12 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
   a hand-written `syscall/js` binding doing the same conversions.
+- `r.Marshal(to, from)` maps a type onto a JavaScript counterpart with a pair
+  of ordinary Go functions. The signatures carry the declaration and are
+  checked when generating. `time.Time` and `time.Duration` are mapped this
+  way as standard, to a `Date` and to milliseconds; `time.Time` previously
+  bound as a wrapper with thirty methods and no readable data, and silently
+  read a real `Date` as the zero time.
 - `r.Plain(T{})` marshals a type as ordinary JavaScript data instead of a
   live wrapper: converted once, no methods, no bridge slots and nothing to
   release. Measured at 9x cheaper for a slice of 32 structs. The mark reaches

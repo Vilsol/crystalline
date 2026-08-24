@@ -183,7 +183,9 @@ func referencedPackages(entry Entry) []string {
 
 	seen := make(map[*types.Named]bool)
 	order := make([]*types.Named, 0)
-	collectNamed(entry.Type, seen, &order)
+	// Empty marks: this runs before a manifest has been read, and it only
+	// decides which packages to load, so over-collecting costs nothing.
+	collectNamed(marks{}, entry.Type, seen, &order)
 
 	for _, named := range order {
 		if named.Obj().Pkg() != nil {

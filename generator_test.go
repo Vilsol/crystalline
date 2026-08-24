@@ -498,3 +498,25 @@ func TestTimeIsMarshalledAsADate(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(out.TypeScript, "namespace time"),
 		"and its methods must not be declared:\n"+out.TypeScript)
 }
+
+// TestCustomMarshallerMapsAType pins r.Marshal: a project maps one of its own
+// types onto a JavaScript counterpart with a pair of ordinary Go functions.
+//
+// The signatures carry the whole declaration. func(Colour) string says Colour
+// crosses as a string, and func(string) (Colour, error) says how it comes back
+// and that it can refuse.
+func TestCustomMarshallerMapsAType(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/marshalmanifest/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Brighten(c: string): string;"),
+		"the mapped type must cross as its counterpart:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "interface Colour"),
+		"and must not also be declared as a struct:\n"+out.TypeScript)
+}

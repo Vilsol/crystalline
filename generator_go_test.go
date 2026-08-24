@@ -108,6 +108,8 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"TimeOut=true",
 		"TimeValue=2020-01-02T03:04:05.000Z",
 		"BadTime=threw",
+		"Colour=#203040",
+		"BadColour=threw",
 		"PairString=a",
 		"PairSwapped=b",
 		"PairNumber=2",
@@ -503,6 +505,17 @@ func main() {
 			badTime = "threw";
 		}
 		out.push("BadTime=" + badTime);
+
+		// A declared mapping: Colour crosses as a string, both ways.
+		const m = globalThis.go.app.marshal;
+		out.push("Colour=" + m.Brighten("#102030"));
+		let badColour = "accepted";
+		try {
+			m.Brighten("nonsense");
+		} catch (e) {
+			badColour = "threw";
+		}
+		out.push("BadColour=" + badColour);
 
 		// Distinct instantiations of one generic type, actually called.
 		out.push("PairString=" + g.Strings().First);

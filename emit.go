@@ -43,7 +43,7 @@ func (w Warning) String() string {
 //
 // Plain int is 64 bits on wasm too, but warning about every int would drown the
 // signal: someone who wrote int64 chose the range deliberately.
-func wideIntegers(t types.Type, seen map[types.Type]bool) []string {
+func wideIntegers(m marks, t types.Type, seen map[types.Type]bool) []string {
 	if t == nil || seen[t] {
 		return nil
 	}
@@ -52,7 +52,7 @@ func wideIntegers(t types.Type, seen map[types.Type]bool) []string {
 
 	// A mapped type crosses as its counterpart, so its underlying width is not
 	// what anybody receives.
-	if _, mapped := marshallerFor(t); mapped {
+	if _, mapped := m.marshallerFor(t); mapped {
 		return nil
 	}
 
@@ -62,22 +62,22 @@ func wideIntegers(t types.Type, seen map[types.Type]bool) []string {
 			return []string{typed.Name()}
 		}
 	case *types.Named, *types.Alias:
-		return wideIntegers(t.Underlying(), seen)
+		return wideIntegers(m, t.Underlying(), seen)
 	case *types.Pointer:
-		return wideIntegers(typed.Elem(), seen)
+		return wideIntegers(m, typed.Elem(), seen)
 	case *types.Slice:
-		return wideIntegers(typed.Elem(), seen)
+		return wideIntegers(m, typed.Elem(), seen)
 	case *types.Array:
-		return wideIntegers(typed.Elem(), seen)
+		return wideIntegers(m, typed.Elem(), seen)
 	case *types.Chan:
-		return wideIntegers(typed.Elem(), seen)
+		return wideIntegers(m, typed.Elem(), seen)
 	case *types.Map:
-		return append(wideIntegers(typed.Key(), seen), wideIntegers(typed.Elem(), seen)...)
+		return append(wideIntegers(m, typed.Key(), seen), wideIntegers(m, typed.Elem(), seen)...)
 	case *types.Struct:
 		var found []string
 
 		for i := range typed.NumFields() {
-			found = append(found, wideIntegers(typed.Field(i).Type(), seen)...)
+			found = append(found, wideIntegers(m, typed.Field(i).Type(), seen)...)
 		}
 
 		return found
@@ -85,11 +85,11 @@ func wideIntegers(t types.Type, seen map[types.Type]bool) []string {
 		var found []string
 
 		for i := range typed.Params().Len() {
-			found = append(found, wideIntegers(typed.Params().At(i).Type(), seen)...)
+			found = append(found, wideIntegers(m, typed.Params().At(i).Type(), seen)...)
 		}
 
 		for i := range typed.Results().Len() {
-			found = append(found, wideIntegers(typed.Results().At(i).Type(), seen)...)
+			found = append(found, wideIntegers(m, typed.Results().At(i).Type(), seen)...)
 		}
 
 		return found
@@ -139,7 +139,7 @@ func (g *Generator) BuildGo(declarations Declarations, packageName string, selfP
 		Package:  packageName,
 		Source:   string(formatted),
 		Skipped:  e.skipped,
-		Warnings: wideIntegerWarnings(declarations, droppedNames(e.skipped)),
+		Warnings: wideIntegerWarnings(e.marks, declarations, droppedNames(e.skipped)),
 	}, nil
 }
 
@@ -184,7 +184,7 @@ func (g *Generator) analyse(declarations Declarations) (analysis, error) {
 		skipped:  e.skipped,
 		readonly: e.readonly,
 		dropped:  dropped,
-		warnings: wideIntegerWarnings(declarations, dropped),
+		warnings: wideIntegerWarnings(e.marks, declarations, dropped),
 	}, nil
 }
 
@@ -200,7 +200,7 @@ func droppedNames(skipped []Skipped) map[string]bool {
 }
 
 // wideIntegerWarnings names each bound member that traffics in 64-bit integers.
-func wideIntegerWarnings(declarations Declarations, dropped map[string]bool) []Warning {
+func wideIntegerWarnings(m marks, declarations Declarations, dropped map[string]bool) []Warning {
 	var warnings []Warning
 
 	said := make(map[string]bool)
@@ -211,7 +211,7 @@ func wideIntegerWarnings(declarations Declarations, dropped map[string]bool) []W
 			continue
 		}
 
-		found := wideIntegers(entry.Type, make(map[types.Type]bool))
+		found := wideIntegers(m, entry.Type, make(map[types.Type]bool))
 		if len(found) == 0 {
 			continue
 		}
@@ -386,6 +386,7 @@ func (e *emitter) emitRegistry(values string) string {
 	out.WriteString("type crystallineRegistry struct{}\n\n")
 	out.WriteString("func (crystallineRegistry) Func(fn any, opts ..." + bindAlias + ".Option) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Plain(zero any) {}\n\n")
+	out.WriteString("func (crystallineRegistry) Marshal(to any, from any) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Type(zero any) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Ignore(zero any, method string) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Promise(zero any, method string) {}\n\n")

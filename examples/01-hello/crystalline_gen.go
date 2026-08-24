@@ -30,6 +30,8 @@ func (crystallineRegistry) Func(fn any, opts ...bind.Option) {}
 
 func (crystallineRegistry) Plain(zero any) {}
 
+func (crystallineRegistry) Marshal(to any, from any) {}
+
 func (crystallineRegistry) Type(zero any) {}
 
 func (crystallineRegistry) Ignore(zero any, method string) {}

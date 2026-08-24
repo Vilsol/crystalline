@@ -91,6 +91,20 @@ type Registry interface {
 	// reachable from it: a plain value cannot contain a live one.
 	Plain(zero any)
 
+	// Marshal maps a type onto a JavaScript counterpart, using a pair of
+	// ordinary Go functions.
+	//
+	// The signatures carry the declaration: func(T) X says T crosses as
+	// whatever X does, and func(X) (T, error) says how it comes back and that
+	// it may refuse. Both are checked when generating.
+	//
+	// It suits a type whose value is not its fields. A struct is otherwise
+	// bound as a live view of what it exports, which says nothing useful about
+	// a colour, an identifier or an amount of money.
+	//
+	// The mapping applies wherever the type appears.
+	Marshal(to any, from any)
+
 	// Ignore keeps a method off the JS surface of the given type.
 	Ignore(zero any, method string)
 

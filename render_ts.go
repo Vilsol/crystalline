@@ -47,7 +47,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		}
 
 		reached := make([]*types.Named, 0)
-		collectNamed(entry.Type, seen, &reached)
+		collectNamed(g.marks, entry.Type, seen, &reached)
 
 		for _, named := range reached {
 			owner := named.Obj().Name()

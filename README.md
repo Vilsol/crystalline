@@ -94,6 +94,9 @@ api.Apply({ Timeout: 30 });       // literals work too, validated field by field
 | `*T` | `T \| undefined` |
 | `struct` | `interface`, live fields and methods |
 | `struct` marked `r.Plain` | `interface`, read-only data, no methods |
+| `time.Time` | `Date` |
+| `time.Duration` | `number` of milliseconds |
+| type mapped with `r.Marshal` | whatever its functions carry |
 | `func(...)` | function type |
 | `...T` variadic | `Array<T>` |
 | `error` as a value | `Error` |

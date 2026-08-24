@@ -87,7 +87,15 @@ func (e *emitter) namedToJSExpr(expr string, t types.Type) (string, error) {
 		return "crystallineError(" + expr + ")", nil
 	}
 
-	if mapped, ok := marshallerFor(t); ok {
+	if mapped, ok := e.marks.marshallerFor(t); ok {
+		// A declared mapping goes out through the function the manifest named,
+		// and whatever that returns crosses on its own terms.
+		if mapped.declaredByManifest() {
+			call := qualified(e.qualifier(mapped.to.Pkg()), mapped.to.Name()) + "(" + expr + ")"
+
+			return e.toJS(call, mapped.intermediate, false)
+		}
+
 		return fmt.Sprintf(mapped.toJS, expr), nil
 	}
 

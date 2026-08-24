@@ -25,6 +25,7 @@ const pending = (name) => new Proxy({}, {
 });
 
 export let generic = pending('generic');
+export let marshal = pending('marshal');
 export let sample = pending('sample');
 
 export const initializeCrystalline = () => {
@@ -35,6 +36,9 @@ export const initializeCrystalline = () => {
   generic = {
     Numbers: wrap(globalThis['go']['app']['generic']['Numbers']),
     Strings: wrap(globalThis['go']['app']['generic']['Strings'])
+  };
+  marshal = {
+    Brighten: wrap(globalThis['go']['app']['marshal']['Brighten'])
   };
   sample = {
     Basic: wrap(globalThis['go']['app']['sample']['Basic']),

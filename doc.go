@@ -152,6 +152,24 @@
 // so the first generated file in a project passes the check in silence, which
 // is exactly when you least want it to.
 //
+// # Mapping a type onto a counterpart
+//
+// A struct is bound as a live view of its exported fields, which says nothing
+// useful about a type whose value is not its fields. A pair of ordinary Go
+// functions maps one onto something JavaScript already has:
+//
+//	r.Marshal(api.ColourToHex, api.ColourFromHex)
+//
+// The signatures carry the declaration. func(Colour) string says Colour crosses
+// as a string; func(string) (Colour, error) says how it comes back and that it
+// may refuse. Both are checked when generating, so a mapping that does not line
+// up fails at the manifest rather than several steps away in emitted code.
+//
+// time.Time and time.Duration are mapped this way already, to a Date and to a
+// number of milliseconds. Before that, time.Time bound as a wrapper carrying
+// thirty methods and no readable data, and a real Date passed to it was
+// silently read as the zero time.
+//
 // # Embedding
 //
 // A promoted method is bound, so a call that compiles in Go works in
