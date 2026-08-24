@@ -102,6 +102,9 @@ type entry struct {
 	// Promised names the methods of an imported interface that return a
 	// JavaScript promise, and so may be awaited.
 	Promised []string
+
+	// Called maps a Go method name onto the name JavaScript knows it by.
+	Called map[string]string
 }
 
 func (e entry) String() string {

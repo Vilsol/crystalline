@@ -277,6 +277,9 @@ func (e *emitter) fieldGetter(name string, target string, t types.Type, expr str
 func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, error) {
 	sig := method.Type().(*types.Signature)
 
+	e.subject = memberIdentity(named, method.Name())
+	defer func() { e.subject = "" }()
+
 	returns, err := e.emitCall(sig, func(call []string) string {
 		return "v." + method.Name() + "(" + spread(sig, call) + ")"
 	})

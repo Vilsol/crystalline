@@ -56,6 +56,10 @@ type Options struct {
 	// Path is where an imported value lives in the JavaScript global object
 	// graph.
 	Path string
+
+	// Called maps a Go method name onto the name JavaScript knows it by, for
+	// the methods of an imported interface.
+	Called map[string]string
 }
 
 // AsPromise makes an exposed function return a JS Promise, running the Go call
@@ -131,6 +135,29 @@ func MarshalledBy(to any, from any) Option {
 func At(path string) Option {
 	return func(o *Options) {
 		o.Path = path
+	}
+}
+
+// Called names an imported method the way JavaScript spells it.
+//
+// An import looks each method up under the name the rest of the surface uses,
+// which is the Go name unless the whole surface was renamed. A browser API is
+// spelled the JavaScript way, so reaching one otherwise means renaming
+// everything:
+//
+//	r.Import(&Saved, bind.At("localStorage"),
+//		bind.Called("GetItem", "getItem"),
+//		bind.Called("SetItem", "setItem"))
+//
+// The Go name has to be a method the interface declares, and the JavaScript
+// name has to be an identifier. Both are checked when generating.
+func Called(method string, jsName string) Option {
+	return func(o *Options) {
+		if o.Called == nil {
+			o.Called = make(map[string]string)
+		}
+
+		o.Called[method] = jsName
 	}
 }
 

@@ -5,22 +5,8 @@ Declined items carry their reasoning so they are not re-argued from scratch.
 
 ## Planned
 
-### Naming an imported method
-
-An import looks up each method under the name its own surface uses, so under the
-default naming it asks JavaScript for `GetItem` and under `-case camel` it asks
-for `getItem`. A real browser API is spelled the JavaScript way, which means
-reaching one today requires `-case camel` for the whole surface. 05-ledger runs
-into this and says so.
-
-It fails loudly rather than silently — the boot names the method that is missing
-— but the fix is a per-import spelling, the way `crystalline:"name=x"` works for
-a field. A struct tag has nowhere to live on an interface method, so it would be
-an option:
-
-	r.Import(&Saved, bind.At("localStorage"), bind.Called("GetItem", "getItem"))
-
-Worth doing when someone wants an import without wanting camelCase everywhere.
+Nothing. Everything decided has been built; what is below was considered and
+turned down, with the reasoning, so it is not re-argued from scratch.
 
 ## Declined
 

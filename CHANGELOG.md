@@ -40,7 +40,14 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   Every method is checked while the bindings initialise and `boot` refuses a
   surface missing part of itself, naming the path and the method. A method is
   synchronous unless declared with `bind.AsPromise`, and a promise arriving
-  where none was declared is refused rather than awaited.
+  where none was declared is refused rather than awaited. `bind.Called` names a
+  method the way JavaScript spells it, so reaching a browser API does not mean
+  renaming the whole surface.
+- A conversion that can only panic names where it came from. What a JavaScript
+  callback returned and what a method of a supplied object returned are the two
+  places with no error to return and no slot to report through; they used to say
+  only what they wanted — "expected a number" — naming neither the callback nor
+  the call it belonged to.
 - `-case camel` and `WithCamelCase` rename fields, methods and functions for
   JavaScript: Timeout to timeout, ID to id, HTTPServer to httpServer. Off by
   default, because an exported Go name being the JavaScript name means one grep

@@ -45,3 +45,12 @@ var Awaited Slow
 func FetchAwaited() string {
 	return Awaited.Fetch()
 }
+
+// Renamed is the same contract reached under the spellings a JavaScript API
+// actually uses, without renaming the whole surface.
+var Renamed Storage
+
+// Fetched reads through the renamed import.
+func Fetched(key string) string {
+	return Renamed.GetItem(key)
+}

@@ -233,6 +233,12 @@ func (g *Generator) readImport(pkg *packages.Package, where string, call *ast.Ca
 		}
 	}
 
+	for _, method := range sortedKeys(options.Called) {
+		if !interfaceHasMethod(declared, method) {
+			return entry{}, fmt.Errorf("%s: %s has no method %q", where, variable.Type(), method)
+		}
+	}
+
 	return entry{
 		Kind:      entryImport,
 		Namespace: variable.Pkg().Name(),
@@ -240,6 +246,7 @@ func (g *Generator) readImport(pkg *packages.Package, where string, call *ast.Ca
 		Type:      variable.Type(),
 		Path:      options.Path,
 		Promised:  options.PromiseMethods,
+		Called:    options.Called,
 		Object:    variable,
 	}, nil
 }
@@ -490,6 +497,27 @@ func readOptions(pkg *packages.Package, where string, args []ast.Expr) (manifest
 			resolved.Without = append(resolved.Without, methods...)
 		case "Plain":
 			resolved.Plain = true
+		case "Called":
+			if len(call.Args) != 2 {
+				return manifestOptions{}, fmt.Errorf("%s: bind.Called needs a method and the name JavaScript knows it by", where)
+			}
+
+			method, methodOK := stringLiteral(pkg, call.Args[0])
+			jsName, nameOK := stringLiteral(pkg, call.Args[1])
+
+			if !methodOK || !nameOK {
+				return manifestOptions{}, fmt.Errorf("%s: bind.Called needs literal names, so that they can be read without running anything", where)
+			}
+
+			if !isJSIdentifier(jsName) {
+				return manifestOptions{}, fmt.Errorf("%s: %q is not a JavaScript identifier", where, jsName)
+			}
+
+			if resolved.Called == nil {
+				resolved.Called = make(map[string]string)
+			}
+
+			resolved.Called[method] = jsName
 		case "At":
 			if len(call.Args) != 1 {
 				return manifestOptions{}, fmt.Errorf("%s: bind.At needs a path", where)
@@ -563,6 +591,8 @@ func (o manifestOptions) rejectTypeOnly(where string) error {
 		return fmt.Errorf("%s: bind.AsPromise names methods of a type, so it belongs on r.Type; on a function it takes no names", where)
 	case o.hasMarshal:
 		return fmt.Errorf("%s: bind.MarshalledBy maps a type, so it belongs on r.Type", where)
+	case len(o.Called) > 0:
+		return fmt.Errorf("%s: bind.Called spells a method the way JavaScript does, so it belongs on r.Import", where)
 	}
 
 	return nil
@@ -620,6 +650,8 @@ func (o manifestOptions) checkForType(where string, named *types.Named) error {
 		return fmt.Errorf("%s: %s is not a function; name the methods that return a promise, as bind.AsPromise(%q)", where, named, "Method")
 	case o.Namespace != "":
 		return fmt.Errorf("%s: bind.InNamespace applies to a function or a value; a type follows the package that declares it", where)
+	case len(o.Called) > 0:
+		return fmt.Errorf("%s: bind.Called names a method JavaScript already has, so it belongs on r.Import", where)
 	case o.Plain && o.hasMarshal:
 		return fmt.Errorf("%s: bind.Plain() and bind.MarshalledBy say different things about how %s crosses", where, named)
 	case o.Plain && len(o.Without)+len(o.PromiseMethods) > 0:

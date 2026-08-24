@@ -719,16 +719,6 @@ func crystallineToBigUint(value js.Value) (uint64, error) {
 	return parsed, nil
 }
 
-// crystallineMust unwraps a conversion, turning a failure into a panic that the
-// wrapper's recover reports back to JS as a thrown Error.
-func crystallineMust[T any](value T, err error) T {
-	if err != nil {
-		panic(err.Error())
-	}
-
-	return value
-}
-
 // crystallineOk and crystallineErr build the Result a fallible call returns.
 // Failure travels in the value, so a call that can fail need not be async.
 // crystallineResultProto carries the Result methods. They live on a prototype

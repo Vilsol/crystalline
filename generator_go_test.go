@@ -337,7 +337,7 @@ func main() {
 		try {
 			await r.WithCallback((v) => {});
 		} catch (e) {
-			callbackBad = e.message.includes("expected a number") ? "threw" : "wrong:" + e.message;
+			callbackBad = e.message.includes("WithCallback: callback result: expected a number") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("CallbackBad=" + callbackBad);
 
@@ -347,7 +347,7 @@ func main() {
 		try {
 			await r.WithText((v) => {});
 		} catch (e) {
-			textBad = e.message.includes("expected a string") ? "threw" : "wrong:" + e.message;
+			textBad = e.message.includes("WithText: callback result: expected a string") ? "threw" : "wrong:" + e.message;
 		}
 		out.push("TextBad=" + textBad);
 		out.push("TextGood=" + await r.WithText((v) => v + "!"));
@@ -953,23 +953,6 @@ func TestFieldWritesDoNotPanic(t *testing.T) {
 		"no field write may go through crystallineMust:\n"+body)
 }
 
-// Two places have to keep the panic, because the Go signature belongs to the
-// consumer: what a JS callback returned, and what a method of a JS-supplied
-// object returned. There is no error slot to return to, and inventing a zero
-// value is the guess this project refuses to make.
-func TestConsumerSignaturesStillPanic(t *testing.T) {
-	bindings, err := generateBindings(t, "./testdata/bindings")
-	testza.AssertNoError(t, err)
-
-	for _, expected := range []string{
-		"return crystallineMust(crystallineToInt(crystallineCallbackResult))",
-		"return crystallineMust(crystallineToInt(crystallineSupplied))",
-	} {
-		testza.AssertTrue(t, strings.Contains(bindings.Source, expected),
-			"missing "+expected+", which has nowhere else to report")
-	}
-}
-
 // A field that cannot be written reported the refusal by panicking. It is the
 // one refusal the move to reported failures missed, because it is emitted where
 // the setter is built rather than where a conversion is.
@@ -1360,6 +1343,12 @@ globalThis.localStorage = {
 
 globalThis.remote = { Fetch: async () => "late" };
 
+// The same contract under the spellings a browser API actually uses.
+globalThis.webish = {
+	getItem: () => "webish-value",
+	setItem: () => {},
+};
+
 createRequire(import.meta.url)("./wasm_exec.js");
 
 const loaded = await import("./crystalline.js");
@@ -1387,6 +1376,10 @@ out.push("undeclaredAsync=" + undeclared);
 // itself a promise. Blocking that goroutine is safe, so the value arrives.
 out.push("declaredAsync=" + await importer.FetchAwaited());
 
+// An import reaching methods spelled the JavaScript way, with the rest of the
+// surface left in Go's spelling.
+out.push("renamed=" + importer.Fetched("anything"));
+
 console.log(out.join(" | "));
 
 process.exit(0);
@@ -1398,6 +1391,7 @@ import { createRequire } from "node:module";
 
 delete globalThis.localStorage;
 globalThis.remote = { Fetch: async () => "late" };
+globalThis.webish = { getItem: () => "", setItem: () => {} };
 
 createRequire(import.meta.url)("./wasm_exec.js");
 
@@ -1425,6 +1419,7 @@ import { createRequire } from "node:module";
 // first method rather than stopping at it.
 globalThis.localStorage = { GetItem: () => null };
 globalThis.remote = { Fetch: async () => "late" };
+globalThis.webish = { getItem: () => "", setItem: () => {} };
 
 createRequire(import.meta.url)("./wasm_exec.js");
 
@@ -1528,6 +1523,7 @@ func TestImportedObjectWorksAtRuntime(t *testing.T) {
 		"stored=green",
 		"undeclaredAsync=refused",
 		"declaredAsync=late",
+		"renamed=webish-value",
 	} {
 		key, value, _ := strings.Cut(expected, "=")
 		testza.AssertEqual(t, value, working[key], key+" was wrong")
@@ -1539,4 +1535,34 @@ func TestImportedObjectWorksAtRuntime(t *testing.T) {
 
 	// There, but missing a method the interface declares.
 	testza.AssertEqual(t, "refused", run("partial.mjs")["partial"])
+}
+
+// Two places have to keep the panic, because the Go signature belongs to the
+// consumer: what a JavaScript callback returned, and what a method of a
+// JavaScript-supplied object returned. There is no error to return and no slot
+// to report through, and inventing a zero value is the guess this project
+// refuses to make.
+//
+// What they can do is say where they came from. They used to report only what
+// they wanted — "expected a number" — naming neither the callback nor the call
+// it belonged to.
+func TestPanickingConversionsNameTheirSubject(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	for _, expected := range []string{
+		// What a JavaScript callback handed back.
+		`panic("sample.Richer.WithCallback: callback result: " + err.Error())`,
+		// What a method of a supplied object handed back.
+		`panic("sample.Recorder.Level: result: " + err.Error())`,
+	} {
+		testza.AssertTrue(t, strings.Contains(bindings.Source, expected),
+			"missing "+expected)
+	}
+
+	// The helper these went through carried no subject and could not be given
+	// one: Go will not take a two-valued call alongside another argument. It
+	// has no callers left.
+	testza.AssertFalse(t, strings.Contains(bindings.Source, "crystallineMust"),
+		"crystallineMust should be gone")
 }

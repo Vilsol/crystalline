@@ -160,6 +160,15 @@ crystalline: Go could not reach what it imported:
 api.Local: api.Storage: the object has no SetItem method
 ```
 
+Methods are looked up under the names the rest of the surface uses. A browser
+API is spelled the JavaScript way, so name the ones that differ:
+
+```go
+r.Import(&Saved, bind.At("localStorage"),
+	bind.Called("GetItem", "getItem"),
+	bind.Called("SetItem", "setItem"))
+```
+
 A method is synchronous unless declared with `bind.AsPromise("Fetch")`. A
 promise arriving where none was declared is refused rather than awaited: a
 goroutine blocked inside a synchronous call hands JavaScript `undefined` and

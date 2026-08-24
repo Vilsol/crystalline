@@ -14,7 +14,11 @@ func Exports(r bind.Registry) {
 
 	r.Import(&importer.Awaited, bind.At("remote"), bind.AsPromise("Fetch"))
 
+	r.Import(&importer.Renamed, bind.At("webish"),
+		bind.Called("GetItem", "getItem"), bind.Called("SetItem", "setItem"))
+
 	r.Func(importer.Roundtrip)
+	r.Func(importer.Fetched)
 	r.Func(importer.FetchAwaited, bind.AsPromise())
 	r.Func(importer.Fetch)
 }

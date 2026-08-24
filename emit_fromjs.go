@@ -16,27 +16,11 @@ import (
 //
 // This direction is partial in a way the other is not: the input may be missing,
 // extra or mistyped, so every converter validates rather than assuming.
-func (e *emitter) fromJS(expr string, t types.Type) (string, error) {
-	if callback, ok := t.Underlying().(*types.Signature); ok {
-		return e.callbackFromJS(expr, t, callback)
-	}
-
-	converter, err := e.ensureValueConverter(t)
-	if err != nil {
-		// The inner error already names the type, so restating it here would
-		// only produce a message that says the same thing twice.
-		return "", err
-	}
-
-	return "crystallineMust(" + converter + "(" + expr + "))", nil
-}
-
 // checkedFromJS renders a conversion as statements rather than as an
 // expression: the value read out of JavaScript, and the branch reporting a
 // failure to whoever asked for it.
 //
-// The expression form panics through crystallineMust, and a panic is only the
-// answer where the Go signature belongs to the consumer — what a callback
+// A panic is only the answer where the Go signature belongs to the consumer — what a callback
 // returned, what a method of a supplied object returned. Everywhere else the
 // generated code can report the failure itself, which is both one step shorter
 // and the difference between working and aborting under a toolchain whose
@@ -50,8 +34,8 @@ func (e *emitter) fromJS(expr string, t types.Type) (string, error) {
 func (e *emitter) checkedFromJS(name string, expr string, t types.Type, returnsValue bool, converter string) (string, error) {
 	// A callback is built rather than converted, and building cannot fail. Its
 	// own conversions happen later, inside the callback.
-	if _, ok := t.Underlying().(*types.Signature); ok && converter == "" {
-		built, err := e.fromJS(expr, t)
+	if callback, ok := t.Underlying().(*types.Signature); ok && converter == "" {
+		built, err := e.callbackFromJS(expr, t, callback)
 		if err != nil {
 			return "", err
 		}
@@ -82,6 +66,40 @@ func (e *emitter) checkedFromJS(name string, expr string, t types.Type, returnsV
 	out.WriteString("\t}\n\n")
 
 	return out.String(), nil
+}
+
+// panickingFromJS renders a conversion whose only answer to failure is a panic.
+//
+// It is reached where the Go signature belongs to the consumer — what a
+// callback returned, what a method of a supplied object returned — so there is
+// no error to return and no slot to report through. Statements rather than an
+// expression, because the message has to name where it came from and Go will
+// not take a two-valued call alongside another argument.
+func (e *emitter) panickingFromJS(name string, expr string, t types.Type, subject string) (string, error) {
+	converter, err := e.ensureValueConverter(t)
+	if err != nil {
+		return "", err
+	}
+
+	var out strings.Builder
+
+	out.WriteString("\t" + name + ", err := " + converter + "(" + expr + ")\n")
+	out.WriteString("\tif err != nil {\n")
+	out.WriteString("\t\tpanic(" + strconv.Quote(subject+": ") + " + err.Error())\n")
+	out.WriteString("\t}\n\n")
+
+	return out.String(), nil
+}
+
+// mustSubject names whatever a panicking conversion belongs to. It is only ever
+// a callback result or a supplied object's result, both of which happen inside
+// a member the emitter is already in the middle of.
+func (e *emitter) mustSubject() string {
+	if e.subject == "" {
+		return "a value from JavaScript"
+	}
+
+	return e.subject
 }
 
 // callbackFromJS renders a Go func that calls back into JS, awaiting whatever
@@ -127,14 +145,16 @@ func (e *emitter) callbackFromJS(expr string, t types.Type, sig *types.Signature
 	// validate, and js.Value.String() is the one that does not even panic on
 	// the wrong type: a callback returning nothing handed Go the literal
 	// "<undefined>" as if it were the answer.
-	converted, err := e.fromJS("crystallineCallbackResult", result)
+	converted, err := e.panickingFromJS("crystallineConverted", "crystallineCallbackResult", result,
+		e.mustSubject()+": callback result")
 	if err != nil {
 		return "", fmt.Errorf("callback result: %w", err)
 	}
 
 	body.WriteString(" " + types.TypeString(result, e.qualifier) + " {\n")
 	body.WriteString("\t\tcrystallineCallbackResult := " + invocation + "\n\n")
-	body.WriteString("\t\treturn " + converted + "\n")
+	body.WriteString(converted)
+	body.WriteString("\t\treturn crystallineConverted\n")
 	body.WriteString("\t}")
 
 	return body.String(), nil
@@ -292,7 +312,7 @@ func (e *emitter) typeKey(t types.Type) (string, error) {
 // ensureImportConverter is ensureValueConverter for the direction Go reaches
 // out in. It is a separate entry point because the cache is keyed by type, and
 // one interface may legitimately be both supplied and imported.
-func (e *emitter) ensureImportConverter(named *types.Named, promised []string) (string, error) {
+func (e *emitter) ensureImportConverter(named *types.Named, promised []string, called map[string]string) (string, error) {
 	declared, ok := named.Underlying().(*types.Interface)
 	if !ok {
 		return "", fmt.Errorf("%s is not an interface", named)
@@ -304,7 +324,7 @@ func (e *emitter) ensureImportConverter(named *types.Named, promised []string) (
 	}
 
 	// Keyed by what the adapter does, not only by the type it adapts.
-	key += awaitingSuffix(promised)
+	key += adapterSuffix(promised, called)
 	name := "crystallineImport" + key
 	cached := "import:" + key
 
@@ -314,7 +334,7 @@ func (e *emitter) ensureImportConverter(named *types.Named, promised []string) (
 
 	e.converters[cached] = ""
 
-	body, err := e.emitSuppliedConverter(name, named, declared, importMode(promised))
+	body, err := e.emitSuppliedConverter(name, named, declared, importMode(promised, called))
 	if err != nil {
 		delete(e.converters, cached)
 
@@ -600,37 +620,62 @@ type adapterMode struct {
 	prefix   string
 	awaitAll bool
 	promised map[string]bool
+	called   map[string]string
 }
 
 func suppliedMode() adapterMode {
 	return adapterMode{prefix: "crystallineJS", awaitAll: true}
 }
 
-func importMode(promised []string) adapterMode {
+func importMode(promised []string, called map[string]string) adapterMode {
 	allowed := make(map[string]bool, len(promised))
 	for _, method := range promised {
 		allowed[method] = true
 	}
 
-	return adapterMode{prefix: "crystallineImported" + awaitingSuffix(promised), promised: allowed}
+	return adapterMode{
+		prefix:   "crystallineImported" + adapterSuffix(promised, called),
+		promised: allowed,
+		called:   called,
+	}
 }
 
-// awaitingSuffix distinguishes two imports of one interface that disagree about
-// which methods return a promise.
+// adapterSuffix distinguishes two imports of one interface that ask for
+// different things from it.
 //
 // Without it the first one generated wins and the second silently reuses it,
-// which is the same defect as any other pair of decisions sharing one key. The
-// order the manifest happens to list them in is not a difference, so the names
+// which is the same defect as any other pair of decisions sharing one key. It
+// covers everything the adapter's body depends on — which methods are awaited
+// and what each is called — because covering only some of that is how the bug
+// came back the first time.
+//
+// The order a manifest happens to list options in is not a difference, so both
 // are sorted.
-func awaitingSuffix(promised []string) string {
-	if len(promised) == 0 {
-		return ""
+func adapterSuffix(promised []string, called map[string]string) string {
+	var out strings.Builder
+
+	if len(promised) > 0 {
+		sorted := slices.Clone(promised)
+		slices.Sort(sorted)
+
+		out.WriteString("Awaiting" + strings.Join(sorted, "And"))
 	}
 
-	sorted := slices.Clone(promised)
-	slices.Sort(sorted)
+	for _, method := range sortedKeys(called) {
+		out.WriteString("Calling" + capitalise(method) + "As" + capitalise(called[method]))
+	}
 
-	return "Awaiting" + strings.Join(sorted, "And")
+	return out.String()
+}
+
+// jsMethodName is what an adapter calls a method, which is the name the surface
+// uses unless the import spelled it out.
+func (m adapterMode) jsMethodName(e *emitter, method string) string {
+	if named, ok := m.called[method]; ok {
+		return named
+	}
+
+	return e.gen.jsMemberName(method, "")
 }
 
 func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declared *types.Interface, mode adapterMode) (string, error) {
@@ -671,7 +716,7 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 				named.Obj().Name(), method.Name())
 		}
 
-		required = append(required, e.gen.jsMemberName(method.Name(), ""))
+		required = append(required, mode.jsMethodName(e, method.Name()))
 
 		params := make([]string, 0, sig.Params().Len())
 		passed := make([]string, 0, sig.Params().Len())
@@ -690,7 +735,7 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 			passed = append(passed, converted)
 		}
 
-		call := "c.value.Call(" + strconv.Quote(e.gen.jsMemberName(method.Name(), ""))
+		call := "c.value.Call(" + strconv.Quote(mode.jsMethodName(e, method.Name()))
 		if len(passed) > 0 {
 			call += ", " + strings.Join(passed, ", ")
 		}
@@ -713,14 +758,16 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 
 		result := sig.Results().At(0).Type()
 
-		converted, err := e.fromJS("crystallineSupplied", result)
+		converted, err := e.panickingFromJS("crystallineConverted", "crystallineSupplied", result,
+			memberIdentity(named, method.Name())+": result")
 		if err != nil {
 			return "", fmt.Errorf("%s.%s result: %w", named.Obj().Name(), method.Name(), err)
 		}
 
 		out.WriteString(" " + types.TypeString(result, e.qualifier) + " {\n")
 		out.WriteString("\tcrystallineSupplied := " + invocation + "\n\n")
-		out.WriteString("\treturn " + converted + "\n}\n\n")
+		out.WriteString(converted)
+		out.WriteString("\treturn crystallineConverted\n}\n\n")
 	}
 
 	out.WriteString("func " + name + "(value js.Value) (" + goType + ", error) {\n")

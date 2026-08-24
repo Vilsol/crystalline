@@ -350,6 +350,11 @@ type emitter struct {
 	// marks carries the method decisions a manifest declared.
 	marks marks
 
+	// subject names the member being emitted, so a conversion that can only
+	// panic can say where it came from. Held here rather than threaded through
+	// five call sites that have no other use for it.
+	subject string
+
 	// streamStop names the teardown a returned channel takes over, empty when
 	// the call has nothing that outlives it.
 	streamStop string
@@ -591,7 +596,7 @@ func (e *emitter) emitImport(entry entry) (string, error) {
 		return "", fmt.Errorf("%s is not a named interface type", entry.Type)
 	}
 
-	converter, err := e.ensureImportConverter(named, entry.Promised)
+	converter, err := e.ensureImportConverter(named, entry.Promised, entry.Called)
 	if err != nil {
 		return "", err
 	}
@@ -681,6 +686,9 @@ func (e *emitter) emitDeclaredFunc(entry entry) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%s is not a function", entry.Name)
 	}
+
+	e.subject = qualified(entry.Namespace, entry.Name)
+	defer func() { e.subject = "" }()
 
 	var body strings.Builder
 
