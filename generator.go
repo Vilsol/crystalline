@@ -37,6 +37,9 @@ type Generator struct {
 	// linters and formatters expect at the top of generated sources.
 	banner string
 
+	// profile counts and times every call made through the module.
+	profile bool
+
 	// marks carries the method decisions the current build declared.
 	// fset renders the positions go/packages records, so a report can say
 	// where in the source a problem is rather than only which symbol.
@@ -79,6 +82,20 @@ func WithQuoteStyle(quote string) GeneratorOption {
 func WithBanner(text string) GeneratorOption {
 	return func(g *Generator) {
 		g.banner = text
+	}
+}
+
+// WithProfiling counts and times every call made through the generated module.
+//
+// A crossing costs about the same however the binding was written, so the thing
+// worth reducing is how many there are. Nothing measured that, which left the
+// advice to count crossings with no way to act on it.
+//
+// Off by default: a counter and a clock reading on a five microsecond call are
+// not free.
+func WithProfiling() GeneratorOption {
+	return func(g *Generator) {
+		g.profile = true
 	}
 }
 

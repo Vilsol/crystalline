@@ -44,6 +44,9 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
   a hand-written `syscall/js` binding doing the same conversions.
+- `-profile` and `WithProfiling` count and time every call made through the
+  module, reported by `stats()`. The advice to count crossings rather than
+  conversions had nothing to count them with. Off by default.
 - The generated module exports `boot`, which loads the binary, runs the Go
   program without awaiting it, initialises the bindings and returns the
   namespaces. It takes a URL or the bytes, so a bundler that inlines the wasm

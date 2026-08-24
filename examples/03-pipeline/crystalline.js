@@ -1,4 +1,4 @@
-const wrap = (fn) => {
+const wrap = (name, fn) => {
   return (...args) => {
     const result = fn.call(undefined, ...args);
     if (globalThis.goInternalError) {
@@ -32,10 +32,10 @@ export const initializeCrystalline = () => {
   }
 
   feed = {
-    Average: wrap(globalThis['go']['pipeline']['feed']['Average']),
-    Crunch: wrap(globalThis['go']['pipeline']['feed']['Crunch']),
-    Digest: wrap(globalThis['go']['pipeline']['feed']['Digest']),
-    Primes: wrap(globalThis['go']['pipeline']['feed']['Primes'])
+    Average: wrap('feed.Average', globalThis['go']['pipeline']['feed']['Average']),
+    Crunch: wrap('feed.Crunch', globalThis['go']['pipeline']['feed']['Crunch']),
+    Digest: wrap('feed.Digest', globalThis['go']['pipeline']['feed']['Digest']),
+    Primes: wrap('feed.Primes', globalThis['go']['pipeline']['feed']['Primes'])
   };
 
   initialized = true;

@@ -152,4 +152,10 @@ mise run examples:serve  # then open http://localhost:8000/01-hello/
 `./bench/run.sh` measures what each kind of crossing costs, against a
 hand-written `syscall/js` binding doing the same conversions.
 
+Generating with `-profile` counts them in your own app, reported by `stats()`:
+
+```
+greeting.Greet: 98 calls, 0.54ms
+```
+
 Requires Go 1.26 or newer.

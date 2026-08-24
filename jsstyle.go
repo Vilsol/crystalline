@@ -27,7 +27,7 @@ func (s jsStyle) quoted(value string) string {
 }
 
 // jsWrapHelper turns the error slot the Go side writes into a thrown JS Error.
-const jsWrapHelper = `const wrap = (fn) => {
+const jsWrapHelper = `const wrap = (name, fn) => {
   return (...args) => {
     const result = fn.call(undefined, ...args);
     if (globalThis.goInternalError) {
@@ -38,6 +38,44 @@ const jsWrapHelper = `const wrap = (fn) => {
     return result;
   }
 };`
+
+// jsProfilingWrapHelper is the same wrapper, counting and timing what passes
+// through it. The name is carried so a report can say which binding it was.
+const jsProfilingWrapHelper = `const crystallineStats = new Map();
+
+const wrap = (name, fn) => {
+  return (...args) => {
+    const started = performance.now();
+    const result = fn.call(undefined, ...args);
+    const elapsed = performance.now() - started;
+
+    const seen = crystallineStats.get(name);
+    if (seen === undefined) {
+      crystallineStats.set(name, { name, calls: 1, ms: elapsed });
+    } else {
+      seen.calls += 1;
+      seen.ms += elapsed;
+    }
+
+    if (globalThis.goInternalError) {
+      const error = new Error(globalThis.goInternalError);
+      globalThis.goInternalError = undefined;
+      throw error;
+    }
+    return result;
+  }
+};
+
+/** What each binding cost, heaviest first. */
+export const stats = () => [...crystallineStats.values()].sort((a, b) => b.ms - a.ms);
+
+/** Forgets everything counted so far. */
+export const resetStats = () => crystallineStats.clear();`
+
+// tsProfiling declares what profiling adds to the module.
+const tsProfiling = `export function stats(): Array<{ name: string; calls: number; ms: number }>;
+export function resetStats(): void;
+`
 
 // jsPendingHelper stands in for a namespace until initializeCrystalline runs.
 //

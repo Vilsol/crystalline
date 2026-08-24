@@ -33,6 +33,7 @@ func run() error {
 		jsOut        = flag.String("js-out", "", "file the JavaScript module is written to (defaults to <out>/crystalline.js)")
 		tsOut        = flag.String("ts-out", "", "file the declarations are written to (defaults to <out>/crystalline.d.ts)")
 		banner       = flag.String("banner", "", "text prepended to the generated JavaScript and declarations")
+		profile      = flag.Bool("profile", false, "count and time every call, reported by stats() on the generated module")
 		quote        = flag.String("quote", "'", "quote character used in the generated JavaScript")
 		trailing     = flag.Bool("trailing-comma", false, "emit trailing commas in the generated JavaScript")
 	)
@@ -57,6 +58,10 @@ func run() error {
 
 	if *banner != "" {
 		options = append(options, crystalline.WithBanner(*banner))
+	}
+
+	if *profile {
+		options = append(options, crystalline.WithProfiling())
 	}
 
 	generator := crystalline.NewGenerator(*app, options...)

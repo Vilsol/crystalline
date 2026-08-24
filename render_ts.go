@@ -116,12 +116,21 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		tsd.WriteString(tsLoader(names))
 	}
 
+	if g.profile {
+		tsd.WriteString(tsProfiling)
+	}
+
 	tsd.WriteString("export const initializeCrystalline: () => void;")
 
 	var js strings.Builder
 
 	js.WriteString(g.bannerText())
-	js.WriteString(jsWrapHelper)
+	helper := jsWrapHelper
+	if g.profile {
+		helper = jsProfilingWrapHelper
+	}
+
+	js.WriteString(helper)
 	js.WriteString("\n\n")
 	js.WriteString(jsPendingHelper(g.style))
 	js.WriteString("\n\n")
@@ -235,7 +244,7 @@ func (g *Generator) renderNamespaceJS(namespace string, bound []Entry, enums []s
 	for _, entry := range bound {
 		access := prefix + "[" + g.style.quoted(entry.Name) + "]"
 		if _, isFunc := entry.Type.(*types.Signature); isFunc {
-			access = "wrap(" + access + ")"
+			access = "wrap(" + g.style.quoted(namespace+"."+entry.Name) + ", " + access + ")"
 		}
 
 		names = append(names, entry.Name)

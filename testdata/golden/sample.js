@@ -1,4 +1,4 @@
-const wrap = (fn) => {
+const wrap = (name, fn) => {
   return (...args) => {
     const result = fn.call(undefined, ...args);
     if (globalThis.goInternalError) {
@@ -34,36 +34,36 @@ export const initializeCrystalline = () => {
   }
 
   generic = {
-    Numbers: wrap(globalThis['go']['app']['generic']['Numbers']),
-    Strings: wrap(globalThis['go']['app']['generic']['Strings'])
+    Numbers: wrap('generic.Numbers', globalThis['go']['app']['generic']['Numbers']),
+    Strings: wrap('generic.Strings', globalThis['go']['app']['generic']['Strings'])
   };
   marshal = {
-    Brighten: wrap(globalThis['go']['app']['marshal']['Brighten'])
+    Brighten: wrap('marshal.Brighten', globalThis['go']['app']['marshal']['Brighten'])
   };
   sample = {
-    Advance: wrap(globalThis['go']['app']['sample']['Advance']),
-    Basic: wrap(globalThis['go']['app']['sample']['Basic']),
-    Big: wrap(globalThis['go']['app']['sample']['Big']),
-    Cancellable: wrap(globalThis['go']['app']['sample']['Cancellable']),
-    First: wrap(globalThis['go']['app']['sample']['First']),
-    FooBar: wrap(globalThis['go']['app']['sample']['FooBar']),
-    Keys: wrap(globalThis['go']['app']['sample']['Keys']),
-    MakeEmbedder: wrap(globalThis['go']['app']['sample']['MakeEmbedder']),
-    MakeStamped: wrap(globalThis['go']['app']['sample']['MakeStamped']),
-    MayFail: wrap(globalThis['go']['app']['sample']['MayFail']),
-    Middle: wrap(globalThis['go']['app']['sample']['Middle']),
-    NewTicker: wrap(globalThis['go']['app']['sample']['NewTicker']),
-    OnlyFails: wrap(globalThis['go']['app']['sample']['OnlyFails']),
+    Advance: wrap('sample.Advance', globalThis['go']['app']['sample']['Advance']),
+    Basic: wrap('sample.Basic', globalThis['go']['app']['sample']['Basic']),
+    Big: wrap('sample.Big', globalThis['go']['app']['sample']['Big']),
+    Cancellable: wrap('sample.Cancellable', globalThis['go']['app']['sample']['Cancellable']),
+    First: wrap('sample.First', globalThis['go']['app']['sample']['First']),
+    FooBar: wrap('sample.FooBar', globalThis['go']['app']['sample']['FooBar']),
+    Keys: wrap('sample.Keys', globalThis['go']['app']['sample']['Keys']),
+    MakeEmbedder: wrap('sample.MakeEmbedder', globalThis['go']['app']['sample']['MakeEmbedder']),
+    MakeStamped: wrap('sample.MakeStamped', globalThis['go']['app']['sample']['MakeStamped']),
+    MayFail: wrap('sample.MayFail', globalThis['go']['app']['sample']['MayFail']),
+    Middle: wrap('sample.Middle', globalThis['go']['app']['sample']['Middle']),
+    NewTicker: wrap('sample.NewTicker', globalThis['go']['app']['sample']['NewTicker']),
+    OnlyFails: wrap('sample.OnlyFails', globalThis['go']['app']['sample']['OnlyFails']),
     Phase: globalThis['go']['app']['sample']['Phase'],
-    Readings: wrap(globalThis['go']['app']['sample']['Readings']),
-    Rich: wrap(globalThis['go']['app']['sample']['Rich']),
-    Stream: wrap(globalThis['go']['app']['sample']['Stream']),
-    Streamable: wrap(globalThis['go']['app']['sample']['Streamable']),
-    Sum: wrap(globalThis['go']['app']['sample']['Sum']),
-    TakesTime: wrap(globalThis['go']['app']['sample']['TakesTime']),
-    Ticks: wrap(globalThis['go']['app']['sample']['Ticks']),
+    Readings: wrap('sample.Readings', globalThis['go']['app']['sample']['Readings']),
+    Rich: wrap('sample.Rich', globalThis['go']['app']['sample']['Rich']),
+    Stream: wrap('sample.Stream', globalThis['go']['app']['sample']['Stream']),
+    Streamable: wrap('sample.Streamable', globalThis['go']['app']['sample']['Streamable']),
+    Sum: wrap('sample.Sum', globalThis['go']['app']['sample']['Sum']),
+    TakesTime: wrap('sample.TakesTime', globalThis['go']['app']['sample']['TakesTime']),
+    Ticks: wrap('sample.Ticks', globalThis['go']['app']['sample']['Ticks']),
     Titles: globalThis['go']['app']['sample']['Titles'],
-    Total: wrap(globalThis['go']['app']['sample']['Total'])
+    Total: wrap('sample.Total', globalThis['go']['app']['sample']['Total'])
   };
 
   initialized = true;

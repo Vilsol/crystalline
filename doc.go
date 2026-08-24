@@ -131,6 +131,18 @@
 // struct reachable from it, since a plain value cannot contain a live one.
 // The generated declarations show which types those are.
 //
+// # Measuring
+//
+// Generating with -profile counts and times every call made through the module,
+// reported by stats():
+//
+//	greeting.Greet: 98 calls, 0.54ms
+//
+// It is off by default, because a counter and a clock reading on a five
+// microsecond call are not free, and it counts calls on the module's own
+// namespaces. A field read or a method on a struct wrapper is bound on the Go
+// side and does not pass through it.
+//
 // # Cost
 //
 // Crossing the boundary costs about the same whoever writes the binding, so

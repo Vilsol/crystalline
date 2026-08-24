@@ -1,4 +1,4 @@
-const wrap = (fn) => {
+const wrap = (name, fn) => {
   return (...args) => {
     const result = fn.call(undefined, ...args);
     if (globalThis.goInternalError) {
@@ -32,22 +32,22 @@ export const initializeCrystalline = () => {
   }
 
   payload = {
-    AddInts: wrap(globalThis['go']['bench']['payload']['AddInts']),
-    CountKeys: wrap(globalThis['go']['bench']['payload']['CountKeys']),
-    Drain: wrap(globalThis['go']['bench']['payload']['Drain']),
-    EchoBytes: wrap(globalThis['go']['bench']['payload']['EchoBytes']),
-    EchoString: wrap(globalThis['go']['bench']['payload']['EchoString']),
-    MakeInts: wrap(globalThis['go']['bench']['payload']['MakeInts']),
-    MakeMap: wrap(globalThis['go']['bench']['payload']['MakeMap']),
-    MakePoints: wrap(globalThis['go']['bench']['payload']['MakePoints']),
-    MakeReadings: wrap(globalThis['go']['bench']['payload']['MakeReadings']),
-    MayFail: wrap(globalThis['go']['bench']['payload']['MayFail']),
-    NewPoint: wrap(globalThis['go']['bench']['payload']['NewPoint']),
-    Noop: wrap(globalThis['go']['bench']['payload']['Noop']),
-    Rounds: wrap(globalThis['go']['bench']['payload']['Rounds']),
-    Stream: wrap(globalThis['go']['bench']['payload']['Stream']),
-    SumFloats: wrap(globalThis['go']['bench']['payload']['SumFloats']),
-    TakePoint: wrap(globalThis['go']['bench']['payload']['TakePoint'])
+    AddInts: wrap('payload.AddInts', globalThis['go']['bench']['payload']['AddInts']),
+    CountKeys: wrap('payload.CountKeys', globalThis['go']['bench']['payload']['CountKeys']),
+    Drain: wrap('payload.Drain', globalThis['go']['bench']['payload']['Drain']),
+    EchoBytes: wrap('payload.EchoBytes', globalThis['go']['bench']['payload']['EchoBytes']),
+    EchoString: wrap('payload.EchoString', globalThis['go']['bench']['payload']['EchoString']),
+    MakeInts: wrap('payload.MakeInts', globalThis['go']['bench']['payload']['MakeInts']),
+    MakeMap: wrap('payload.MakeMap', globalThis['go']['bench']['payload']['MakeMap']),
+    MakePoints: wrap('payload.MakePoints', globalThis['go']['bench']['payload']['MakePoints']),
+    MakeReadings: wrap('payload.MakeReadings', globalThis['go']['bench']['payload']['MakeReadings']),
+    MayFail: wrap('payload.MayFail', globalThis['go']['bench']['payload']['MayFail']),
+    NewPoint: wrap('payload.NewPoint', globalThis['go']['bench']['payload']['NewPoint']),
+    Noop: wrap('payload.Noop', globalThis['go']['bench']['payload']['Noop']),
+    Rounds: wrap('payload.Rounds', globalThis['go']['bench']['payload']['Rounds']),
+    Stream: wrap('payload.Stream', globalThis['go']['bench']['payload']['Stream']),
+    SumFloats: wrap('payload.SumFloats', globalThis['go']['bench']['payload']['SumFloats']),
+    TakePoint: wrap('payload.TakePoint', globalThis['go']['bench']['payload']['TakePoint'])
   };
 
   initialized = true;

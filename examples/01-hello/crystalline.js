@@ -1,4 +1,4 @@
-const wrap = (fn) => {
+const wrap = (name, fn) => {
   return (...args) => {
     const result = fn.call(undefined, ...args);
     if (globalThis.goInternalError) {
@@ -32,8 +32,8 @@ export const initializeCrystalline = () => {
   }
 
   greeting = {
-    Add: wrap(globalThis['go']['hello']['greeting']['Add']),
-    Greet: wrap(globalThis['go']['hello']['greeting']['Greet'])
+    Add: wrap('greeting.Add', globalThis['go']['hello']['greeting']['Add']),
+    Greet: wrap('greeting.Greet', globalThis['go']['hello']['greeting']['Greet'])
   };
 
   initialized = true;

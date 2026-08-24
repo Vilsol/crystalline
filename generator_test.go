@@ -587,3 +587,33 @@ func TestModuleExportsALoader(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "export function boot(wasm: string | URL | BufferSource): Promise<{"),
 		"and is declared with what it hands back:\n"+out.TypeScript)
 }
+
+// TestProfilingCountsCrossings pins the opt-in counter.
+//
+// The documentation's main advice is to count crossings rather than worry about
+// conversions, and nothing counted them: the finding that 98 calls cost half a
+// millisecond was arrived at by hand. Off by default, because a counter on a
+// five microsecond call is not free.
+func TestProfilingCountsCrossings(t *testing.T) {
+	plain, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertFalse(t, strings.Contains(plain.JavaScript, "export const stats"),
+		"profiling must be off by default:\n"+plain.JavaScript)
+
+	g := NewGenerator("app", WithProfiling())
+	testza.AssertNoError(t, g.Load(".", "./testdata/bindings"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.JavaScript, "export const stats"),
+		"profiling must expose what it counted:\n"+out.JavaScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "export function stats():"),
+		"and declare it:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.JavaScript, "performance.now()"),
+		"and time each crossing:\n"+out.JavaScript)
+}
