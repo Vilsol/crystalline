@@ -70,6 +70,7 @@ export declare namespace sample {
   function Readings(count: number): (Array<sample.Reading> | undefined);
   function Rich(): sample.Richer;
   function Stream(count: number): AsyncIterable<string>;
+  function Streamable(signal: AbortSignal, ok: boolean): Result<AsyncIterable<number>>;
   function Sum(values: AsyncIterable<number>): Promise<number>;
   function Ticks(signal: AbortSignal, count: number): AsyncIterable<number>;
   const Titles: Record<number, string> | undefined;

@@ -23,6 +23,7 @@ func Exports(r bind.Registry) {
 	r.Func(sample.NewTicker)
 	r.Func(sample.Readings)
 	r.Func(sample.Big)
+	r.Func(sample.Streamable)
 
 	r.Plain(sample.Reading{})
 

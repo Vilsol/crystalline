@@ -45,6 +45,7 @@ export const initializeCrystalline = () => {
     Readings: wrap(globalThis['go']['app']['sample']['Readings']),
     Rich: wrap(globalThis['go']['app']['sample']['Rich']),
     Stream: wrap(globalThis['go']['app']['sample']['Stream']),
+    Streamable: wrap(globalThis['go']['app']['sample']['Streamable']),
     Sum: wrap(globalThis['go']['app']['sample']['Sum']),
     Ticks: wrap(globalThis['go']['app']['sample']['Ticks']),
     Titles: globalThis['go']['app']['sample']['Titles']

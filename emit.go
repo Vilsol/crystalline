@@ -582,7 +582,14 @@ func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) stri
 		defer func() { e.streamStop = "" }()
 	}
 
-	returns, err := e.emitReturn(invoke(call), sig.Results(), checks)
+	// Nothing takes the cancellation over if the call fails before handing back
+	// a stream, so that path undoes it here.
+	onFailure := ""
+	if streaming {
+		onFailure = "crystallineStop()\n\t\t\t"
+	}
+
+	returns, err := e.emitReturn(invoke(call), sig.Results(), checks, onFailure)
 	if err != nil {
 		return "", err
 	}
@@ -678,7 +685,7 @@ func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string,
 // emitReturn renders the call and the conversion of its results. checks are
 // emitted between the two, for anything that can only be judged once the call
 // has finished.
-func (e *emitter) emitReturn(invocation string, results *types.Tuple, checks string) (string, error) {
+func (e *emitter) emitReturn(invocation string, results *types.Tuple, checks string, onFailure string) (string, error) {
 	values, fallible := splitError(results)
 
 	total := len(values)
@@ -701,7 +708,7 @@ func (e *emitter) emitReturn(invocation string, results *types.Tuple, checks str
 	body.WriteString(checks)
 
 	if fallible {
-		body.WriteString("\tif " + names[total-1] + " != nil {\n\t\treturn crystallineErr(" + names[total-1] + ")\n\t}\n\n")
+		body.WriteString("\tif " + names[total-1] + " != nil {\n\t\t" + onFailure + "return crystallineErr(" + names[total-1] + ")\n\t}\n\n")
 	}
 
 	if len(values) == 0 {

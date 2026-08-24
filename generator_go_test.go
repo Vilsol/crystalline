@@ -559,6 +559,15 @@ func TestStreamedContextOutlivesTheCall(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(streaming, "}, crystallineStop)"),
 		"the stream must take over the cancellation:\n"+streaming)
 
+	// A stream that fails before it exists has nothing to take the context
+	// over, so the call must tear it down itself.
+	failing := wrapperBody(t, pkg.Source, "crystallineFnSampleStreamable")
+
+	failed := failing[strings.Index(failing, "if r1 != nil"):]
+
+	testza.AssertTrue(t, strings.Contains(failed[:strings.Index(failed, "}")], "crystallineStop()"),
+		"the error path must cancel the context it created:\n"+failing)
+
 	// A call that does not stream keeps the ordinary lifetime.
 	plain := wrapperBody(t, pkg.Source, "crystallineFnSampleCancellable")
 

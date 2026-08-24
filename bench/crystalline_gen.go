@@ -101,7 +101,7 @@ func crystallineBytes(data []byte) any {
 // a long Go call does not block the single JS thread. A panic rejects rather
 // than escaping into the wasm bridge.
 func crystallinePromise(body func() any) any {
-	return js.Global().Get("Promise").New(js.FuncOf(func(this js.Value, args []js.Value) any {
+	executor := js.FuncOf(func(this js.Value, args []js.Value) any {
 		resolve := args[0]
 		reject := args[1]
 
@@ -116,7 +116,16 @@ func crystallinePromise(body func() any) any {
 		}()
 
 		return nil
-	}))
+	})
+
+	promise := js.Global().Get("Promise").New(executor)
+
+	// The Promise constructor calls the executor synchronously and never again,
+	// so its slot in the Go/JS bridge goes back now. Held, it leaked one slot
+	// per promise-returning call for the life of the page.
+	executor.Release()
+
+	return promise
 }
 
 // crystallineRecovered renders a recovered value without reaching for fmt,

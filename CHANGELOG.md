@@ -131,6 +131,12 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   `[1, "two", 3]` into a `<-chan int` used to end the stream at the bad
   value, so Go saw a clean end of input and answered for the values that had
   arrived.
+- The Promise executor's callback is released once the constructor has run.
+  It leaked a slot in the Go/JS bridge on every promise-returning call, for
+  the life of the page.
+- A call that takes a context and fails before handing back a stream now
+  cancels that context. Nothing existed to take it over, so the abort
+  listener and its callback were stranded.
 
 #### Removed
 

@@ -250,3 +250,17 @@ type Kind uint32
 func Big(n int64) uint64 {
 	return uint64(n)
 }
+
+// Streamable takes a context and hands back a stream, but can fail before there
+// is anything to stream. The context has to be torn down on that path: no
+// iterator exists to take it over.
+func Streamable(ctx context.Context, ok bool) (<-chan int, error) {
+	if !ok {
+		return nil, errors.New("asked to fail")
+	}
+
+	out := make(chan int)
+	close(out)
+
+	return out, nil
+}
