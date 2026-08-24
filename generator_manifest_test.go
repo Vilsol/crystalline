@@ -19,8 +19,8 @@ func TestManifestIsRead(t *testing.T) {
 
 	testza.AssertEqual(t, 1, len(declarations.Manifests), "the annotated manifest must be found")
 
-	found := make([]string, 0, len(declarations.Entries))
-	for _, entry := range declarations.Entries {
+	found := make([]string, 0, len(declarations.entries))
+	for _, entry := range declarations.entries {
 		found = append(found, entry.String())
 	}
 
@@ -70,8 +70,8 @@ func TestExportDirectiveIsShorthand(t *testing.T) {
 	declarations, err := g.Declarations()
 	testza.AssertNoError(t, err)
 
-	found := make([]string, 0, len(declarations.Entries))
-	for _, entry := range declarations.Entries {
+	found := make([]string, 0, len(declarations.entries))
+	for _, entry := range declarations.entries {
 		found = append(found, entry.String())
 	}
 

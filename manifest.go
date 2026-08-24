@@ -21,7 +21,7 @@ import (
 // Reading a manifest: the calls it makes on its registry, and the checks that
 // keep every one of them resolvable without executing anything.
 
-func (g *Generator) readManifest(pkg *packages.Package, fn *ast.FuncDecl) ([]Entry, error) {
+func (g *Generator) readManifest(pkg *packages.Package, fn *ast.FuncDecl) ([]entry, error) {
 	if fn.Type.Params == nil || len(fn.Type.Params.List) != 1 || len(fn.Type.Params.List[0].Names) != 1 {
 		return nil, fmt.Errorf("%s.%s: a manifest takes exactly one parameter, the bind.Registry", pkg.PkgPath, fn.Name.Name)
 	}
@@ -29,7 +29,7 @@ func (g *Generator) readManifest(pkg *packages.Package, fn *ast.FuncDecl) ([]Ent
 	receiver := fn.Type.Params.List[0].Names[0].Name
 
 	var (
-		entries []Entry
+		entries []entry
 		failure error
 	)
 
@@ -64,7 +64,7 @@ func (g *Generator) readManifest(pkg *packages.Package, fn *ast.FuncDecl) ([]Ent
 	return entries, failure
 }
 
-func (g *Generator) readCall(pkg *packages.Package, manifest string, method string, call *ast.CallExpr) ([]Entry, error) {
+func (g *Generator) readCall(pkg *packages.Package, manifest string, method string, call *ast.CallExpr) ([]entry, error) {
 	where := pkg.PkgPath + "." + manifest + ": r." + method
 
 	switch method {
@@ -83,31 +83,31 @@ func (g *Generator) readCall(pkg *packages.Package, manifest string, method stri
 	return nil, fmt.Errorf("%s is not a Registry method", where)
 }
 
-func oneEntry(entry Entry, err error) ([]Entry, error) {
+func oneEntry(read entry, err error) ([]entry, error) {
 	if err != nil {
 		return nil, err
 	}
 
-	return []Entry{entry}, nil
+	return []entry{read}, nil
 }
 
-func (g *Generator) readFunc(pkg *packages.Package, where string, call *ast.CallExpr) (Entry, error) {
+func (g *Generator) readFunc(pkg *packages.Package, where string, call *ast.CallExpr) (entry, error) {
 	if len(call.Args) == 0 {
-		return Entry{}, fmt.Errorf("%s needs a function", where)
+		return entry{}, fmt.Errorf("%s needs a function", where)
 	}
 
 	obj := referencedObject(pkg, call.Args[0])
 	if obj == nil {
-		return Entry{}, fmt.Errorf("%s needs a function named directly, so that it can be resolved without running anything", where)
+		return entry{}, fmt.Errorf("%s needs a function named directly, so that it can be resolved without running anything", where)
 	}
 
 	options, err := readOptions(pkg, where, call.Args[1:])
 	if err != nil {
-		return Entry{}, err
+		return entry{}, err
 	}
 
 	if err := options.rejectTypeOnly(where); err != nil {
-		return Entry{}, err
+		return entry{}, err
 	}
 
 	namespace := obj.Pkg().Name()
@@ -115,8 +115,8 @@ func (g *Generator) readFunc(pkg *packages.Package, where string, call *ast.Call
 		namespace = options.Namespace
 	}
 
-	return Entry{
-		Kind:      EntryFunc,
+	return entry{
+		Kind:      entryFunc,
 		Namespace: namespace,
 		Name:      obj.Name(),
 		Type:      obj.Type(),
@@ -125,35 +125,35 @@ func (g *Generator) readFunc(pkg *packages.Package, where string, call *ast.Call
 	}, nil
 }
 
-func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.CallExpr) (Entry, error) {
+func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.CallExpr) (entry, error) {
 	if len(call.Args) < 2 {
-		return Entry{}, fmt.Errorf("%s needs a name and a value", where)
+		return entry{}, fmt.Errorf("%s needs a name and a value", where)
 	}
 
 	name, ok := stringLiteral(pkg, call.Args[0])
 	if !ok {
-		return Entry{}, fmt.Errorf("%s needs a literal name, so that it can be resolved without running anything", where)
+		return entry{}, fmt.Errorf("%s needs a literal name, so that it can be resolved without running anything", where)
 	}
 
 	valueType := pkg.TypesInfo.TypeOf(call.Args[1])
 	if valueType == nil {
-		return Entry{}, fmt.Errorf("%s: could not determine the type of the value", where)
+		return entry{}, fmt.Errorf("%s: could not determine the type of the value", where)
 	}
 
 	options, err := readOptions(pkg, where, call.Args[2:])
 	if err != nil {
-		return Entry{}, err
+		return entry{}, err
 	}
 
 	if err := options.rejectTypeOnly(where); err != nil {
-		return Entry{}, err
+		return entry{}, err
 	}
 
 	// A promise is a way of returning, and a value does not return. Recording
 	// the option and reading it only for function types meant asking for one
 	// here compiled, generated and did nothing.
 	if _, isFunc := valueType.Underlying().(*types.Signature); options.Promise && !isFunc {
-		return Entry{}, fmt.Errorf("%s: bind.AsPromise() applies to a function, and %s is not one", where, valueType)
+		return entry{}, fmt.Errorf("%s: bind.AsPromise() applies to a function, and %s is not one", where, valueType)
 	}
 
 	namespace := options.Namespace
@@ -161,8 +161,8 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 		namespace = valueNamespace(valueType, pkg.Name)
 	}
 
-	return Entry{
-		Kind:              EntryValue,
+	return entry{
+		Kind:              entryValue,
 		NamespaceOverride: options.Namespace,
 		Namespace:         namespace,
 		Name:              name,
@@ -175,7 +175,7 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 //
 // One call produces every decision made about the type, so a reader sees them
 // together and the generator has one place to check them against each other.
-func (g *Generator) readType(pkg *packages.Package, where string, call *ast.CallExpr) ([]Entry, error) {
+func (g *Generator) readType(pkg *packages.Package, where string, call *ast.CallExpr) ([]entry, error) {
 	if len(call.Args) == 0 {
 		return nil, fmt.Errorf("%s needs a value of the type to declare", where)
 	}
@@ -194,8 +194,8 @@ func (g *Generator) readType(pkg *packages.Package, where string, call *ast.Call
 		return nil, err
 	}
 
-	base := Entry{
-		Kind:      EntryType,
+	base := entry{
+		Kind:      entryType,
 		Namespace: named.Obj().Pkg().Name(),
 		Name:      named.Obj().Name(),
 		Type:      named,
@@ -211,24 +211,24 @@ func (g *Generator) readType(pkg *packages.Package, where string, call *ast.Call
 			return nil, err
 		}
 	case options.Plain:
-		base.Kind = EntryPlain
+		base.Kind = entryPlain
 	}
 
-	entries := []Entry{base}
+	entries := []entry{base}
 
 	for _, method := range options.Without {
-		entries = append(entries, methodMark(named, EntryIgnore, method))
+		entries = append(entries, methodMark(named, entryIgnore, method))
 	}
 
 	for _, method := range options.PromiseMethods {
-		entries = append(entries, methodMark(named, EntryPromise, method))
+		entries = append(entries, methodMark(named, entryPromise, method))
 	}
 
 	return entries, nil
 }
 
-func methodMark(named *types.Named, kind EntryKind, method string) Entry {
-	return Entry{
+func methodMark(named *types.Named, kind entryKind, method string) entry {
+	return entry{
 		Kind:      kind,
 		Namespace: named.Obj().Pkg().Name(),
 		Name:      named.Obj().Name(),
@@ -297,36 +297,36 @@ func packageOf(t types.Type) string {
 // compile, several steps away from the manifest that asked for it. They are
 // checked against the type they were given to as well, since that is a third
 // statement of the same fact and nothing else compares them.
-func (g *Generator) readMarshal(where string, subject *types.Named, options manifestOptions) (Entry, error) {
+func (g *Generator) readMarshal(where string, subject *types.Named, options manifestOptions) (entry, error) {
 	to, from := options.marshalTo, options.marshalFrom
 
 	out, ok := to.Type().(*types.Signature)
 	if !ok || out.Params().Len() != 1 || out.Results().Len() != 1 {
-		return Entry{}, fmt.Errorf("%s: %s must take the type and return what it crosses as", where, to.Name())
+		return entry{}, fmt.Errorf("%s: %s must take the type and return what it crosses as", where, to.Name())
 	}
 
 	back, ok := from.Type().(*types.Signature)
 	if !ok || back.Params().Len() != 1 || back.Results().Len() != 2 || !isErrorType(back.Results().At(1).Type()) {
-		return Entry{}, fmt.Errorf("%s: %s must take what it crosses as and return the type and an error", where, from.Name())
+		return entry{}, fmt.Errorf("%s: %s must take what it crosses as and return the type and an error", where, from.Name())
 	}
 
 	if !types.Identical(out.Params().At(0).Type(), subject) {
-		return Entry{}, fmt.Errorf("%s: %s takes %s, but the mapping was declared on %s", where,
+		return entry{}, fmt.Errorf("%s: %s takes %s, but the mapping was declared on %s", where,
 			to.Name(), out.Params().At(0).Type(), subject)
 	}
 
 	if !types.Identical(subject, back.Results().At(0).Type()) {
-		return Entry{}, fmt.Errorf("%s: %s returns %s, but %s takes %s", where,
+		return entry{}, fmt.Errorf("%s: %s returns %s, but %s takes %s", where,
 			from.Name(), back.Results().At(0).Type(), to.Name(), subject)
 	}
 
 	if !types.Identical(out.Results().At(0).Type(), back.Params().At(0).Type()) {
-		return Entry{}, fmt.Errorf("%s: %s crosses as %s, but %s reads %s", where,
+		return entry{}, fmt.Errorf("%s: %s crosses as %s, but %s reads %s", where,
 			to.Name(), out.Results().At(0).Type(), from.Name(), back.Params().At(0).Type())
 	}
 
-	return Entry{
-		Kind:      EntryMarshal,
+	return entry{
+		Kind:      entryMarshal,
 		Namespace: subject.Obj().Pkg().Name(),
 		Name:      subject.Obj().Name(),
 		Type:      subject,
@@ -528,7 +528,7 @@ func stringLiteral(pkg *packages.Package, expr ast.Expr) (string, bool) {
 
 // checkNamespaces rejects two different packages claiming one JS namespace,
 // which would otherwise silently merge their surfaces.
-func checkNamespaces(entries []Entry) error {
+func checkNamespaces(entries []entry) error {
 	owners := make(map[string]map[string]bool)
 
 	for _, entry := range entries {

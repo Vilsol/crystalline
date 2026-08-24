@@ -236,7 +236,7 @@ func collectPackages(t types.Type, seen map[types.Type]bool, out *[]string) {
 	}
 }
 
-func (g *Generator) loadReferenced(entries []Entry) error {
+func (g *Generator) loadReferenced(entries []entry) error {
 	known := make(map[string]bool, len(g.pkgs))
 	for _, pkg := range g.pkgs {
 		known[pkg.PkgPath] = true
@@ -273,7 +273,7 @@ func (g *Generator) loadReferenced(entries []Entry) error {
 	return nil
 }
 
-func referencedPackages(entry Entry) []string {
+func referencedPackages(entry entry) []string {
 	var out []string
 
 	if entry.Object != nil && entry.Object.Pkg() != nil {

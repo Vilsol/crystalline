@@ -91,7 +91,7 @@ func build(generator *crystalline.Generator, patterns []string, out string, jsOu
 		return err
 	}
 
-	if len(declarations.Manifests) == 0 && len(declarations.Entries) == 0 {
+	if declarations.Empty() {
 		return fmt.Errorf("nothing to generate: no //crystalline:exports manifest or //crystalline:export directive found in %v", patterns)
 	}
 

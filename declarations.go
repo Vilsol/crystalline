@@ -28,17 +28,17 @@ const exportDirective = "crystalline:export"
 // promiseDirective marks a declaration as returning a JS Promise.
 const promiseDirective = "crystalline:promise"
 
-// EntryKind distinguishes the declarations a manifest can make.
-type EntryKind string
+// entryKind distinguishes the declarations a manifest can make.
+type entryKind string
 
 const (
-	EntryFunc    EntryKind = "func"
-	EntryValue   EntryKind = "value"
-	EntryType    EntryKind = "type"
-	EntryIgnore  EntryKind = "ignore"
-	EntryPromise EntryKind = "promise"
-	EntryPlain   EntryKind = "plain"
-	EntryMarshal EntryKind = "marshal"
+	entryFunc    entryKind = "func"
+	entryValue   entryKind = "value"
+	entryType    entryKind = "type"
+	entryIgnore  entryKind = "ignore"
+	entryPromise entryKind = "promise"
+	entryPlain   entryKind = "plain"
+	entryMarshal entryKind = "marshal"
 )
 
 // hasDirective reports whether a doc comment carries the given directive.
@@ -62,9 +62,9 @@ func hasDirective(doc *ast.CommentGroup, name string) bool {
 	return false
 }
 
-// Entry is one declaration read out of a manifest or directive.
-type Entry struct {
-	Kind EntryKind
+// entry is one declaration read out of a manifest or directive.
+type entry struct {
+	Kind entryKind
 
 	// Namespace is the JS namespace the entry lands in.
 	Namespace string
@@ -95,11 +95,11 @@ type Entry struct {
 	From types.Object
 }
 
-func (e Entry) String() string {
+func (e entry) String() string {
 	switch e.Kind {
-	case EntryIgnore, EntryPromise:
+	case entryIgnore, entryPromise:
 		return string(e.Kind) + " " + e.Namespace + "." + e.Name + "." + e.Method
-	case EntryFunc:
+	case entryFunc:
 		out := "func " + e.Namespace + "." + e.Name
 		if e.Promise {
 			out += " promise"
@@ -139,24 +139,24 @@ func newMarks(declarations Declarations) marks {
 		custom:   make(map[string]marshaller),
 	}
 
-	for _, entry := range declarations.Entries {
+	for _, entry := range declarations.entries {
 		named, ok := entry.Type.(*types.Named)
 		if !ok {
 			continue
 		}
 
 		switch entry.Kind {
-		case EntryIgnore:
+		case entryIgnore:
 			m.ignored[markKey(named, entry.Method)] = true
-		case EntryPromise:
+		case entryPromise:
 			m.promised[markKey(named, entry.Method)] = true
-		case EntryMarshal:
+		case entryMarshal:
 			m.custom[markKey(named, "")] = marshaller{
 				to:           entry.Object,
 				from:         entry.From,
 				intermediate: entry.Object.Type().(*types.Signature).Results().At(0).Type(),
 			}
-		case EntryPlain:
+		case entryPlain:
 			// Plainness reaches everything the type contains: a plain value
 			// cannot hold a live wrapper, so the whole reachable set converts
 			// the same way. The declarations show which types those are.
@@ -254,9 +254,20 @@ type Manifest struct {
 
 // Declarations is everything the generator learned about the intended JS
 // surface, before any code is emitted.
+//
+// What was declared is deliberately not reachable from outside: it is
+// go/types objects and generator bookkeeping, and a caller only ever carries
+// the whole of it from Declarations to Build and BuildGo.
 type Declarations struct {
 	Manifests []Manifest
-	Entries   []Entry
+
+	entries []entry
+}
+
+// Empty reports whether anything was declared at all, which is a build worth
+// stopping rather than one that writes an empty module.
+func (d Declarations) Empty() bool {
+	return len(d.Manifests) == 0 && len(d.entries) == 0
 }
 
 // Declarations reads every manifest and export directive in the loaded
@@ -285,24 +296,24 @@ func (g *Generator) Declarations() (Declarations, error) {
 						Dir:         packageDir(pkg),
 						Name:        fn.Name.Name,
 					})
-					out.Entries = append(out.Entries, entries...)
+					out.entries = append(out.entries, entries...)
 				case hasDirective(fn.Doc, exportDirective):
 					entry, err := directiveEntry(pkg, fn)
 					if err != nil {
 						return Declarations{}, err
 					}
 
-					out.Entries = append(out.Entries, entry)
+					out.entries = append(out.entries, entry)
 				}
 			}
 		}
 	}
 
-	if err := checkNamespaces(out.Entries); err != nil {
+	if err := checkNamespaces(out.entries); err != nil {
 		return Declarations{}, err
 	}
 
-	if err := g.loadReferenced(out.Entries); err != nil {
+	if err := g.loadReferenced(out.entries); err != nil {
 		return Declarations{}, err
 	}
 
@@ -320,18 +331,18 @@ func packageDir(pkg *packages.Package) string {
 }
 
 // directiveEntry turns a directive-marked function into an entry.
-func directiveEntry(pkg *packages.Package, fn *ast.FuncDecl) (Entry, error) {
+func directiveEntry(pkg *packages.Package, fn *ast.FuncDecl) (entry, error) {
 	if fn.Recv != nil {
-		return Entry{}, fmt.Errorf("%s: %s cannot be used on a method, mark the type in a manifest instead", pkg.PkgPath, exportDirective)
+		return entry{}, fmt.Errorf("%s: %s cannot be used on a method, mark the type in a manifest instead", pkg.PkgPath, exportDirective)
 	}
 
 	obj := pkg.TypesInfo.Defs[fn.Name]
 	if obj == nil {
-		return Entry{}, fmt.Errorf("%s: could not resolve %s", pkg.PkgPath, fn.Name.Name)
+		return entry{}, fmt.Errorf("%s: could not resolve %s", pkg.PkgPath, fn.Name.Name)
 	}
 
-	return Entry{
-		Kind:      EntryFunc,
+	return entry{
+		Kind:      entryFunc,
 		Namespace: pkg.Name,
 		Name:      fn.Name.Name,
 		Type:      obj.Type(),

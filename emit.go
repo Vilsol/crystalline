@@ -208,7 +208,7 @@ func (g *Generator) analyse(declarations Declarations) (analysis, error) {
 }
 
 // entryPos is where a declared entry was written, when it names a symbol.
-func entryPos(entry Entry) token.Pos {
+func entryPos(entry entry) token.Pos {
 	if entry.Object == nil {
 		return token.NoPos
 	}
@@ -233,7 +233,7 @@ func wideIntegerWarnings(m marks, declarations Declarations, dropped map[string]
 
 	said := make(map[string]bool)
 
-	for _, entry := range declarations.Entries {
+	for _, entry := range declarations.entries {
 		name := entry.Namespace + "." + entry.Name
 		if dropped[name] || said[name] {
 			continue
@@ -295,9 +295,9 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 
 	var registrations, wrappers, values strings.Builder
 
-	for _, entry := range declarations.Entries {
+	for _, entry := range declarations.entries {
 		switch entry.Kind {
-		case EntryFunc:
+		case entryFunc:
 			wrapper, err := e.emitDeclaredFunc(entry)
 			if err != nil {
 				e.skipAt(entryPos(entry), entry.Namespace+"."+entry.Name, err.Error())
@@ -308,7 +308,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			registrations.WriteString("\tcrystallineNamespace(" + strconv.Quote(e.gen.appName) + ", " + strconv.Quote(entry.Namespace) + ").Set(" +
 				strconv.Quote(entry.Name) + ", crystallineWrap(js.FuncOf(" + wrapperName(entry) + ")))\n")
 			wrappers.WriteString(wrapper)
-		case EntryValue:
+		case entryValue:
 			branch, err := e.emitDeclaredValue(entry)
 			if err != nil {
 				e.skipAt(entryPos(entry), entry.Namespace+"."+entry.Name, err.Error())
@@ -317,7 +317,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			}
 
 			values.WriteString(branch)
-		case EntryType, EntryPlain:
+		case entryType, entryPlain:
 			if named, ok := entry.Type.(*types.Named); ok {
 				e.queue(named)
 			}
@@ -328,7 +328,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	// value instead of writing the number the type happens to use.
 	seenEnums := make(map[*types.Named]bool)
 
-	for _, entry := range declarations.Entries {
+	for _, entry := range declarations.entries {
 		reached := make([]*types.Named, 0)
 		collectNamed(e.marks, entry.Type, seenEnums, &reached)
 
@@ -475,7 +475,7 @@ func (e *emitter) emitEnum(named *types.Named, constants []*types.Const) string 
 // emitDeclaredValue renders the branch that publishes one declared value. The
 // key pairs the namespace override with the name, which is exactly what the
 // registry can reconstruct at run time.
-func (e *emitter) emitDeclaredValue(entry Entry) (string, error) {
+func (e *emitter) emitDeclaredValue(entry entry) (string, error) {
 	converted, err := e.toJS("typed", entry.Type, false)
 	if err != nil {
 		return "", err
@@ -502,7 +502,7 @@ func lastSegment(path string) string {
 	return path
 }
 
-func wrapperName(entry Entry) string {
+func wrapperName(entry entry) string {
 	namespace := sanitiseAlias(entry.Namespace)
 	if namespace != "" {
 		namespace = strings.ToUpper(namespace[:1]) + namespace[1:]
@@ -520,7 +520,7 @@ func (e *emitter) declaredName(t types.Type) string {
 	return types.TypeString(t, e.qualifier)
 }
 
-func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
+func (e *emitter) emitDeclaredFunc(entry entry) (string, error) {
 	fn, ok := entry.Object.(*types.Func)
 	if !ok {
 		return "", fmt.Errorf("%s is not a function", entry.Name)

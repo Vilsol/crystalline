@@ -23,7 +23,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	g.dropped = analysed.dropped
 	g.usesResult = false
 
-	entities := make(map[string][]Entry)
+	entities := make(map[string][]entry)
 
 	// A type is declared where it is defined, not where it was reached from,
 	// so interfaces are grouped by their own package rather than by the entry
@@ -31,7 +31,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	interfaces := make(map[string][]*types.Named)
 	seen := make(map[*types.Named]bool)
 
-	for _, entry := range declarations.Entries {
+	for _, entry := range declarations.entries {
 		// Left out of the bindings, so left out here too. One decision about
 		// what can be bound, read by both artifacts.
 		if g.dropped[entry.Namespace+"."+entry.Name] {
@@ -39,9 +39,9 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		}
 
 		switch entry.Kind {
-		case EntryFunc, EntryValue:
+		case entryFunc, entryValue:
 			entities[entry.Namespace] = append(entities[entry.Namespace], entry)
-		case EntryType, EntryPlain:
+		case entryType, entryPlain:
 		default:
 			continue
 		}
@@ -169,7 +169,7 @@ func (g *Generator) bannerText() string {
 
 // renderNamespace renders the interfaces a package declares, then the entities
 // exposed under its name.
-func (g *Generator) renderNamespace(namespace string, declared []*types.Named, exposed []Entry) (string, error) {
+func (g *Generator) renderNamespace(namespace string, declared []*types.Named, exposed []entry) (string, error) {
 	var body strings.Builder
 
 	for _, named := range declared {
@@ -206,7 +206,7 @@ func (g *Generator) renderNamespace(namespace string, declared []*types.Named, e
 	return "export declare namespace " + namespace + " {\n" + body.String() + "}\n", nil
 }
 
-func (g *Generator) renderEntity(namespace string, entry Entry) (string, error) {
+func (g *Generator) renderEntity(namespace string, entry entry) (string, error) {
 	if sig, ok := entry.Type.(*types.Signature); ok {
 		promise := entry.Promise
 		if entry.Object != nil {
@@ -235,7 +235,7 @@ func (g *Generator) renderEntity(namespace string, entry Entry) (string, error) 
 
 // renderNamespaceJS binds one namespace out of the global object graph the Go
 // side publishes into.
-func (g *Generator) renderNamespaceJS(namespace string, bound []Entry, enums []string) string {
+func (g *Generator) renderNamespaceJS(namespace string, bound []entry, enums []string) string {
 	if len(bound) == 0 && len(enums) == 0 {
 		return ""
 	}
