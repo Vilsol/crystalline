@@ -12,6 +12,12 @@ import (
 
 // Rendering of the TypeScript declarations and the JavaScript module.
 func (g *Generator) Build(declarations Declarations) (Output, error) {
+	// Build is where the style is spent, so it is where an option that could
+	// not be accepted is reported.
+	if g.optionErr != nil {
+		return Output{}, g.optionErr
+	}
+
 	g.marks = newMarks(declarations)
 
 	analysed, err := g.analyse(declarations)

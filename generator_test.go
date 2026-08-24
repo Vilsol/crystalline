@@ -788,3 +788,43 @@ func TestNotNilIsRefusedWhereItCannotApply(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(errText(err), "not_nil"),
 		"the error must name the option, got: "+errText(err))
 }
+
+// buildWith renders the smallest fixture there is, under the given options.
+func buildWith(t *testing.T, opts ...GeneratorOption) (Output, error) {
+	t.Helper()
+
+	g := NewGenerator("app", opts...)
+	if err := g.Load(".", "./testdata/directive"); err != nil {
+		return Output{}, err
+	}
+
+	declarations, err := g.Declarations()
+	if err != nil {
+		return Output{}, err
+	}
+
+	return g.Build(declarations)
+}
+
+// The quote style was a string, so -quote js and WithQuoteStyle("”") were both
+// accepted and both produced a module that does not parse.
+func TestQuoteStyleIsAChoice(t *testing.T) {
+	single, err := buildWith(t)
+	testza.AssertNoError(t, err)
+	testza.AssertTrue(t, strings.Contains(single.JavaScript, "globalThis['go']"),
+		"the default is a single quote:\n"+single.JavaScript)
+
+	double, err := buildWith(t, WithQuoteStyle(DoubleQuote))
+	testza.AssertNoError(t, err)
+	testza.AssertTrue(t, strings.Contains(double.JavaScript, "globalThis[\"go\"]"),
+		"double quotes must reach the output:\n"+double.JavaScript)
+	testza.AssertFalse(t, strings.Contains(double.JavaScript, "globalThis['go']"),
+		"and must replace the default:\n"+double.JavaScript)
+}
+
+func TestUnknownQuoteStyleIsRefused(t *testing.T) {
+	_, err := buildWith(t, WithQuoteStyle(QuoteStyle(42)))
+	testza.AssertNotNil(t, err, "a quote style that is not one of the two must be reported")
+	testza.AssertTrue(t, strings.Contains(errText(err), "quote style"),
+		"the error must say what was wrong, got: "+errText(err))
+}

@@ -118,3 +118,17 @@ func TestCLINamesItsOutputs(t *testing.T) {
 			name+" is missing the banner:\n"+string(content))
 	}
 }
+
+// -quote took the character itself, so any string was accepted and a typo
+// produced a module that does not parse.
+func TestQuoteFlagIsAChoice(t *testing.T) {
+	for _, accepted := range []string{"single", "'", "double", `"`} {
+		_, err := quoteStyle(accepted)
+		testza.AssertNoError(t, err, accepted+" must be accepted")
+	}
+
+	_, err := quoteStyle("js")
+	testza.AssertNotNil(t, err, "an unknown style must be reported")
+	testza.AssertTrue(t, strings.Contains(err.Error(), "single or double"),
+		"the error must say what is accepted, got: "+err.Error())
+}

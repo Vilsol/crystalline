@@ -7,8 +7,8 @@
 package bench
 
 import (
-	"github.com/Vilsol/crystalline/bind"
 	"github.com/Vilsol/crystalline/bench/payload"
+	"github.com/Vilsol/crystalline/bind"
 )
 
 //go:generate go tool crystalline -app bench -out . ./...

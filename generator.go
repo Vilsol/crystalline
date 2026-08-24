@@ -39,6 +39,12 @@ type Generator struct {
 	// profile counts and times every call made through the module.
 	profile bool
 
+	// optionErr holds what an option could not accept. An option cannot
+	// return, and a generator that renders JavaScript with a quote character
+	// it does not have would produce a module nobody can import, so the
+	// refusal waits for Build rather than being dropped.
+	optionErr error
+
 	// marks carries the method decisions the current build declared.
 	// fset renders the positions go/packages records, so a report can say
 	// where in the source a problem is rather than only which symbol.
@@ -67,11 +73,44 @@ type Generator struct {
 // GeneratorOption configures a Generator at construction time.
 type GeneratorOption func(*Generator)
 
+// QuoteStyle is the quote character the generated JavaScript uses for its
+// string literals.
+type QuoteStyle int
+
+const (
+	// SingleQuote is the default, and what most formatters produce.
+	SingleQuote QuoteStyle = iota
+
+	// DoubleQuote suits a project whose formatter prefers them.
+	DoubleQuote
+)
+
+// characters renders the style, and reports whether it is one of the two.
+func (q QuoteStyle) characters() (string, bool) {
+	switch q {
+	case SingleQuote:
+		return "'", true
+	case DoubleQuote:
+		return `"`, true
+	}
+
+	return "", false
+}
+
 // WithQuoteStyle sets the quote character used in the generated JavaScript, so
 // the output can match the project's formatter. Defaults to a single quote.
-func WithQuoteStyle(quote string) GeneratorOption {
+//
+// It was a string, which meant any string: a typo produced a module that does
+// not parse, found by whoever imported it.
+func WithQuoteStyle(style QuoteStyle) GeneratorOption {
 	return func(g *Generator) {
-		g.style.quote = quote
+		if _, ok := style.characters(); !ok {
+			g.optionErr = fmt.Errorf("quote style %d is neither SingleQuote nor DoubleQuote", style)
+
+			return
+		}
+
+		g.style.quote = style
 	}
 }
 

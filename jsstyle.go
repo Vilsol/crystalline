@@ -13,17 +13,19 @@ import (
 // the Generator rather than in package globals so that two generators in one
 // process can differ.
 type jsStyle struct {
-	quote         string
+	quote         QuoteStyle
 	trailingComma bool
 }
 
 func defaultStyle() jsStyle {
-	return jsStyle{quote: "'"}
+	return jsStyle{quote: SingleQuote}
 }
 
 // quoted renders a value as a JavaScript string literal in the configured style.
 func (s jsStyle) quoted(value string) string {
-	return s.quote + value + s.quote
+	quote, _ := s.quote.characters()
+
+	return quote + value + quote
 }
 
 // jsWrapHelper turns the error slot the Go side writes into a thrown JS Error.

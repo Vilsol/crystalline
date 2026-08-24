@@ -35,7 +35,7 @@ func run() error {
 		banner       = flag.String("banner", "", "text prepended to the generated JavaScript and declarations")
 		profile      = flag.Bool("profile", false, "count and time every call, reported by stats() on the generated module")
 		watching     = flag.Bool("watch", false, "regenerate whenever a Go file under -dir changes")
-		quote        = flag.String("quote", "'", "quote character used in the generated JavaScript")
+		quote        = flag.String("quote", "single", "quote style used in the generated JavaScript: single or double")
 		trailing     = flag.Bool("trailing-comma", false, "emit trailing commas in the generated JavaScript")
 	)
 
@@ -52,7 +52,12 @@ func run() error {
 		patterns = []string{"./..."}
 	}
 
-	options := []crystalline.GeneratorOption{crystalline.WithQuoteStyle(*quote)}
+	style, err := quoteStyle(*quote)
+	if err != nil {
+		return err
+	}
+
+	options := []crystalline.GeneratorOption{crystalline.WithQuoteStyle(style)}
 	if *trailing {
 		options = append(options, crystalline.WithTrailingComma())
 	}
@@ -82,6 +87,19 @@ func run() error {
 	}
 
 	return generate()
+}
+
+// quoteStyle reads the flag, which is the one place a quote style is a string
+// rather than a choice.
+func quoteStyle(flag string) (crystalline.QuoteStyle, error) {
+	switch flag {
+	case "single", "'":
+		return crystalline.SingleQuote, nil
+	case "double", `"`:
+		return crystalline.DoubleQuote, nil
+	}
+
+	return 0, fmt.Errorf("-quote must be single or double, got %q", flag)
 }
 
 // build runs one generation, from loaded packages to written files.

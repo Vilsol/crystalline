@@ -27,6 +27,9 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `BuildGo` takes options and defaults to the package of the first manifest,
   which is what the command already worked out for itself. `GoBindings.WriteFile`
   writes the result, as `Output.WriteFiles` already did for the other two.
+- `WithQuoteStyle` takes a `QuoteStyle` rather than a string, and `-quote`
+  takes `single` or `double`. Any string was accepted before, and a typo
+  produced a module that does not parse, found by whoever imported it.
 - Manifest functions marked `//crystalline:exports`, declaring the whole JS
   surface in one compiler-checked place, including symbols from packages you do
   not own.
