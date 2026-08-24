@@ -380,10 +380,23 @@ func (g *Generator) renderSupplied(named *types.Named, declared *types.Interface
 	result.WriteString("  interface " + named.Obj().Name() + " {\n")
 
 	methods := make([]*types.Func, 0, declared.NumMethods())
+
 	for i := range declared.NumMethods() {
-		if method := declared.Method(i); method.Exported() {
-			methods = append(methods, method)
+		method := declared.Method(i)
+
+		// The same refusals the adapter makes: an unexported method cannot be
+		// provided, and a variadic one has no honest shape as a JS function.
+		if !method.Exported() {
+			return "", fmt.Errorf("%s has the unexported method %s, which JavaScript cannot provide",
+				named.Obj().Name(), method.Name())
 		}
+
+		if sig, ok := method.Type().(*types.Signature); ok && sig.Variadic() {
+			return "", fmt.Errorf("%s.%s is variadic, which an object supplied from JavaScript cannot be",
+				named.Obj().Name(), method.Name())
+		}
+
+		methods = append(methods, method)
 	}
 
 	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })

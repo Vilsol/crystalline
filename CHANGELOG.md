@@ -119,6 +119,11 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - A type that is both mapped and an enum crosses as its mapping. The value set
   was asked about first, so `time.Duration` was declared as its own constants
   in a `time` namespace while the bindings sent milliseconds.
+- An interface JavaScript cannot honestly provide is refused rather than
+  emitted. A variadic method was rendered as taking a slice, which is not the
+  method being implemented, and an unexported one was skipped, leaving a type
+  that did not satisfy the interface. Neither showed up until the consumer's
+  own build failed.
 
 #### Changed
 

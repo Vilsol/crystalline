@@ -384,3 +384,18 @@ func MaybeStamp(ok bool) *time.Time {
 func Rates() map[time.Duration]string {
 	return map[time.Duration]string{1500 * time.Millisecond: "slow"}
 }
+
+// Logger is what a supplied object cannot be: a JavaScript function takes its
+// arguments one at a time, so a variadic method has no honest shape, and an
+// unexported method cannot be provided at all.
+type Logger interface {
+	Log(parts ...string)
+
+	secret()
+}
+
+func UseLogger(l Logger) int {
+	l.Log("a", "b")
+
+	return 1
+}

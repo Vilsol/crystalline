@@ -744,3 +744,27 @@ func TestResultNarrows(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(out.TypeScript, "readonly value?: T;"),
 		"value must belong to the successful half only:\n"+out.TypeScript)
 }
+
+// TestSuppliedInterfacesRefuseWhatJSCannotProvide pins that an interface
+// JavaScript cannot honestly implement is reported rather than emitted.
+//
+// The adapter rendered a variadic method as taking a slice, which is not the
+// method it claims to implement, and skipped unexported methods entirely, so
+// the type did not satisfy the interface. BuildGo only parses what it writes,
+// so neither showed up until the consumer's own build failed.
+func TestSuppliedInterfacesRefuseWhatJSCannotProvide(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	reported := make([]string, 0, len(out.Skipped))
+	for _, skipped := range out.Skipped {
+		reported = append(reported, skipped.String())
+	}
+
+	joined := strings.Join(reported, "\n")
+
+	testza.AssertTrue(t, strings.Contains(joined, "UseLogger"),
+		"an interface JavaScript cannot provide must be reported, got:\n"+joined)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "UseLogger"),
+		"and left out of the declarations:\n"+out.TypeScript)
+}

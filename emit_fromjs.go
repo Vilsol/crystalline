@@ -494,8 +494,12 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 
 	for i := range declared.NumMethods() {
 		method := declared.Method(i)
+
+		// Skipping it would leave a type that does not satisfy the interface it
+		// claims to, which only the consumer's own build would notice.
 		if !method.Exported() {
-			continue
+			return "", fmt.Errorf("%s has the unexported method %s, which JavaScript cannot provide",
+				named.Obj().Name(), method.Name())
 		}
 
 		sig, ok := method.Type().(*types.Signature)
@@ -506,6 +510,14 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 		if sig.Results().Len() > 1 {
 			return "", fmt.Errorf("%s.%s returns %d values, and an object supplied from JavaScript returns one",
 				named.Obj().Name(), method.Name(), sig.Results().Len())
+		}
+
+		// A JavaScript function takes its arguments one at a time, so there is
+		// no honest shape for a variadic method: rendering it as taking a slice
+		// declares a different method from the one being implemented.
+		if sig.Variadic() {
+			return "", fmt.Errorf("%s.%s is variadic, which an object supplied from JavaScript cannot be",
+				named.Obj().Name(), method.Name())
 		}
 
 		required = append(required, method.Name())
