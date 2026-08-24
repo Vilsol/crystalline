@@ -44,6 +44,8 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
   a hand-written `syscall/js` binding doing the same conversions.
+- `-watch` regenerates when a Go file changes. A failure reports where and
+  keeps watching, so a half-finished edit does not end the session.
 - An interface parameter is supplied from JavaScript: Go declares the methods
   it needs and the app hands in an object providing them, checked on arrival.
   This is the narrow form of calling out, reusing what a callback parameter

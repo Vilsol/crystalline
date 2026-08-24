@@ -34,6 +34,7 @@ func run() error {
 		tsOut        = flag.String("ts-out", "", "file the declarations are written to (defaults to <out>/crystalline.d.ts)")
 		banner       = flag.String("banner", "", "text prepended to the generated JavaScript and declarations")
 		profile      = flag.Bool("profile", false, "count and time every call, reported by stats() on the generated module")
+		watching     = flag.Bool("watch", false, "regenerate whenever a Go file under -dir changes")
 		quote        = flag.String("quote", "'", "quote character used in the generated JavaScript")
 		trailing     = flag.Bool("trailing-comma", false, "emit trailing commas in the generated JavaScript")
 	)
@@ -64,12 +65,27 @@ func run() error {
 		options = append(options, crystalline.WithProfiling())
 	}
 
-	generator := crystalline.NewGenerator(*app, options...)
+	// A fresh generator each time: it holds the loaded packages, and the point
+	// of regenerating is that they have changed.
+	generate := func() error {
+		generator := crystalline.NewGenerator(*app, options...)
 
-	if err := generator.Load(*dir, patterns...); err != nil {
-		return err
+		if err := generator.Load(*dir, patterns...); err != nil {
+			return err
+		}
+
+		return build(generator, patterns, *out, *jsOut, *tsOut, *goOut, *goPackage, *goImportPath)
 	}
 
+	if *watching {
+		return watch(*dir, generate)
+	}
+
+	return generate()
+}
+
+// build runs one generation, from loaded packages to written files.
+func build(generator *crystalline.Generator, patterns []string, out string, jsOut string, tsOut string, goOut string, goPackage string, goImportPath string) error {
 	declarations, err := generator.Declarations()
 	if err != nil {
 		return err
@@ -92,11 +108,11 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "crystalline: warning", warning)
 	}
 
-	if err := rendered.WriteFiles(orDefault(*jsOut, *out, "crystalline.js"), orDefault(*tsOut, *out, "crystalline.d.ts")); err != nil {
+	if err := rendered.WriteFiles(orDefault(jsOut, out, "crystalline.js"), orDefault(tsOut, out, "crystalline.d.ts")); err != nil {
 		return err
 	}
 
-	return writeGo(generator, declarations, *goOut, *goPackage, *goImportPath)
+	return writeGo(generator, declarations, goOut, goPackage, goImportPath)
 }
 
 // orDefault resolves an output path, falling back to a default name inside the

@@ -13,7 +13,7 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 * Promises via option, doc directive, or automatically for callbacks and contexts.
 * Generic instantiations kept distinct.
 * Configurable quote style and trailing commas.
-* `go:generate` command and library API.
+* `go:generate` command and library API, with `-watch` to regenerate on save.
 
 ## Install
 

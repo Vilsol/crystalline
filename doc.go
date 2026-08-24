@@ -131,6 +131,14 @@
 // struct reachable from it, since a plain value cannot contain a live one.
 // The generated declarations show which types those are.
 //
+// # Regenerating on save
+//
+//	crystalline -watch -app myapp -out ./dist ./...
+//
+// Go files under -dir are polled, and a change regenerates. A generate that
+// fails reports where and keeps watching, because a half-finished edit should
+// leave the watcher waiting for the next save rather than exiting.
+//
 // # Measuring
 //
 // Generating with -profile counts and times every call made through the module,
