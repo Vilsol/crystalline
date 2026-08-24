@@ -137,9 +137,20 @@
 // # The generated file
 //
 // crystalline_gen.go is written next to the manifest and carries a js build
-// tag. Commit it: a plain go build for wasm then works without running the
-// generator first, and a change to the JavaScript surface shows up in review
-// rather than appearing at deploy time.
+// tag. Commit it, along with the JavaScript and the declarations: a plain go
+// build for wasm then works without running the generator first, and a change
+// to the JavaScript surface shows up in review rather than at deploy time.
+//
+// Output is deterministic, so CI can check that what is committed is what the
+// generator currently produces:
+//
+//	go generate ./...
+//	git add -N path/to/generated
+//	git diff --exit-code path/to/generated
+//
+// The add -N matters. A diff on its own ignores files nobody has committed yet,
+// so the first generated file in a project passes the check in silence, which
+// is exactly when you least want it to.
 //
 // # Struct tags
 //

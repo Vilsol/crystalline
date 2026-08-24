@@ -53,8 +53,13 @@ jobs:
 
       # The generated files are committed so they can be read on their own. This
       # catches the case where the generator changed and they were not updated.
+      #
+      # add -N first: a diff alone ignores files nobody has committed yet, so a
+      # new example whose output was never added would pass in silence.
       - name: Generated output is current
-        run: git diff --exit-code examples
+        run: |
+          git add -N examples
+          git diff --exit-code examples
 
       # One iteration of each, which proves the benchmarks still run without
       # trying to get a usable measurement out of a shared runner.
