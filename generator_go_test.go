@@ -104,6 +104,10 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"Promoted=tagged",
 		"Direct=own",
 		"EmbeddedField=tagged",
+		"TimeIn=2020-01-02T03:04:05Z",
+		"TimeOut=true",
+		"TimeValue=2020-01-02T03:04:05.000Z",
+		"BadTime=threw",
 		"PairString=a",
 		"PairSwapped=b",
 		"PairNumber=2",
@@ -484,6 +488,21 @@ func main() {
 		out.push("Promoted=" + embedder.Promoted());
 		out.push("Direct=" + embedder.Direct());
 		out.push("EmbeddedField=" + embedder.Base.Tag);
+
+		// A time crosses as a Date, both ways. It used to arrive as a wrapper
+		// with no readable fields, and a real Date was silently read as the
+		// zero time because there were no known properties to reject.
+		out.push("TimeIn=" + s.TakesTime(new Date(Date.UTC(2020, 0, 2, 3, 4, 5))));
+		const stamped = s.MakeStamped();
+		out.push("TimeOut=" + (stamped.At instanceof Date));
+		out.push("TimeValue=" + stamped.At.toISOString());
+		let badTime = "accepted";
+		try {
+			s.TakesTime({});
+		} catch (e) {
+			badTime = "threw";
+		}
+		out.push("BadTime=" + badTime);
 
 		// Distinct instantiations of one generic type, actually called.
 		out.push("PairString=" + g.Strings().First);

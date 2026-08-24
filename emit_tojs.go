@@ -87,6 +87,10 @@ func (e *emitter) namedToJSExpr(expr string, t types.Type) (string, error) {
 		return "crystallineError(" + expr + ")", nil
 	}
 
+	if mapped, ok := marshallerFor(t); ok {
+		return fmt.Sprintf(mapped.toJS, expr), nil
+	}
+
 	named, ok := t.(*types.Named)
 	if !ok {
 		return e.toJS(expr, t.Underlying(), false)

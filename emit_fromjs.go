@@ -248,6 +248,16 @@ func (e *emitter) ensureValueConverter(t types.Type) (string, error) {
 func (e *emitter) emitValueConverter(name string, t types.Type) (string, error) {
 	goType := types.TypeString(t, e.qualifier)
 
+	if mapped, ok := marshallerFor(t); ok {
+		pkg := ""
+		if path := marshallerPackage(t); path != "" {
+			pkg = e.imports.add(path, lastSegment(path))
+		}
+
+		return "func " + name + "(value js.Value) (" + goType + ", error) {\n" +
+			mapped.fromJS(goType, pkg) + "}\n\n", nil
+	}
+
 	switch typed := t.(type) {
 	case *types.Basic:
 		return e.emitBasicConverter(name, goType, typed)

@@ -50,6 +50,12 @@ func wideIntegers(t types.Type, seen map[types.Type]bool) []string {
 
 	seen[t] = true
 
+	// A mapped type crosses as its counterpart, so its underlying width is not
+	// what anybody receives.
+	if _, mapped := marshallerFor(t); mapped {
+		return nil
+	}
+
 	switch typed := t.(type) {
 	case *types.Basic:
 		if typed.Kind() == types.Int64 || typed.Kind() == types.Uint64 {

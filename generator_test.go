@@ -479,3 +479,22 @@ func TestEmbeddedMembersArePromoted(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(block, "Direct(): string;"),
 		"the type's own members must survive too:\n"+block)
 }
+
+// TestTimeIsMarshalledAsADate pins the stdlib mapping that r.Marshal provides.
+//
+// time.Time has no exported fields, so it used to bind as a wrapper carrying
+// thirty methods and no readable data, and its converter had an empty set of
+// known fields. That meant the unknown-property check had nothing to reject:
+// a real JS Date has no own enumerable keys, so it was accepted and silently
+// became the zero time.
+func TestTimeIsMarshalledAsADate(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function TakesTime(t: Date): string;"),
+		"a time must cross as a Date:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "At: Date;"),
+		"including as a field:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "namespace time"),
+		"and its methods must not be declared:\n"+out.TypeScript)
+}

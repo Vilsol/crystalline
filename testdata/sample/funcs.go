@@ -3,6 +3,7 @@ package sample
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 type FnSample struct {
@@ -300,4 +301,19 @@ func (e Embedder) Direct() string {
 
 func MakeEmbedder() Embedder {
 	return Embedder{Base: Base{Tag: "tagged"}, Own: "own"}
+}
+
+// Stamped carries a time, the shape almost every real struct has and the one
+// crystalline used to bind as a field-less wrapper carrying thirty methods.
+type Stamped struct {
+	Label string
+	At    time.Time
+}
+
+func TakesTime(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
+func MakeStamped() Stamped {
+	return Stamped{Label: "stamped", At: time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}
 }

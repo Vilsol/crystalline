@@ -86,6 +86,13 @@ export declare namespace sample {
     readonly At: string;
     readonly Value: number;
   }
+  interface Stamped {
+    Label: string;
+    At: Date;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
   interface Ticker {
     Name: string;
     readonly Events: AsyncIterable<string>;
@@ -100,6 +107,7 @@ export declare namespace sample {
   function FooBar(): sample.FnSample;
   function Keys(ids: Array<number> | undefined, seed: number): number;
   function MakeEmbedder(): sample.Embedder;
+  function MakeStamped(): sample.Stamped;
   function MayFail(ok: boolean): Result<string>;
   function Middle(first: sample.FnSample | undefined, label: string): string;
   function NewTicker(): sample.Ticker;
@@ -109,6 +117,7 @@ export declare namespace sample {
   function Stream(count: number): AsyncIterable<string>;
   function Streamable(signal: AbortSignal, ok: boolean): Result<AsyncIterable<number>>;
   function Sum(values: AsyncIterable<number>): Promise<number>;
+  function TakesTime(t: Date): string;
   function Ticks(signal: AbortSignal, count: number): AsyncIterable<number>;
   const Titles: Record<number, string> | undefined;
   function Total(nums: Array<number> | undefined): number;

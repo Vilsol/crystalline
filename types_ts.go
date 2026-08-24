@@ -80,6 +80,11 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 		return "Error", false, nil
 	}
 
+	// A mapped type crosses as its counterpart rather than as its structure.
+	if mapped, ok := marshallerFor(t); ok {
+		return mapped.declared, false, nil
+	}
+
 	if _, ok := t.Underlying().(*types.Struct); ok {
 		name := obj.Name()
 		if named, ok := t.(*types.Named); ok {
@@ -157,6 +162,12 @@ func collectNamed(t types.Type, seen map[*types.Named]bool, order *[]*types.Name
 		}
 
 		if _, ok := typed.Underlying().(*types.Struct); !ok {
+			return
+		}
+
+		// A mapped type crosses as a JS counterpart, so declaring its fields
+		// and methods would describe something nobody receives.
+		if _, mapped := marshallerFor(typed); mapped {
 			return
 		}
 

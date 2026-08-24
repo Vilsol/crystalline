@@ -27,6 +27,8 @@ func Exports(r bind.Registry) {
 	r.Func(sample.Streamable)
 	r.Func(sample.Total)
 	r.Func(sample.MakeEmbedder)
+	r.Func(sample.TakesTime)
+	r.Func(sample.MakeStamped)
 
 	// Two instantiations of one generic type, so that the marshallers they
 	// generate are compiled and run rather than only matched as text.
