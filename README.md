@@ -150,7 +150,7 @@ await api.Restock({ Notify: (m) => log(m) }, names);
 | `func(...)` | function type |
 | `...T` variadic | `Array<T>` |
 | `error` as a value | `Error` |
-| `(T, error)` return | `Result<T>` with `unwrap` and `unwrapOr` |
+| `(T, error)` return | `Result<T>`: `unwrap`, `unwrapOr`, or narrow on `ok` |
 | `chan T`, `<-chan T` return | `AsyncIterable<T>` |
 | `<-chan T` parameter | `AsyncIterable<T>` the caller supplies |
 | `context.Context` first parameter | `AbortSignal` |

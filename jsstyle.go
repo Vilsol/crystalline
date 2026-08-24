@@ -202,22 +202,30 @@ type Output struct {
 // the value rather than in a rejected promise: making every fallible call async
 // would force every caller to be async too.
 //
-// It is one interface rather than a discriminated union. A union is only
-// pleasant when you actually want to branch, and forcing a narrowing at every
-// call site to reach a value is worse than the tuple it replaced. The methods
-// carry the ergonomics, the way Result does in Rust.
-const resultDeclarations = `export interface Result<T> {
-  /** Whether the call succeeded. */
-  readonly ok: boolean;
-  /** The value, when the call succeeded. */
-  readonly value?: T;
-  /** The error, when the call failed. */
-  readonly error?: Error;
+// The two halves are a discriminated union, so checking ok tells TypeScript
+// which one it has. The methods are intersected over both, so reaching a value
+// still needs no narrowing at all — which is the part a bare union gets wrong,
+// and why this was one flat interface before. As one interface, ok said nothing
+// about value or error and neither branch of the obvious pattern compiled.
+const resultDeclarations = `export type Result<T> = (
+  | {
+      /** Whether the call succeeded. */
+      readonly ok: true;
+      /** The value the call produced. */
+      readonly value: T;
+    }
+  | {
+      /** Whether the call succeeded. */
+      readonly ok: false;
+      /** Why the call failed. */
+      readonly error: Error;
+    }
+) & {
   /** Returns the value, throwing the error if the call failed. */
   unwrap(): T;
   /** Returns the value, or the fallback if the call failed. */
   unwrapOr(fallback: T): T;
-}
+};
 `
 
 // awaitable widens a callback's return type: Go awaits whatever comes back, so

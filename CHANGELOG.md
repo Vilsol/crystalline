@@ -25,8 +25,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   surface in one compiler-checked place, including symbols from packages you do
   not own.
 - `//crystalline:export` directive as shorthand for declarations you own.
-- `Result<T>` for fallible calls, with `unwrap` and `unwrapOr`. Methods live on
-  a shared prototype, so results cost nothing per call.
+- `Result<T>` for fallible calls. Reaching the value needs no narrowing, since
+  `unwrap` and `unwrapOr` are there whichever half you hold, and checking `ok`
+  narrows for code that would rather branch. Methods live on a shared
+  prototype, so results cost nothing per call.
 - `AsyncIterable<T>` for channels in both directions. A channel parameter
   accepts any iterable, including a plain array, and is drained on a goroutine
   scoped to the call.

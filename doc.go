@@ -74,9 +74,17 @@
 //
 //	func Load(id string) (Config, error)   ->   Load(id: string): Result<Config>
 //
-// Result is one interface with unwrap and unwrapOr, not a union to narrow. A
-// call that can fail is not necessarily slow, so it stays synchronous and does
-// not force its callers to become async.
+// Reaching the value needs no narrowing — unwrap and unwrapOr are there
+// whichever half you hold — and checking ok narrows properly for code that
+// would rather branch:
+//
+//	const config = api.Load(id).unwrap();
+//
+//	const result = api.Load(id);
+//	if (result.ok) { use(result.value); } else { report(result.error); }
+//
+// A call that can fail is not necessarily slow, so it stays synchronous and
+// does not force its callers to become async.
 //
 // A receive-only channel becomes an AsyncIterable, consumable with for await. A
 // leading context.Context becomes an AbortSignal, which is the only way to

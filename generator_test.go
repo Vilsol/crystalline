@@ -113,12 +113,12 @@ func TestErrorReturnsBecomeResults(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function OnlyFails(ok: boolean): Result<void>;"),
 		"an error-only return must stay synchronous:\n"+out.TypeScript)
 
-	// One type, not a union: a caller should reach for unwrap, not narrow at
-	// every call site.
-	testza.AssertTrue(t, strings.Contains(out.TypeScript, "export interface Result<T> {"),
-		"Result must be a single interface:\n"+out.TypeScript)
-	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Ok<T> | Err"),
-		"Result must not be a union:\n"+out.TypeScript)
+	// Reaching a value must not require narrowing: the methods are intersected
+	// over both halves, so unwrap is there whichever half you hold.
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "export type Result<T> = ("),
+		"Result must be declared once:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, ") & {"),
+		"with its methods over both halves:\n"+out.TypeScript)
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "unwrap(): T;"), out.TypeScript)
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "unwrapOr(fallback: T): T;"), out.TypeScript)
 }
@@ -350,14 +350,14 @@ func TestResultIsDeclaredOnlyWhenUsed(t *testing.T) {
 	out, err := g.Build(declarations)
 	testza.AssertNoError(t, err)
 
-	testza.AssertFalse(t, strings.Contains(out.TypeScript, "interface Result"),
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "type Result<T>"),
 		"nothing here can fail, so Result must not be declared:\n"+out.TypeScript)
 
 	// The sample surface does have fallible calls, so it must still carry it.
 	used, err := staticBuild(t)
 	testza.AssertNoError(t, err)
 
-	testza.AssertTrue(t, strings.Contains(used.TypeScript, "export interface Result<T> {"),
+	testza.AssertTrue(t, strings.Contains(used.TypeScript, "export type Result<T> = ("),
 		"a fallible surface must declare Result:\n"+used.TypeScript)
 }
 
@@ -721,4 +721,26 @@ func TestPointersToMappedTypesBindAsMapped(t *testing.T) {
 
 	testza.AssertFalse(t, strings.Contains(pkg.Source, "crystallineMarshalTimeTime"),
 		"a mapped type must not also get a wrapper marshaller:\n"+pkg.Source)
+}
+
+// TestResultNarrows pins that checking ok tells TypeScript which half it has.
+//
+// ok, value and error were three independent properties, so testing ok said
+// nothing about the other two and both branches of the obvious pattern failed
+// to compile. The methods are intersected over the union, so unwrap still needs
+// no narrowing and narrowing is no longer impossible for those who want it.
+func TestResultNarrows(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "readonly ok: true;"),
+		"the discriminant must be a literal:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "readonly ok: false;"),
+		"in both halves:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "unwrap(): T;"),
+		"and the methods must survive:\n"+out.TypeScript)
+
+	// Optional value and error are what stopped narrowing working.
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "readonly value?: T;"),
+		"value must belong to the successful half only:\n"+out.TypeScript)
 }
