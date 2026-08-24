@@ -30,6 +30,8 @@ type crystallineRegistry struct{}
 
 func (crystallineRegistry) Func(fn any, opts ...bind.Option) {}
 
+func (crystallineRegistry) Plain(zero any) {}
+
 func (crystallineRegistry) Type(zero any) {}
 
 func (crystallineRegistry) Ignore(zero any, method string) {}
@@ -679,6 +681,17 @@ func crystallineMarshalAccount(v *account.Account) any {
 
 		return crystallineOk(nil)
 	})))
+	out.Set("Snapshot", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
+		defer crystallineRecover(&result)
+
+		if len(args) != 0 {
+			return crystallineFail("Snapshot: expected 0 arguments, got " + strconv.Itoa(len(args)))
+		}
+
+		r0 := v.Snapshot()
+
+		return crystallineMarshalStatement(&r0)
+	})))
 	out.Set("Statement", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
 
@@ -707,6 +720,31 @@ func crystallineMarshalAccount(v *account.Account) any {
 	})))
 
 	crystallineAttach(out, crystallineRetain(v, scope), scope)
+
+	return out
+}
+
+func crystallineMarshalStatement(v *account.Statement) any {
+	if v == nil {
+		return nil
+	}
+
+	out := js.Global().Get("Object").New()
+
+	out.Set("Owner", string(v.Owner))
+	out.Set("Balance", float64(v.Balance))
+	out.Set("Entries", func() any {
+		if v.Entries == nil {
+			return nil
+		}
+
+		out := make([]any, 0, len(v.Entries))
+		for _, v := range v.Entries {
+			out = append(out, string(v))
+		}
+
+		return out
+	}())
 
 	return out
 }

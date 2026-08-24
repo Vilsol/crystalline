@@ -27,6 +27,7 @@ export const initializeCrystalline = () => {
     Middle: wrap(globalThis['go']['app']['sample']['Middle']),
     NewTicker: wrap(globalThis['go']['app']['sample']['NewTicker']),
     OnlyFails: wrap(globalThis['go']['app']['sample']['OnlyFails']),
+    Readings: wrap(globalThis['go']['app']['sample']['Readings']),
     Rich: wrap(globalThis['go']['app']['sample']['Rich']),
     Stream: wrap(globalThis['go']['app']['sample']['Stream']),
     Sum: wrap(globalThis['go']['app']['sample']['Sum']),

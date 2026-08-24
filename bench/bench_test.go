@@ -196,6 +196,16 @@ func BenchmarkStructsOut(b *testing.B) {
 			drivers().points.Invoke(fn, size, batch)
 		})
 	})
+
+	// The same shape declared with r.Plain: converted once, no handles, no
+	// accessors, no methods. This is the lever for an aggregate result.
+	b.Run("plain", func(b *testing.B) {
+		readings := api().Get("MakeReadings")
+
+		perCall(b, batch, func() {
+			drivers().points.Invoke(readings, size, batch)
+		})
+	})
 }
 
 // BenchmarkStructWrapper is one wrapper built and released, which is what a
@@ -218,6 +228,14 @@ func BenchmarkStructField(b *testing.B) {
 
 	plain := js.Global().Get("Object").New()
 	plain.Set("X", 0)
+
+	// A struct-typed field hands back a wrapper. It is cached per parent, so
+	// reading it repeatedly costs a read rather than a fresh wrapper.
+	b.Run("get/nested", func(b *testing.B) {
+		perCall(b, batch, func() {
+			drivers().get.Invoke(point, "Origin", batch)
+		})
+	})
 
 	for _, target := range []struct {
 		name  string

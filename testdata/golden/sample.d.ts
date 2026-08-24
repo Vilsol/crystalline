@@ -22,6 +22,11 @@ export declare namespace sample {
     Three(): number;
     Two(): number;
   }
+  interface Reading {
+    readonly Label: string;
+    readonly Values?: Array<number>;
+    readonly Peak: sample.Sample;
+  }
   interface Richer {
     Blob?: Uint8Array;
     Lookup?: Record<string, number>;
@@ -33,6 +38,10 @@ export declare namespace sample {
     Configure(s: sample.FnSample): string;
     Fails(): Result<void>;
     WithCallback(cb: (v: string) => Promise<number>): Promise<boolean>;
+  }
+  interface Sample {
+    readonly At: string;
+    readonly Value: number;
   }
   interface Ticker {
     Name: string;
@@ -47,6 +56,7 @@ export declare namespace sample {
   function Middle(first: sample.FnSample | undefined, label: string): string;
   function NewTicker(): sample.Ticker;
   function OnlyFails(ok: boolean): Result<void>;
+  function Readings(count: number): (Array<sample.Reading> | undefined);
   function Rich(): sample.Richer;
   function Stream(count: number): AsyncIterable<string>;
   function Sum(values: AsyncIterable<number>): Promise<number>;

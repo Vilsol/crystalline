@@ -26,6 +26,7 @@ export const initializeCrystalline = () => {
     MakeInts: wrap(globalThis['go']['bench']['payload']['MakeInts']),
     MakeMap: wrap(globalThis['go']['bench']['payload']['MakeMap']),
     MakePoints: wrap(globalThis['go']['bench']['payload']['MakePoints']),
+    MakeReadings: wrap(globalThis['go']['bench']['payload']['MakeReadings']),
     MayFail: wrap(globalThis['go']['bench']['payload']['MayFail']),
     NewPoint: wrap(globalThis['go']['bench']['payload']['NewPoint']),
     Noop: wrap(globalThis['go']['bench']['payload']['Noop']),

@@ -74,6 +74,13 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"NestedLive=via-cache",
 		"NestedReaches=via-cache",
 		"SliceIdentity=false",
+		"PlainLength=2",
+		"PlainLabel=reading",
+		"PlainValues=[1,2]",
+		"PlainNoRelease=true",
+		"PlainNested=noon",
+		"PlainNestedNoMethod=true",
+		"PlainJSON={\"At\":\"noon\",\"Value\":1}",
 		"StructIdentity=written",
 		"StructLiteral=literal",
 		"TypoRejected=yes",
@@ -289,6 +296,17 @@ func main() {
 		// A slice field is a snapshot rather than a view, so it must not be
 		// cached: a Go-side change has to show up on the next read.
 		out.push("SliceIdentity=" + (r.NeverNil === r.NeverNil));
+
+		// Plain data: converted once, no handle to release, no methods, and
+		// ordinary JavaScript objects all the way down.
+		const readings = s.Readings(2);
+		out.push("PlainLength=" + readings.length);
+		out.push("PlainLabel=" + readings[0].Label);
+		out.push("PlainValues=" + JSON.stringify(readings[0].Values));
+		out.push("PlainNoRelease=" + (readings[0].release === undefined));
+		out.push("PlainNested=" + readings[0].Peak.At);
+		out.push("PlainNestedNoMethod=" + (readings[0].Peak.Describe === undefined));
+		out.push("PlainJSON=" + JSON.stringify(readings[1].Peak));
 
 		// A wrapper handed back to Go must resolve to the same Go value.
 		out.push("StructIdentity=" + r.Configure(live));

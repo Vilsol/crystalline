@@ -224,3 +224,36 @@ func TestNilableSliceParametersStayRequired(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Keys(ids: Array<number> | undefined, seed: number): number;"),
 		"a nilable slice parameter must stay required:\n"+out.TypeScript)
 }
+
+// TestPlainTypesAreDeclaredAsData pins what r.Plain changes in the
+// declarations: fields that cannot be written back, and no methods, because
+// plain data is a snapshot rather than a view of the Go value.
+func TestPlainTypesAreDeclaredAsData(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "readonly Label: string;"),
+		"a plain field must be readonly:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "readonly At: string;"),
+		"plainness must reach the structs a plain type contains:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Describe(): string;"),
+		"plain data carries no methods:\n"+out.TypeScript)
+}
+
+// TestBuildReportsSkips pins that a caller who only builds the declarations
+// still learns what could not be bound. The report used to be reachable from
+// BuildGo alone, so a library user rendering types saw nothing.
+func TestBuildReportsSkips(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	reported := make([]string, 0, len(out.Skipped))
+	for _, skipped := range out.Skipped {
+		reported = append(reported, skipped.String())
+	}
+
+	joined := strings.Join(reported, "\n")
+
+	testza.AssertTrue(t, strings.Contains(joined, "Sample.Describe"),
+		"a method dropped by plain marshalling must be named, got:\n"+joined)
+}

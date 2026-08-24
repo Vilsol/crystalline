@@ -10,9 +10,25 @@ import (
 
 // Point is a small struct, the shape a wrapper is built around.
 type Point struct {
-	X     float64
-	Y     float64
-	Label string
+	X      float64
+	Y      float64
+	Label  string
+	Origin Anchor
+}
+
+// Anchor is a struct-typed field, whose wrapper is cached per parent so that
+// reading it twice gives the same object.
+type Anchor struct {
+	X float64
+	Y float64
+}
+
+// Reading is the same shape as Point, marshalled as plain data instead.
+type Reading struct {
+	X      float64
+	Y      float64
+	Label  string
+	Origin Anchor
 }
 
 // Noop measures the cost of a call and nothing else.
@@ -78,6 +94,18 @@ func MakePoints(n int) []Point {
 
 func NewPoint(label string) *Point {
 	return &Point{Label: label}
+}
+
+// MakeReadings is MakePoints for a type the manifest marks plain, so the two
+// can be compared directly.
+func MakeReadings(n int) []Reading {
+	out := make([]Reading, n)
+
+	for i := range out {
+		out[i] = Reading{X: float64(i), Y: float64(i), Label: "p"}
+	}
+
+	return out
 }
 
 func (p *Point) Shift(dx float64, dy float64) {

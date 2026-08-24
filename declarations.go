@@ -37,6 +37,7 @@ const (
 	EntryType    EntryKind = "type"
 	EntryIgnore  EntryKind = "ignore"
 	EntryPromise EntryKind = "promise"
+	EntryPlain   EntryKind = "plain"
 )
 
 // hasDirective reports whether a doc comment carries the given directive.
@@ -119,12 +120,14 @@ func (e Entry) String() string {
 type marks struct {
 	ignored  map[string]bool
 	promised map[string]bool
+	plain    map[string]bool
 }
 
 func newMarks(declarations Declarations) marks {
 	m := marks{
 		ignored:  make(map[string]bool),
 		promised: make(map[string]bool),
+		plain:    make(map[string]bool),
 	}
 
 	for _, entry := range declarations.Entries {
@@ -138,10 +141,62 @@ func newMarks(declarations Declarations) marks {
 			m.ignored[markKey(named, entry.Method)] = true
 		case EntryPromise:
 			m.promised[markKey(named, entry.Method)] = true
+		case EntryPlain:
+			// Plainness reaches everything the type contains: a plain value
+			// cannot hold a live wrapper, so the whole reachable set converts
+			// the same way. The declarations show which types those are.
+			for _, reached := range plainReachable(named) {
+				m.plain[markKey(reached, "")] = true
+			}
 		}
 	}
 
 	return m
+}
+
+// plainReachable collects the structs a plain type contains, following fields
+// only. A method's parameter type is not part of the value, so it is not
+// dragged in.
+func plainReachable(named *types.Named) []*types.Named {
+	seen := make(map[*types.Named]bool)
+	order := make([]*types.Named, 0, 1)
+
+	var walk func(types.Type)
+
+	walk = func(t types.Type) {
+		switch typed := t.(type) {
+		case *types.Named:
+			structType, ok := typed.Underlying().(*types.Struct)
+			if !ok || seen[typed] {
+				return
+			}
+
+			seen[typed] = true
+			order = append(order, typed)
+
+			for i := range structType.NumFields() {
+				walk(structType.Field(i).Type())
+			}
+		case *types.Pointer:
+			walk(typed.Elem())
+		case *types.Slice:
+			walk(typed.Elem())
+		case *types.Array:
+			walk(typed.Elem())
+		case *types.Map:
+			walk(typed.Elem())
+		}
+	}
+
+	walk(named)
+
+	return order
+}
+
+// isPlain reports whether a type is marshalled as data rather than as a live
+// wrapper.
+func (m marks) isPlain(named *types.Named) bool {
+	return m.plain[markKey(named, "")]
 }
 
 func markKey(named *types.Named, method string) string {

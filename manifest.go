@@ -74,6 +74,8 @@ func (g *Generator) readCall(pkg *packages.Package, manifest string, method stri
 		return g.readValue(pkg, where, call)
 	case "Type":
 		return g.readType(pkg, where, call, EntryType)
+	case "Plain":
+		return g.readType(pkg, where, call, EntryPlain)
 	case "Ignore":
 		return g.readMethodMark(pkg, where, call, EntryIgnore)
 	case "Promise":

@@ -200,3 +200,37 @@ func NewTicker() Ticker {
 
 	return Ticker{Name: "ticker", Events: events}
 }
+
+// Reading is only ever read on the JavaScript side, so the manifest asks for it
+// as plain data rather than as a live wrapper.
+type Reading struct {
+	Label  string
+	Values []float64
+	Peak   Sample
+}
+
+// Sample is reached only through Reading, so it is plain too: a plain value
+// cannot contain a live one.
+type Sample struct {
+	At    string
+	Value float64
+}
+
+// Describe has nowhere to live on plain data, and is reported as skipped.
+func (s Sample) Describe() string {
+	return s.At
+}
+
+func Readings(count int) []Reading {
+	out := make([]Reading, count)
+
+	for i := range out {
+		out[i] = Reading{
+			Label:  "reading",
+			Values: []float64{1, 2},
+			Peak:   Sample{At: "noon", Value: float64(i)},
+		}
+	}
+
+	return out
+}

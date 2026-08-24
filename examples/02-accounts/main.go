@@ -18,6 +18,9 @@ func Exports(r bind.Registry) {
 
 	// Exported in Go, absent from JavaScript.
 	r.Ignore(account.Account{}, "Audit")
+
+	// A read-only result: plain data rather than a live wrapper.
+	r.Plain(account.Statement{})
 }
 
 func main() {

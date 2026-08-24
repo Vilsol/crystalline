@@ -6,7 +6,7 @@ from the Go beside it.
 | | shows |
 | --- | --- |
 | [01-hello](01-hello) | one call each way: a string and an int |
-| [02-accounts](02-accounts) | a struct with live fields and bound methods, `Result`, deterministic release |
+| [02-accounts](02-accounts) | a struct with live fields and bound methods, `Result`, plain data, deterministic release |
 | [03-pipeline](03-pipeline) | channels in both directions, a context as an `AbortSignal`, a promise by request |
 
 ## Running them

@@ -104,6 +104,66 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 	return body.String(), nil
 }
 
+// emitPlainMarshaller renders a struct as ordinary JavaScript data.
+//
+// A wrapper is a live view: a call across the boundary per field read, a bridge
+// slot per field and method, and a handle to release. For a value that is only
+// read, converting once and handing back a plain object is far cheaper, and the
+// object behaves like any other JavaScript data.
+//
+// The trade is stated rather than hidden: the result is a snapshot, it cannot
+// be written back, and it carries no methods.
+func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
+	structType, ok := named.Underlying().(*types.Struct)
+	if !ok {
+		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
+	}
+
+	name := instantiatedName(named)
+
+	var body strings.Builder
+
+	body.WriteString("func " + marshalName(name) + "(v *" + e.declaredName(named) + ") any {\n")
+	body.WriteString("\tif v == nil {\n\t\treturn nil\n\t}\n\n")
+
+	// Built field by field rather than from a Go map, so that the property
+	// order is the declaration order rather than whatever the map iterated.
+	body.WriteString("\tout := js.Global().Get(\"Object\").New()\n\n")
+
+	for i := range structType.NumFields() {
+		field := structType.Field(i)
+		if !field.Exported() {
+			continue
+		}
+
+		tag := reflect.StructTag(structType.Tag(i)).Get(tagName)
+		if err := validateTag(tag); err != nil {
+			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
+		}
+
+		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
+		if err != nil {
+			e.skip(name+"."+field.Name(), err.Error())
+
+			continue
+		}
+
+		body.WriteString("\tout.Set(" + strconv.Quote(field.Name()) + ", " + expr + ")\n")
+	}
+
+	// Methods have nowhere to live on plain data. Saying which ones went is the
+	// difference between a documented trade and a silent one.
+	for i := range named.NumMethods() {
+		if method := named.Method(i); method.Exported() && !e.isIgnored(named, method.Name()) {
+			e.skip(name+"."+method.Name(), "not bound: "+name+" is marshalled as plain data")
+		}
+	}
+
+	body.WriteString("\n\treturn out\n}\n\n")
+
+	return body.String(), nil
+}
+
 // fieldGetter renders the read half of a field accessor, caching the wrapper a
 // struct-typed field hands back.
 //

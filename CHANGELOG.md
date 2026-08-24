@@ -46,6 +46,11 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
   a hand-written `syscall/js` binding doing the same conversions.
+- `r.Plain(T{})` marshals a type as ordinary JavaScript data instead of a
+  live wrapper: converted once, no methods, no bridge slots and nothing to
+  release. Measured at 9x cheaper for a slice of 32 structs. The mark reaches
+  every struct the type contains, since a plain value cannot hold a live one,
+  and a method it cannot carry is reported rather than quietly dropped.
 
 #### Changed
 

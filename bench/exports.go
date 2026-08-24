@@ -24,6 +24,7 @@ func Exports(r bind.Registry) {
 	r.Func(payload.CountKeys)
 	r.Func(payload.MakeMap)
 	r.Func(payload.MakePoints)
+	r.Func(payload.MakeReadings)
 	r.Func(payload.NewPoint)
 	r.Func(payload.TakePoint)
 	r.Func(payload.MayFail)
@@ -31,4 +32,7 @@ func Exports(r bind.Registry) {
 	r.Func(payload.Drain)
 
 	r.Func(payload.Rounds, bind.AsPromise())
+
+	// The same shape as Point, handed over as data rather than as a wrapper.
+	r.Plain(payload.Reading{})
 }

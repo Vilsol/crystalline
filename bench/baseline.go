@@ -94,9 +94,10 @@ func init() {
 		out := make([]any, 0, len(made))
 		for _, point := range made {
 			out = append(out, map[string]any{
-				"X":     point.X,
-				"Y":     point.Y,
-				"Label": point.Label,
+				"X":      point.X,
+				"Y":      point.Y,
+				"Label":  point.Label,
+				"Origin": map[string]any{"X": point.Origin.X, "Y": point.Origin.Y},
 			})
 		}
 

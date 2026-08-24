@@ -46,6 +46,14 @@
 </section>
 
 <section>
+	<h2>Plain data, for a result you only read</h2>
+	<div class="row">
+		<button id="snapshot">Snapshot the selected account</button>
+	</div>
+	<output id="snapshotted"></output>
+</section>
+
+<section>
 	<h2>Deterministic release</h2>
 	<div class="row">
 		<button id="release">Release the selected account</button>
@@ -107,6 +115,12 @@ $("parse").onclick = () => {
 
 	$("parsed").textContent = `unwrapOr(0) = ${result.unwrapOr(0)}` + (result.ok ? "" : `\nerror: ${result.error.message}`);
 	$("parsed").classList.toggle("failed", !result.ok);
+};
+
+$("snapshot").onclick = () => {
+	// Declared with r.Plain, so this is an ordinary JavaScript object: it
+	// crossed once, holds nothing in Go, and survives JSON.
+	$("snapshotted").textContent = JSON.stringify(selected().Snapshot(), null, 2);
 };
 
 $("release").onclick = () => {

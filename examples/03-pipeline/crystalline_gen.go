@@ -30,6 +30,8 @@ type crystallineRegistry struct{}
 
 func (crystallineRegistry) Func(fn any, opts ...bind.Option) {}
 
+func (crystallineRegistry) Plain(zero any) {}
+
 func (crystallineRegistry) Type(zero any) {}
 
 func (crystallineRegistry) Ignore(zero any, method string) {}

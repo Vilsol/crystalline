@@ -153,7 +153,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			}
 
 			values.WriteString(branch)
-		case EntryType:
+		case EntryType, EntryPlain:
 			if named, ok := entry.Type.(*types.Named); ok {
 				e.queue(named)
 			}
@@ -171,7 +171,12 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 
 		e.marshallers[instantiatedName(named)] = ""
 
-		body, err := e.emitMarshaller(named)
+		marshal := e.emitMarshaller
+		if e.marks.isPlain(named) {
+			marshal = e.emitPlainMarshaller
+		}
+
+		body, err := marshal(named)
 		if err != nil {
 			e.skip(named.Obj().Name(), err.Error())
 
@@ -247,6 +252,7 @@ func (e *emitter) emitRegistry(values string) string {
 	out.WriteString("// value is already bound above, so the rest are no-ops.\n")
 	out.WriteString("type crystallineRegistry struct{}\n\n")
 	out.WriteString("func (crystallineRegistry) Func(fn any, opts ..." + bindAlias + ".Option) {}\n\n")
+	out.WriteString("func (crystallineRegistry) Plain(zero any) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Type(zero any) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Ignore(zero any, method string) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Promise(zero any, method string) {}\n\n")

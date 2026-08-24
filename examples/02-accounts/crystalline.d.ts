@@ -16,8 +16,14 @@ export declare namespace account {
     Balance: number;
     History: Array<string>;
     Deposit(amount: number): Result<void>;
+    Snapshot(): account.Statement;
     Statement(): string;
     Withdraw(amount: number): Result<void>;
+  }
+  interface Statement {
+    readonly Owner: string;
+    readonly Balance: number;
+    readonly Entries?: Array<string>;
   }
   function Open(owner: string, opening: number): (account.Account | undefined);
   function ParseAmount(text: string): Result<number>;

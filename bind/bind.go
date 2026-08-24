@@ -78,6 +78,19 @@ type Registry interface {
 	// its type; a zero value is the usual thing to pass.
 	Type(zero any)
 
+	// Plain marshals the given type as ordinary JavaScript data rather than as
+	// a live wrapper.
+	//
+	// A wrapper reads and writes through to the Go value, which costs a call
+	// across the boundary per field access and a slot in the bridge per field
+	// and method. For a result that is only read, that is a great deal of
+	// machinery to pay for a snapshot. Plain data is converted once, has no
+	// methods and cannot be written back.
+	//
+	// It applies to the whole type wherever it appears, and to every struct
+	// reachable from it: a plain value cannot contain a live one.
+	Plain(zero any)
+
 	// Ignore keeps a method off the JS surface of the given type.
 	Ignore(zero any, method string)
 

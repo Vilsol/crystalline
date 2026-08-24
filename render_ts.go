@@ -33,7 +33,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		switch entry.Kind {
 		case EntryFunc, EntryValue:
 			entities[entry.Namespace] = append(entities[entry.Namespace], entry)
-		case EntryType:
+		case EntryType, EntryPlain:
 		default:
 			continue
 		}
@@ -196,6 +196,8 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
 	}
 
+	plain := g.marks.isPlain(named)
+
 	var result strings.Builder
 
 	result.WriteString("  interface " + instantiatedName(named) + " {\n")
@@ -221,10 +223,11 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 			marker = "?"
 		}
 
-		// A field with no way back from JS throws when written, so the
-		// declaration says so instead of inviting the write.
+		// A field with no way back from JS throws when written, and plain data
+		// is a snapshot, so the declaration says so instead of inviting a write
+		// that goes nowhere.
 		prefix := ""
-		if g.readonly[instantiatedName(named)+"."+field.Name()] {
+		if plain || g.readonly[instantiatedName(named)+"."+field.Name()] {
 			prefix = "readonly "
 		}
 
@@ -233,7 +236,9 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 
 	methods := make([]*types.Func, 0, named.NumMethods())
 	for i := 0; i < named.NumMethods(); i++ {
-		if method := named.Method(i); method.Exported() {
+		// Plain data carries no methods, so declaring them would promise
+		// something that is not there.
+		if method := named.Method(i); method.Exported() && !plain {
 			methods = append(methods, method)
 		}
 	}

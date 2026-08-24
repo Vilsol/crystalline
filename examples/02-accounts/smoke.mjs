@@ -40,6 +40,18 @@ assert.throws(() => account.Summarise({ Onwer: "Carol", Balance: 7, History: [] 
 assert.equal(account.ParseAmount("12").unwrap(), 12);
 assert.equal(account.ParseAmount("twelve").unwrapOr(0), 0);
 
+// A plain snapshot is ordinary data: no handle, no methods, survives JSON.
+const snapshot = alice.Snapshot();
+
+assert.equal(snapshot.Owner, "Alice B.");
+assert.equal(snapshot.Balance, 100);
+assert.equal(typeof snapshot.release, "undefined");
+assert.deepEqual(JSON.parse(JSON.stringify(snapshot)).Entries.length, 3);
+
+// It is a snapshot, so later changes to the account do not reach it.
+alice.Deposit(1);
+assert.equal(snapshot.Balance, 100);
+
 // Ignored in the manifest, so it never reached JavaScript.
 assert.equal(typeof alice.Audit, "undefined");
 

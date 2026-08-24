@@ -73,6 +73,24 @@ func (a *Account) record(kind string, amount int) {
 	a.History = append(a.History, kind+" "+strconv.Itoa(amount))
 }
 
+// Statement is a snapshot rather than a view. JavaScript only reads it, so the
+// manifest asks for it as plain data: converted once, with no bridge slots to
+// hold and nothing to release.
+type Statement struct {
+	Owner   string
+	Balance int
+	Entries []string
+}
+
+// Snapshot copies the account into a value that crosses the boundary once.
+func (a *Account) Snapshot() Statement {
+	return Statement{
+		Owner:   a.Owner,
+		Balance: a.Balance,
+		Entries: append([]string(nil), a.History...),
+	}
+}
+
 // Transfer takes two wrappers. Each resolves back to the Go value it came from
 // rather than to a copy, so both accounts really move.
 func Transfer(from *Account, to *Account, amount int) error {

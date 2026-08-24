@@ -11,12 +11,23 @@ export interface Result<T> {
   unwrapOr(fallback: T): T;
 }
 export declare namespace payload {
+  interface Anchor {
+    readonly X: number;
+    readonly Y: number;
+  }
   interface Point {
     X: number;
     Y: number;
     Label: string;
+    Origin: payload.Anchor;
     Norm(): number;
     Shift(dx: number, dy: number): void;
+  }
+  interface Reading {
+    readonly X: number;
+    readonly Y: number;
+    readonly Label: string;
+    readonly Origin: payload.Anchor;
   }
   function AddInts(a: number, b: number): number;
   function CountKeys(index: Record<string, number> | undefined): number;
@@ -26,6 +37,7 @@ export declare namespace payload {
   function MakeInts(n: number): (Array<number> | undefined);
   function MakeMap(n: number): (Record<string, number> | undefined);
   function MakePoints(n: number): (Array<payload.Point> | undefined);
+  function MakeReadings(n: number): (Array<payload.Reading> | undefined);
   function MayFail(ok: boolean): Result<number>;
   function NewPoint(label: string): (payload.Point | undefined);
   function Noop(): void;
