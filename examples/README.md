@@ -1,6 +1,6 @@
 # examples
 
-Four pages, each one step further in. Every one is a real wasm binary built
+Five pages, each one step further in. Every one is a real wasm binary built
 from the Go beside it.
 
 | | shows |
@@ -9,6 +9,7 @@ from the Go beside it.
 | [02-accounts](02-accounts) | a struct with live fields and bound methods, `Result`, plain data, deterministic release |
 | [03-pipeline](03-pipeline) | channels in both directions, a context as an `AbortSignal`, a promise by request |
 | [04-catalogue](04-catalogue) | an enum, a type mapped with `bind.MarshalledBy`, `time.Time` as a `Date`, a promoted method, an interface supplied from JavaScript |
+| [05-ledger](05-ledger) | the other direction: `r.Import` from `localStorage`, an exact `int64` as a `bigint`, a renamed field, and the whole surface in camelCase |
 
 ## Running them
 

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crystalline — ledger</title>
+<link rel="stylesheet" href="../example.css">
+</head>
+<body>
+
+<h1>ledger</h1>
+<p>
+	Go reaches out to the browser rather than only being called by it. The
+	balance lives in <code>localStorage</code>, and Go reads and writes it
+	through two methods it declared for itself. Reload the page: it is still
+	there.
+</p>
+
+<section>
+	<h2>Add(note string, amount int) Entry</h2>
+	<div class="row">
+		<input id="note" value="coffee" autocomplete="off">
+		<input id="amount" type="number" value="-3" size="5">
+		<button id="add">Add</button>
+		<button id="forget">Forget</button>
+	</div>
+	<output id="balance"></output>
+	<output id="entry"></output>
+</section>
+
+<section>
+	<h2>What this example is showing</h2>
+	<ul>
+		<li>
+			<code>r.Import(&amp;ledger.Saved, bind.At("localStorage"))</code> —
+			a Go variable of interface type, filled from an object the browser
+			already has. Its two methods are checked while the bindings start,
+			so a browser without storage fails the boot with a message rather
+			than a nil interface at the first click.
+		</li>
+		<li>
+			<code>ID int64 `crystalline:"bigint"`</code> — entries are numbered
+			from 9007199254740993, one past where a JavaScript number stops
+			counting exactly. The field arrives as a <code>bigint</code>, and
+			the number below is the one Go has. Without the tag it would read
+			back one lower.
+		</li>
+		<li>
+			<code>Note string `crystalline:"name=description"`</code> — an
+			explicit name, which wins over the naming convention.
+		</li>
+		<li>
+			<code>-case camel</code> — this is the one example generated that
+			way, so the surface is <code>ledger.add</code> rather than
+			<code>ledger.Add</code>. It is not optional here: an import looks
+			for the name its own surface uses, and the browser's storage API is
+			spelled the JavaScript way.
+		</li>
+	</ul>
+</section>
+
+<script src="wasm_exec.js"></script>
+<script type="module">
+import { boot } from "./crystalline.js";
+
+const { ledger } = await boot("app.wasm");
+
+const $ = (id) => document.getElementById(id);
+
+const show = () => {
+	$("balance").textContent = `balance: ${ledger.balance()}`;
+};
+
+$("add").onclick = () => {
+	// A live wrapper, so it holds a slot in the bridge until it is released.
+	using entry = ledger.add($("note").value, Number($("amount").value));
+
+	// entry.id is a bigint: exact, and not the same type as a number.
+	$("entry").textContent = `#${entry.id} ${entry.description} ${entry.amount}`;
+
+	show();
+};
+
+$("forget").onclick = () => {
+	ledger.forget();
+	$("entry").textContent = "";
+	show();
+};
+
+show();
+</script>
+
+</body>
+</html>
