@@ -5,21 +5,6 @@ Declined items carry their reasoning so they are not re-argued from scratch.
 
 ## Planned
 
-### Broad JS to Go imports
-
-The narrow form shipped in 0.1.0, as an interface parameter: Go declares what it
-needs and JavaScript passes an object with those methods. No directive was
-needed in the end, because a parameter already says where the value comes from.
-
-The broad form is binding arbitrary browser APIs from Go, the way wasm-bindgen's
-`extern` blocks do. That is a second product: its own error mapping, its own
-callback lifetimes, and an async story where every call that awaits blocks a
-goroutine. It is also the wrong architecture for the cost model — a crossing is
-about 5.5 microseconds, so driving the DOM from Go per node loses to letting
-JavaScript render what Go computed.
-
-Revisit if someone shows a workload that genuinely has to originate in Go.
-
 ## Declined
 
 ### Generated batching
@@ -39,6 +24,30 @@ rather than assumed to be the first.
 The evidence against it is that the second hot spot in a real migration was a
 map read rather than a call, which batching cannot touch, and `r.Plain` fixed
 it for nothing.
+
+### A described browser API
+
+`r.Import` shipped in 0.1.0: a Go variable of interface type, filled from an
+object JavaScript already has. What did not ship, and should not, is a
+description of the browser — the `web-sys` or `gowebapi` shape, where an API
+definition is turned into bindings for everything.
+
+Against it, from the ecosystems that tried:
+
+- `web-sys` generates from WebIDL and then needs a Cargo feature **per type** to
+  keep compile times and binary size usable. Generating only what a manifest
+  declares means that problem cannot arise.
+- `gowebapi` is the same idea for Go, over `syscall/js`. It is still
+  experimental years on, missing namespace and union types, because WebIDL leans
+  on unions and overloads and Go has neither. Its author put it plainly: hard to
+  autogenerate, since Go is strictly typed without union types.
+- The cost model does not want it. A crossing is about 5.5 microseconds, so
+  driving the DOM per node loses to letting JavaScript render what Go computed.
+
+Also left undone, and cheap when someone wants it: `bind.FromModule("./x.js")`,
+the way Blazor scopes `[JSImport]` to a module rather than the global object.
+The generated module would have to hand the namespace object to Go before init
+runs, which is real plumbing rather than a one-liner.
 
 ### bigint and camelCase as defaults
 

@@ -378,7 +378,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	e.converters = make(map[string]string)
 	e.readonly = make(map[string]bool)
 
-	var registrations, wrappers, values strings.Builder
+	var registrations, wrappers, values, imports strings.Builder
 
 	for _, entry := range declarations.entries {
 		switch entry.Kind {
@@ -406,6 +406,15 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			if named, ok := entry.Type.(*types.Named); ok {
 				e.queue(named)
 			}
+		case entryImport:
+			filled, err := e.emitImport(entry)
+			if err != nil {
+				e.skipAt(entryPos(entry), entry.Namespace+"."+entry.Name, err.Error())
+
+				continue
+			}
+
+			imports.WriteString(filled)
 		}
 	}
 
@@ -487,6 +496,14 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	var body strings.Builder
 
 	body.WriteString("func init() {\n")
+
+	// Imports are filled before anything is published, so a binding that calls
+	// out through one finds it already there.
+	if imports.Len() > 0 {
+		body.WriteString(imports.String())
+		body.WriteString("\n\tcrystallinePublishImportFailures(" + strconv.Quote(e.gen.appName) + ")\n\n")
+	}
+
 	body.WriteString(registrations.String())
 
 	if manifests.Len() > 0 {
@@ -523,6 +540,10 @@ func (e *emitter) emitRegistry(values string) string {
 	out.WriteString("type crystallineRegistry struct{ " + bindAlias + ".Registry }\n\n")
 	out.WriteString("func (crystallineRegistry) Func(fn any, opts ..." + bindAlias + ".Option) {}\n\n")
 	out.WriteString("func (crystallineRegistry) Type(zero any, opts ..." + bindAlias + ".Option) {}\n\n")
+	// Filled in init, before anything reaches this, so there is nothing left to
+	// do here. It has to exist though: the manifest really calls it, and the
+	// embedded interface is nil.
+	out.WriteString("func (crystallineRegistry) Import(target any, opts ..." + bindAlias + ".Option) {}\n\n")
 
 	out.WriteString("func (crystallineRegistry) Value(name string, value any, opts ..." + bindAlias + ".Option) {\n")
 
@@ -555,6 +576,51 @@ func (e *emitter) emitEnum(named *types.Named, constants []*types.Const) string 
 	out.WriteString("\t})\n")
 
 	return out.String()
+}
+
+// emitImport renders filling one Go variable from an object JavaScript already
+// has.
+//
+// It reuses the converter a supplied interface parameter already generates,
+// which is what makes an import the same feature read the other way round: the
+// same adapter, the same conversions, the same refusals, and the same check
+// that the object really has the methods.
+func (e *emitter) emitImport(entry entry) (string, error) {
+	named, ok := entry.Type.(*types.Named)
+	if !ok {
+		return "", fmt.Errorf("%s is not a named interface type", entry.Type)
+	}
+
+	converter, err := e.ensureImportConverter(named, entry.Promised)
+	if err != nil {
+		return "", err
+	}
+
+	subject := qualified(entry.Namespace, entry.Name)
+
+	var out strings.Builder
+
+	out.WriteString("\tif crystallineImported, err := crystallineResolvePath(" + strconv.Quote(entry.Path) + "); err != nil {\n")
+	out.WriteString("\t\tcrystallineImportFailed(" + strconv.Quote(subject) + ", err)\n")
+	out.WriteString("\t} else if crystallineFilled, err := " + converter + "(crystallineImported); err != nil {\n")
+	out.WriteString("\t\tcrystallineImportFailed(" + strconv.Quote(subject) + ", err)\n")
+	out.WriteString("\t} else {\n")
+	out.WriteString("\t\t" + e.qualifiedVar(entry) + " = crystallineFilled\n")
+	out.WriteString("\t}\n")
+
+	return out.String(), nil
+}
+
+// qualifiedVar renders the variable an import fills, through the same qualifier
+// the rest of the file uses, so generated code in the variable's own package
+// does not name the package it is already in.
+func (e *emitter) qualifiedVar(entry entry) string {
+	variable, ok := entry.Object.(*types.Var)
+	if !ok || variable.Pkg() == nil {
+		return entry.Name
+	}
+
+	return qualified(e.qualifier(variable.Pkg()), variable.Name())
 }
 
 // emitDeclaredValue renders the branch that publishes one declared value. The

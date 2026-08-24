@@ -31,6 +31,11 @@ export const initializeCrystalline = () => {
     throw new Error('crystalline: globalThis.go.pipeline is not set. Start the Go wasm module before calling initializeCrystalline().');
   }
 
+  const failedImports = globalThis['go']['pipeline']['__crystalline']?.['importFailures'];
+  if (failedImports?.length) {
+    throw new Error('crystalline: Go could not reach what it imported: ' + failedImports.join('; '));
+  }
+
   feed = {
     Average: wrap('feed.Average', globalThis['go']['pipeline']['feed']['Average']),
     Crunch: wrap('feed.Crunch', globalThis['go']['pipeline']['feed']['Crunch']),

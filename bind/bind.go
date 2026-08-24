@@ -52,6 +52,10 @@ type Options struct {
 	// type onto a JS counterpart.
 	MarshalTo   any
 	MarshalFrom any
+
+	// Path is where an imported value lives in the JavaScript global object
+	// graph.
+	Path string
 }
 
 // AsPromise makes an exposed function return a JS Promise, running the Go call
@@ -122,6 +126,14 @@ func MarshalledBy(to any, from any) Option {
 	}
 }
 
+// At names where an imported value lives in the JavaScript global object graph,
+// as a dotted path: "localStorage", "console", "navigator.clipboard".
+func At(path string) Option {
+	return func(o *Options) {
+		o.Path = path
+	}
+}
+
 // Resolve folds a list of options into their resolved form.
 func Resolve(opts []Option) Options {
 	var resolved Options
@@ -145,6 +157,27 @@ type Registry interface {
 	// Value exposes a value under the given name. A value carries no name at
 	// run time, so one has to be supplied.
 	Value(name string, value any, opts ...Option)
+
+	// Import fills a Go variable of interface type with an object that already
+	// exists in JavaScript, so Go can call out to it.
+	//
+	// This is the other direction from the rest of the Registry, which is why
+	// it is a method rather than an option: Func, Value and Type all say what
+	// JavaScript may reach, and this says what Go may reach.
+	//
+	//	var Local Storage
+	//
+	//	r.Import(&Local, bind.At("localStorage"))
+	//
+	// The argument is a pointer to an exported package-level variable whose
+	// type is an interface. The interface is the whole contract: Go declares
+	// the few methods it needs rather than describing an API that already
+	// exists, so nothing is generated that nobody asked for.
+	//
+	// Every method is checked to exist when the bindings initialise, and a
+	// missing one fails the boot naming the path and the method rather than
+	// surfacing at the first call.
+	Import(target any, opts ...Option)
 
 	// Type declares a type, so that it appears in the generated declarations
 	// even when no exposed entity mentions it, and says how it crosses. The

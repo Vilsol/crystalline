@@ -208,3 +208,35 @@ func TestBarePromiseOnATypeIsAnError(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(errText(err), "is not a function; name the methods that return a promise"),
 		"the error must say how to name the methods instead, got: "+errText(err))
 }
+
+// An import is the other direction: Go declares the few methods it needs and
+// they are filled from an object JavaScript already has.
+func TestImportIsRead(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/importmanifest", "./testdata/importer"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	found := make([]string, 0, len(declarations.entries))
+	for _, read := range declarations.entries {
+		found = append(found, read.String())
+	}
+
+	joined := strings.Join(found, "\n")
+
+	testza.AssertTrue(t, strings.Contains(joined, "import importer.Local localStorage"),
+		"the import must name the variable and where it comes from, got:\n"+joined)
+}
+
+// The contract is an interface, because that is what declares methods. A
+// concrete type describes a value, and there is nothing to call on it.
+func TestImportNeedsAnInterface(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badimport"))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err)
+	testza.AssertTrue(t, strings.Contains(errText(err), "must be a pointer to a variable of interface type"),
+		"the error must say what is wanted, got: "+errText(err))
+}

@@ -17,7 +17,8 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 * `crystalline:"bigint"` carries an `int64` across exactly, where a number
   cannot.
 * Interfaces go the other way — Go declares what it needs, JavaScript supplies
-  an object with those methods.
+  an object with those methods, or `r.Import` fills it from one JavaScript
+  already has.
 * Promises by option, by doc directive, or automatically for callbacks, contexts
   and channel parameters.
 * Generic instantiations stay distinct, embedded methods are promoted, and two
@@ -133,6 +134,40 @@ item.Listed();                        // promoted, as in Go
 
 await api.Restock({ Notify: (m) => log(m) }, names);
 ```
+
+## Reaching out
+
+Most of this goes one way. `r.Import` goes the other: a Go variable filled from
+an object JavaScript already has.
+
+```go
+type Storage interface {
+	GetItem(key string) string
+	SetItem(key string, value string)
+}
+
+var Local Storage
+
+r.Import(&Local, bind.At("localStorage"))
+```
+
+The interface is the whole contract — declare the methods you call, not the API
+that exists. Every one is checked while the bindings initialise, and `boot`
+refuses a surface that is missing part of itself:
+
+```
+crystalline: Go could not reach what it imported:
+api.Local: api.Storage: the object has no SetItem method
+```
+
+A method is synchronous unless declared with `bind.AsPromise("Fetch")`. A
+promise arriving where none was declared is refused rather than awaited: a
+goroutine blocked inside a synchronous call hands JavaScript `undefined` and
+finishes afterwards, which is a wrong answer rather than a slow one.
+
+This is not a way to drive the DOM from Go. At ~5.5 µs a crossing, a thousand
+nodes is five milliseconds of boundary before any work happens. Compute in Go,
+render in JavaScript, import the handful of things Go has to reach.
 
 ## Type mapping
 

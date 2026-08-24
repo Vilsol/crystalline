@@ -39,6 +39,7 @@ const (
 	entryPromise entryKind = "promise"
 	entryPlain   entryKind = "plain"
 	entryMarshal entryKind = "marshal"
+	entryImport  entryKind = "import"
 )
 
 // hasDirective reports whether a doc comment carries the given directive.
@@ -93,10 +94,20 @@ type entry struct {
 	// From is the second symbol an entry names, for a mapping that needs a way
 	// back as well as a way out.
 	From types.Object
+
+	// Path is where an imported value lives in the JavaScript global object
+	// graph.
+	Path string
+
+	// Promised names the methods of an imported interface that return a
+	// JavaScript promise, and so may be awaited.
+	Promised []string
 }
 
 func (e entry) String() string {
 	switch e.Kind {
+	case entryImport:
+		return "import " + e.Namespace + "." + e.Name + " " + e.Path
 	case entryIgnore, entryPromise:
 		return string(e.Kind) + " " + e.Namespace + "." + e.Name + "." + e.Method
 	case entryFunc:

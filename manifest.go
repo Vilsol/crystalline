@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/token"
 	"go/types"
 	"sort"
 	"strings"
@@ -78,6 +79,10 @@ func (g *Generator) readCall(pkg *packages.Package, manifest string, method stri
 		return oneEntry(entry, err)
 	case "Type":
 		return g.readType(pkg, where, call)
+	case "Import":
+		entry, err := g.readImport(pkg, where, call)
+
+		return oneEntry(entry, err)
 	}
 
 	return nil, fmt.Errorf("%s is not a Registry method", where)
@@ -168,6 +173,74 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 		Name:              name,
 		Type:              valueType,
 		Promise:           options.Promise,
+	}, nil
+}
+
+// readImport reads a variable Go fills from an object JavaScript already has.
+//
+// The interface is the whole contract. Nothing is generated from a description
+// of the JavaScript API, so nothing is generated that nobody asked for, and the
+// union types and overloads a real API description is full of never arise.
+func (g *Generator) readImport(pkg *packages.Package, where string, call *ast.CallExpr) (entry, error) {
+	if len(call.Args) == 0 {
+		return entry{}, fmt.Errorf("%s needs a pointer to the variable to fill", where)
+	}
+
+	unary, ok := call.Args[0].(*ast.UnaryExpr)
+	if !ok || unary.Op != token.AND {
+		return entry{}, fmt.Errorf("%s must be a pointer to a variable of interface type, written as &Name", where)
+	}
+
+	obj := referencedObject(pkg, unary.X)
+
+	variable, isVar := obj.(*types.Var)
+	if !isVar {
+		return entry{}, fmt.Errorf("%s must be a pointer to a variable of interface type, so that it can be resolved without running anything", where)
+	}
+
+	declared, isInterface := variable.Type().Underlying().(*types.Interface)
+	if !isInterface {
+		return entry{}, fmt.Errorf("%s must be a pointer to a variable of interface type, and %s is a %s",
+			where, variable.Name(), variable.Type())
+	}
+
+	if !variable.Exported() {
+		return entry{}, fmt.Errorf("%s: %s is unexported, and generated code in another package cannot fill it",
+			where, variable.Name())
+	}
+
+	if declared.NumMethods() == 0 {
+		return entry{}, fmt.Errorf("%s: %s declares no methods, so there is nothing for Go to call",
+			where, variable.Type())
+	}
+
+	options, err := readOptions(pkg, where, call.Args[1:])
+	if err != nil {
+		return entry{}, err
+	}
+
+	if options.Path == "" {
+		return entry{}, fmt.Errorf("%s needs bind.At to say where the value lives, as bind.At(%q)", where, "localStorage")
+	}
+
+	if err := options.checkForImport(where); err != nil {
+		return entry{}, err
+	}
+
+	for _, method := range options.PromiseMethods {
+		if !interfaceHasMethod(declared, method) {
+			return entry{}, fmt.Errorf("%s: %s has no method %q", where, variable.Type(), method)
+		}
+	}
+
+	return entry{
+		Kind:      entryImport,
+		Namespace: variable.Pkg().Name(),
+		Name:      variable.Name(),
+		Type:      variable.Type(),
+		Path:      options.Path,
+		Promised:  options.PromiseMethods,
+		Object:    variable,
 	}, nil
 }
 
@@ -417,6 +490,21 @@ func readOptions(pkg *packages.Package, where string, args []ast.Expr) (manifest
 			resolved.Without = append(resolved.Without, methods...)
 		case "Plain":
 			resolved.Plain = true
+		case "At":
+			if len(call.Args) != 1 {
+				return manifestOptions{}, fmt.Errorf("%s: bind.At needs a path", where)
+			}
+
+			path, ok := stringLiteral(pkg, call.Args[0])
+			if !ok {
+				return manifestOptions{}, fmt.Errorf("%s: bind.At needs a literal path, so that it can be read without running anything", where)
+			}
+
+			if !isJSPath(path) {
+				return manifestOptions{}, fmt.Errorf("%s: %q is not a path of JavaScript identifiers", where, path)
+			}
+
+			resolved.Path = path
 		case "InNamespace":
 			if len(call.Args) == 1 {
 				name, ok := stringLiteral(pkg, call.Args[0])
@@ -480,6 +568,50 @@ func (o manifestOptions) rejectTypeOnly(where string) error {
 	return nil
 }
 
+// checkForImport refuses the options that say nothing about an import.
+func (o manifestOptions) checkForImport(where string) error {
+	switch {
+	case o.Plain:
+		return fmt.Errorf("%s: bind.Plain() says how a type crosses out, and an import comes in", where)
+	case o.hasMarshal:
+		return fmt.Errorf("%s: bind.MarshalledBy maps a type crossing out, and an import comes in", where)
+	case o.Namespace != "":
+		return fmt.Errorf("%s: bind.InNamespace places something in JavaScript, and an import is already there", where)
+	case len(o.Without) > 0:
+		return fmt.Errorf("%s: bind.Without hides a method from JavaScript; an imported interface declares only what Go calls", where)
+	case o.Promise:
+		return fmt.Errorf("%s: bind.AsPromise() applies to a function; name the methods that return a promise", where)
+	}
+
+	return nil
+}
+
+// interfaceHasMethod reports whether an interface declares the method.
+func interfaceHasMethod(declared *types.Interface, method string) bool {
+	for i := range declared.NumMethods() {
+		if declared.Method(i).Name() == method {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isJSPath reports whether a path is a dotted run of JavaScript identifiers.
+func isJSPath(path string) bool {
+	if path == "" {
+		return false
+	}
+
+	for _, segment := range strings.Split(path, ".") {
+		if !isJSIdentifier(segment) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // checkForType refuses the options that cannot apply to a type, and the
 // combinations that contradict each other.
 func (o manifestOptions) checkForType(where string, named *types.Named) error {
@@ -532,6 +664,12 @@ func checkNamespaces(entries []entry) error {
 	owners := make(map[string]map[string]bool)
 
 	for _, entry := range entries {
+		// An import is filled from JavaScript rather than published to it, so
+		// it claims nothing and cannot collide with anything.
+		if entry.Kind == entryImport {
+			continue
+		}
+
 		// A namespace becomes "export let <name>" in the module, so a name
 		// JavaScript cannot spell produces a file that does not parse, found by
 		// whoever imports it rather than whoever wrote it.

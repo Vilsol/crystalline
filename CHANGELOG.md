@@ -30,6 +30,17 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `WithQuoteStyle` takes a `QuoteStyle` rather than a string, and `-quote`
   takes `single` or `double`. Any string was accepted before, and a typo
   produced a module that does not parse, found by whoever imported it.
+- `r.Import(&Var, bind.At("localStorage"))` fills a Go variable of interface
+  type from an object JavaScript already has, so Go can call out to it. The
+  interface is the whole contract: nothing is generated from a description of
+  the JavaScript API, which is what keeps it small and what avoids the unions
+  and overloads such a description is full of. It reuses the adapter a supplied
+  interface parameter already generates, so the conversions, the refusals and
+  the method check are the same code read the other way round.
+  Every method is checked while the bindings initialise and `boot` refuses a
+  surface missing part of itself, naming the path and the method. A method is
+  synchronous unless declared with `bind.AsPromise`, and a promise arriving
+  where none was declared is refused rather than awaited.
 - `-case camel` and `WithCamelCase` rename fields, methods and functions for
   JavaScript: Timeout to timeout, ID to id, HTTPServer to httpServer. Off by
   default, because an exported Go name being the JavaScript name means one grep

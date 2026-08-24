@@ -475,7 +475,7 @@ func crystallineAwait(value js.Value) js.Value {
 // crystallineAwaited is the same wait for a caller that has somewhere to report
 // a rejection to. A feed does: it already carries whatever ended it.
 func crystallineAwaited(value js.Value) (js.Value, error) {
-	if value.Type() != js.TypeObject || value.Get("then").Type() != js.TypeFunction {
+	if !crystallineIsThenable(value) {
 		return value, nil
 	}
 
@@ -556,6 +556,85 @@ func crystallineRecover(result *any) {
 	if recovered := recover(); recovered != nil {
 		*result = crystallineFail(crystallineRecovered(recovered))
 	}
+}
+
+// crystallineIsThenable reports whether a value is something to await.
+//
+// It asks for the tag before touching the value, because Value.Type panics with
+// "bad type flag" on a BigInt and Get checks the type first. A method returning
+// a bigint used to crash here rather than being awaited or not.
+func crystallineIsThenable(value js.Value) bool {
+	tag := js.Global().Get("Object").Get("prototype").Get("toString").Call("call", value).String()
+	if tag != "[object Promise]" && tag != "[object Object]" {
+		return false
+	}
+
+	return value.Get("then").Type() == js.TypeFunction
+}
+
+// crystallineDirect is the result of an imported method that was not declared
+// to return a promise.
+//
+// Awaiting one anyway would block this goroutine, and a goroutine blocked
+// inside a synchronous js.FuncOf hands JavaScript undefined and finishes the
+// work afterwards: a wrong answer rather than a slow one. There is nowhere to
+// report to — the Go signature belongs to the consumer — so this is one of the
+// few places left that panics.
+func crystallineDirect(value js.Value, subject string) js.Value {
+	if crystallineIsThenable(value) {
+		panic(subject + " returned a promise, and it was not declared with bind.AsPromise")
+	}
+
+	return value
+}
+
+// crystallineResolvePath walks a dotted path from the JavaScript global object,
+// so an import says where it lives rather than being handed in.
+func crystallineResolvePath(path string) (js.Value, error) {
+	at := js.Global()
+
+	start := 0
+	for i := 0; i <= len(path); i++ {
+		if i < len(path) && path[i] != '.' {
+			continue
+		}
+
+		segment := path[start:i]
+		start = i + 1
+
+		at = at.Get(segment)
+		if at.IsUndefined() || at.IsNull() {
+			return js.Undefined(), errors.New(path + " is not there: " + segment + " is missing")
+		}
+	}
+
+	return at, nil
+}
+
+// crystallineImportFailed records an import that could not be filled.
+//
+// It cannot report the way a call does, because nothing is calling: this runs
+// while the program starts. The failures are published instead, and the
+// generated module refuses to hand over a surface that is missing part of
+// itself, which turns a null pointer at the first use into a message at the
+// boot that caused it.
+var crystallineImportFailures []string
+
+func crystallineImportFailed(subject string, err error) {
+	crystallineImportFailures = append(crystallineImportFailures, subject+": "+err.Error())
+}
+
+func crystallinePublishImportFailures(app string) {
+	if len(crystallineImportFailures) == 0 {
+		return
+	}
+
+	reported := make([]any, 0, len(crystallineImportFailures))
+	for _, failure := range crystallineImportFailures {
+		reported = append(reported, failure)
+	}
+
+	crystallineNamespace(app, "__crystalline").Set("importFailures", reported)
 }
 
 // crystallineBigInt and crystallineBigUint hand a 64-bit integer over as a

@@ -184,6 +184,23 @@ func tsLoader(namespaces []string) string {
 func initGuard(style jsStyle, appName string) string {
 	return "  if (globalThis[" + style.quoted("go") + "]?.[" + style.quoted(appName) + "] === undefined) {\n" +
 		"    throw new Error(" + style.quoted("crystalline: globalThis.go."+appName+" is not set. Start the Go wasm module before calling initializeCrystalline().") + ");\n" +
+		"  }\n\n" + importGuard(style, appName)
+}
+
+// importGuard refuses a surface that is missing something Go imported.
+//
+// An import is filled while the program starts, where nothing is calling and so
+// nothing can be told. Handing over the namespaces anyway would turn a missing
+// localStorage into a nil interface at the first call, several steps from the
+// cause.
+func importGuard(style jsStyle, appName string) string {
+	failures := "globalThis[" + style.quoted("go") + "][" + style.quoted(appName) + "][" +
+		style.quoted("__crystalline") + "]?.[" + style.quoted("importFailures") + "]"
+
+	return "  const failedImports = " + failures + ";\n" +
+		"  if (failedImports?.length) {\n" +
+		"    throw new Error(" + style.quoted("crystalline: Go could not reach what it imported: ") +
+		" + failedImports.join(" + style.quoted("; ") + "));\n" +
 		"  }\n\n"
 }
 

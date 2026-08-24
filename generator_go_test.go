@@ -1342,3 +1342,201 @@ func TestConverterMessagesNameTheGoType(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(bindings.Source, "crystallineKnownSampleFnSample"),
 		"the identifier must stay unique across packages")
 }
+
+// importRuntime exercises a Go variable filled from an object JavaScript
+// already has. localStorage does not exist under node, which suits the test:
+// the object is supplied before booting, so the import finds exactly what the
+// script put there and the calls can be counted.
+const importRuntime = `import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+
+const seen = [];
+const stored = {};
+
+globalThis.localStorage = {
+	GetItem(key) { seen.push("get:" + key); return stored[key] ?? null; },
+	SetItem(key, value) { seen.push("set:" + key); stored[key] = value; },
+};
+
+globalThis.remote = { Fetch: async () => "late" };
+
+createRequire(import.meta.url)("./wasm_exec.js");
+
+const loaded = await import("./crystalline.js");
+const { importer } = await loaded.boot(await readFile(new URL("./app.wasm", import.meta.url)));
+
+const out = [];
+
+// Go writes through the imported object and reads back what JavaScript kept.
+out.push("roundtrip=" + importer.Roundtrip("colour", "green"));
+out.push("calls=" + seen.join(","));
+out.push("stored=" + stored.colour);
+
+// A method implemented as async, not declared as one. Awaiting it here would
+// block the goroutine inside a synchronous callback, so JavaScript would be
+// handed undefined and the work would finish afterwards, unnoticed.
+let undeclared = "returned";
+try {
+	importer.Fetch();
+} catch (error) {
+	undeclared = error.message.includes("returned a promise") ? "refused" : "wrong:" + error.message;
+}
+out.push("undeclaredAsync=" + undeclared);
+
+// The same method, declared as a promise and called from a Go function that is
+// itself a promise. Blocking that goroutine is safe, so the value arrives.
+out.push("declaredAsync=" + await importer.FetchAwaited());
+
+console.log(out.join(" | "));
+
+process.exit(0);
+`
+
+// importMissing boots the same binary with nothing at the path.
+const importMissing = `import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+
+delete globalThis.localStorage;
+globalThis.remote = { Fetch: async () => "late" };
+
+createRequire(import.meta.url)("./wasm_exec.js");
+
+const loaded = await import("./crystalline.js");
+
+let outcome = "booted";
+try {
+	await loaded.boot(await readFile(new URL("./app.wasm", import.meta.url)));
+} catch (error) {
+	outcome = error.message.includes("localStorage is not there")
+		? "refused"
+		: "wrong:" + error.message;
+}
+
+console.log("missing=" + outcome);
+
+process.exit(0);
+`
+
+// importPartial boots with an object that is missing one of the methods.
+const importPartial = `import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+
+// GetItem is there and SetItem is not, so the check has to look past the
+// first method rather than stopping at it.
+globalThis.localStorage = { GetItem: () => null };
+globalThis.remote = { Fetch: async () => "late" };
+
+createRequire(import.meta.url)("./wasm_exec.js");
+
+const loaded = await import("./crystalline.js");
+
+let outcome = "booted";
+try {
+	await loaded.boot(await readFile(new URL("./app.wasm", import.meta.url)));
+} catch (error) {
+	outcome = error.message.includes("has no SetItem method")
+		? "refused"
+		: "wrong:" + error.message;
+}
+
+console.log("partial=" + outcome);
+
+process.exit(0);
+`
+
+func buildImportModule(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+
+	repo, err := filepath.Abs(".")
+	testza.AssertNoError(t, err)
+
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/importmanifest", "./testdata/importer"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	rendered, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	bindings, err := g.BuildGo(declarations, WithPackageName("main"), WithImportPath("bindtest"))
+	testza.AssertNoError(t, err)
+
+	shim := filepath.Join(strings.TrimSpace(runGo(t, "env", "GOROOT")), "lib", "wasm", "wasm_exec.js")
+
+	script, err := os.ReadFile(shim)
+	testza.AssertNoError(t, err)
+
+	sum, err := os.ReadFile("go.sum")
+	testza.AssertNoError(t, err)
+
+	for name, content := range map[string]string{
+		"crystalline_gen.go": bindings.Source,
+		"crystalline.js":     rendered.JavaScript,
+		"wasm_exec.js":       string(script),
+		"run.mjs":            importRuntime,
+		"missing.mjs":        importMissing,
+		"partial.mjs":        importPartial,
+		"main.go":            "package main\n\nfunc main() {\n\tselect {}\n}\n",
+		"go.mod": "module bindtest\n\ngo 1.27\n\nrequire github.com/Vilsol/crystalline v0.0.0\n\nreplace github.com/Vilsol/crystalline => " +
+			repo + "\n",
+		"go.sum": string(sum),
+	} {
+		testza.AssertNoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+
+	goCommand(t, dir, "mod", "tidy")
+	goCommand(t, dir, "build", "-ldflags=-s -w", "-o", "app.wasm", ".")
+
+	return dir
+}
+
+func TestImportedObjectWorksAtRuntime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a wasm binary and runs it under node")
+	}
+
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+
+	dir := buildImportModule(t)
+
+	run := func(script string) map[string]string {
+		t.Helper()
+
+		cmd := exec.Command(node, filepath.Join(dir, script))
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+
+		output, err := cmd.CombinedOutput()
+		testza.AssertNoError(t, err, string(output))
+
+		return probeResults(t, string(output))
+	}
+
+	working := run("run.mjs")
+
+	for _, expected := range []string{
+		// Go called out and got JavaScript's answer back.
+		"roundtrip=green",
+		// Both methods really ran, in order, on the object the script supplied.
+		"calls=set:colour,get:colour",
+		// And the write reached JavaScript's own state.
+		"stored=green",
+		"undeclaredAsync=refused",
+		"declaredAsync=late",
+	} {
+		key, value, _ := strings.Cut(expected, "=")
+		testza.AssertEqual(t, value, working[key], key+" was wrong")
+	}
+
+	// Nothing at the path: refused at boot naming the path, rather than a nil
+	// interface at the first call.
+	testza.AssertEqual(t, "refused", run("missing.mjs")["missing"])
+
+	// There, but missing a method the interface declares.
+	testza.AssertEqual(t, "refused", run("partial.mjs")["partial"])
+}

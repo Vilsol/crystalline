@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go/types"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -288,6 +289,43 @@ func (e *emitter) typeKey(t types.Type) (string, error) {
 
 // ensureValueConverter generates the JS to Go conversion for a type, once, and
 // returns the name of the generated function.
+// ensureImportConverter is ensureValueConverter for the direction Go reaches
+// out in. It is a separate entry point because the cache is keyed by type, and
+// one interface may legitimately be both supplied and imported.
+func (e *emitter) ensureImportConverter(named *types.Named, promised []string) (string, error) {
+	declared, ok := named.Underlying().(*types.Interface)
+	if !ok {
+		return "", fmt.Errorf("%s is not an interface", named)
+	}
+
+	key, err := e.typeKey(named)
+	if err != nil {
+		return "", err
+	}
+
+	// Keyed by what the adapter does, not only by the type it adapts.
+	key += awaitingSuffix(promised)
+	name := "crystallineImport" + key
+	cached := "import:" + key
+
+	if _, done := e.converters[cached]; done {
+		return name, nil
+	}
+
+	e.converters[cached] = ""
+
+	body, err := e.emitSuppliedConverter(name, named, declared, importMode(promised))
+	if err != nil {
+		delete(e.converters, cached)
+
+		return "", err
+	}
+
+	e.converters[cached] = body
+
+	return name, nil
+}
+
 func (e *emitter) ensureValueConverter(t types.Type) (string, error) {
 	key, err := e.typeKey(t)
 	if err != nil {
@@ -355,7 +393,7 @@ func (e *emitter) emitValueConverter(name string, t types.Type) (string, error) 
 		// unwrapping, because the adapter needs the name.
 		if declared, ok := t.Underlying().(*types.Interface); ok && !isErrorType(t) {
 			if named, ok := t.(*types.Named); ok {
-				return e.emitSuppliedConverter(name, named, declared)
+				return e.emitSuppliedConverter(name, named, declared, suppliedMode())
 			}
 		}
 
@@ -552,8 +590,51 @@ func (e *emitter) emitPointerConverter(name string, goType string, typed *types.
 // Each method is what a callback parameter already is, so the machinery is the
 // same one method at a time: arguments convert out, the result is awaited in
 // case JavaScript returned a promise, and it converts back.
-func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declared *types.Interface) (string, error) {
-	adapter := "crystallineJS" + named.Obj().Name()
+// adapterMode is the one difference between an object JavaScript hands in and
+// one Go reaches out for: whether a result is awaited.
+//
+// A supplied parameter makes its whole call a promise, so awaiting is free
+// there. An import has no promise above it, so awaiting blocks a goroutine
+// inside whatever synchronous call is running.
+type adapterMode struct {
+	prefix   string
+	awaitAll bool
+	promised map[string]bool
+}
+
+func suppliedMode() adapterMode {
+	return adapterMode{prefix: "crystallineJS", awaitAll: true}
+}
+
+func importMode(promised []string) adapterMode {
+	allowed := make(map[string]bool, len(promised))
+	for _, method := range promised {
+		allowed[method] = true
+	}
+
+	return adapterMode{prefix: "crystallineImported" + awaitingSuffix(promised), promised: allowed}
+}
+
+// awaitingSuffix distinguishes two imports of one interface that disagree about
+// which methods return a promise.
+//
+// Without it the first one generated wins and the second silently reuses it,
+// which is the same defect as any other pair of decisions sharing one key. The
+// order the manifest happens to list them in is not a difference, so the names
+// are sorted.
+func awaitingSuffix(promised []string) string {
+	if len(promised) == 0 {
+		return ""
+	}
+
+	sorted := slices.Clone(promised)
+	slices.Sort(sorted)
+
+	return "Awaiting" + strings.Join(sorted, "And")
+}
+
+func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declared *types.Interface, mode adapterMode) (string, error) {
+	adapter := mode.prefix + named.Obj().Name()
 	goType := e.declaredName(named)
 
 	var out strings.Builder
@@ -609,12 +690,18 @@ func (e *emitter) emitSuppliedConverter(name string, named *types.Named, declare
 			passed = append(passed, converted)
 		}
 
-		invocation := "crystallineAwait(c.value.Call(" + strconv.Quote(e.gen.jsMemberName(method.Name(), ""))
+		call := "c.value.Call(" + strconv.Quote(e.gen.jsMemberName(method.Name(), ""))
 		if len(passed) > 0 {
-			invocation += ", " + strings.Join(passed, ", ")
+			call += ", " + strings.Join(passed, ", ")
 		}
 
-		invocation += "))"
+		call += ")"
+
+		invocation := "crystallineAwait(" + call + ")"
+		if !mode.awaitAll && !mode.promised[method.Name()] {
+			invocation = "crystallineDirect(" + call + ", " +
+				strconv.Quote(memberIdentity(named, method.Name())) + ")"
+		}
 
 		out.WriteString("func (c " + adapter + ") " + method.Name() + "(" + strings.Join(params, ", ") + ")")
 

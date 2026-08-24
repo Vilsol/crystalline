@@ -233,6 +233,50 @@
 // to bind arbitrary browser APIs from Go, which is a second generator's worth
 // of work and the wrong shape for the cost of a crossing.
 //
+// # Reaching out to JavaScript
+//
+// An interface parameter lets JavaScript hand Go an object. An import fills a
+// Go variable from an object JavaScript already has:
+//
+//	type Storage interface {
+//		GetItem(key string) string
+//		SetItem(key string, value string)
+//	}
+//
+//	var Local Storage
+//
+//	// in the manifest
+//	r.Import(&Local, bind.At("localStorage"))
+//
+// The interface is the whole contract. Nothing is generated from a description
+// of the JavaScript API, so nothing is generated that nobody asked for, and the
+// unions and overloads a real API description is full of never arise. Declare
+// the four methods you call, not the ninety that exist.
+//
+// Every method is checked to exist while the bindings initialise. Nothing is
+// calling then, so nothing can be told: the failures are published instead, and
+// boot refuses to hand over a surface that is missing part of itself.
+//
+//	crystalline: Go could not reach what it imported:
+//	api.Local: api.Storage: the object has no SetItem method
+//
+// A method is called synchronously unless it is declared otherwise. Awaiting
+// one that was not declared would block the goroutine, and a goroutine blocked
+// inside a synchronous call hands JavaScript undefined and finishes the work
+// afterwards — a wrong answer rather than a slow one. So a promise arriving
+// where none was declared is refused by name:
+//
+//	r.Import(&Client, bind.At("client"), bind.AsPromise("Fetch"))
+//
+// A declared one is awaited, which is safe only under something that is itself
+// a promise: an exposed function marked bind.AsPromise, or one that is async
+// already because it takes a callback, a context or a channel.
+//
+// This is deliberately not a way to drive the DOM from Go. A crossing costs
+// about five microseconds whoever wrote the binding, so a thousand nodes is
+// five milliseconds of boundary before any work happens. Compute in Go, render
+// in JavaScript, and import the handful of things Go genuinely has to reach.
+//
 // # Enums
 //
 // Go spells an enum as a named integer or string type, a block of constants of

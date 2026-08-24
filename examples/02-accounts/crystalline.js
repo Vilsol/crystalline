@@ -31,6 +31,11 @@ export const initializeCrystalline = () => {
     throw new Error('crystalline: globalThis.go.accounts is not set. Start the Go wasm module before calling initializeCrystalline().');
   }
 
+  const failedImports = globalThis['go']['accounts']['__crystalline']?.['importFailures'];
+  if (failedImports?.length) {
+    throw new Error('crystalline: Go could not reach what it imported: ' + failedImports.join('; '));
+  }
+
   account = {
     Open: wrap('account.Open', globalThis['go']['accounts']['account']['Open']),
     ParseAmount: wrap('account.ParseAmount', globalThis['go']['accounts']['account']['ParseAmount']),

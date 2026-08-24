@@ -31,6 +31,11 @@ export const initializeCrystalline = () => {
     throw new Error('crystalline: globalThis.go.hello is not set. Start the Go wasm module before calling initializeCrystalline().');
   }
 
+  const failedImports = globalThis['go']['hello']['__crystalline']?.['importFailures'];
+  if (failedImports?.length) {
+    throw new Error('crystalline: Go could not reach what it imported: ' + failedImports.join('; '));
+  }
+
   greeting = {
     Add: wrap('greeting.Add', globalThis['go']['hello']['greeting']['Add']),
     Greet: wrap('greeting.Greet', globalThis['go']['hello']['greeting']['Greet'])

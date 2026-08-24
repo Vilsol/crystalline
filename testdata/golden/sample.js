@@ -33,6 +33,11 @@ export const initializeCrystalline = () => {
     throw new Error('crystalline: globalThis.go.app is not set. Start the Go wasm module before calling initializeCrystalline().');
   }
 
+  const failedImports = globalThis['go']['app']['__crystalline']?.['importFailures'];
+  if (failedImports?.length) {
+    throw new Error('crystalline: Go could not reach what it imported: ' + failedImports.join('; '));
+  }
+
   generic = {
     Numbers: wrap('generic.Numbers', globalThis['go']['app']['generic']['Numbers']),
     Strings: wrap('generic.Strings', globalThis['go']['app']['generic']['Strings'])

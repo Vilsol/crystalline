@@ -31,6 +31,11 @@ export const initializeCrystalline = () => {
     throw new Error('crystalline: globalThis.go.catalogue is not set. Start the Go wasm module before calling initializeCrystalline().');
   }
 
+  const failedImports = globalThis['go']['catalogue']['__crystalline']?.['importFailures'];
+  if (failedImports?.length) {
+    throw new Error('crystalline: Go could not reach what it imported: ' + failedImports.join('; '));
+  }
+
   catalogue = {
     All: wrap('catalogue.All', globalThis['go']['catalogue']['catalogue']['All']),
     Describe: wrap('catalogue.Describe', globalThis['go']['catalogue']['catalogue']['Describe']),
