@@ -21,7 +21,6 @@ import (
 // Walking go/types rather than reflect is what makes parameter names, doc
 // comment directives and generic type arguments available at all: none of them
 // survive into a value at run time.
-
 type Generator struct {
 	appName string
 	style   jsStyle
@@ -127,6 +126,8 @@ func (g *Generator) position(pos token.Pos) string {
 	return at.String()
 }
 
+// NewGenerator returns a generator publishing under appName, which is the name
+// the bindings appear under in the JavaScript global object graph.
 func NewGenerator(appName string, opts ...GeneratorOption) *Generator {
 	g := &Generator{
 		appName:  appName,
