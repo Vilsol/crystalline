@@ -29,6 +29,10 @@ func TestManifestIsRead(t *testing.T) {
 	for _, expected := range []string{
 		"func sample.Basic",
 		"func sample.FooBar promise",
+		// A value carries no package of its own, so its type names one: this
+		// belongs in sample even though manifest declared it.
+		"value sample.Prototype",
+		// Nothing names a package here, so the manifest's own is the fallback.
 		"value manifest.Lookup map[string]int",
 		"value data.Index map[uint32]string",
 		"value data.Name string",

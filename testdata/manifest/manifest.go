@@ -33,6 +33,10 @@ func Exports(r bind.Registry) {
 
 	r.Value("Index", index, bind.InNamespace("data"))
 
+	// A value whose type comes from another package belongs beside that
+	// package, not beside the manifest that happened to declare it.
+	r.Value("Prototype", sample.FooBar())
+
 	// A conversion, which is still just an expression with a type.
 	r.Value("Name", string(sample.FooBar().FirstValue), bind.InNamespace("data"))
 }

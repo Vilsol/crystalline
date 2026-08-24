@@ -131,7 +131,7 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 
 	namespace := options.Namespace
 	if namespace == "" {
-		namespace = pkg.Name
+		namespace = valueNamespace(valueType, pkg.Name)
 	}
 
 	return Entry{
@@ -160,6 +160,37 @@ func (g *Generator) readType(pkg *packages.Package, where string, call *ast.Call
 		Name:      named.Obj().Name(),
 		Type:      named,
 	}, nil
+}
+
+// valueNamespace picks the namespace an exposed value belongs in.
+//
+// A value carries no package of its own, so the manifest's package was the
+// default. That is almost never what was meant: r.Value("Nodes", api.Nodes)
+// belongs beside the rest of api, not beside the manifest, and every consumer
+// ended up writing bind.InNamespace on every call to say so. The value's type
+// usually names a package, so that is the better default, with the manifest's
+// own package as the fallback for types that name none.
+func valueNamespace(t types.Type, fallback string) string {
+	for {
+		if obj := namedObject(t); obj != nil && obj.Pkg() != nil {
+			return obj.Pkg().Name()
+		}
+
+		switch typed := t.(type) {
+		case *types.Pointer:
+			t = typed.Elem()
+		case *types.Slice:
+			t = typed.Elem()
+		case *types.Array:
+			t = typed.Elem()
+		case *types.Map:
+			t = typed.Elem()
+		case *types.Chan:
+			t = typed.Elem()
+		default:
+			return fallback
+		}
+	}
 }
 
 func (g *Generator) readMethodMark(pkg *packages.Package, where string, call *ast.CallExpr, kind EntryKind) (Entry, error) {

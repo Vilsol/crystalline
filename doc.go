@@ -109,6 +109,38 @@
 //
 //	using config = api.LoadConfig();
 //
+// # Plain data
+//
+// A wrapper is a live view, and liveness is not free: every field read is a
+// call into Go, and every field and method holds a slot in the Go/JS bridge
+// until the wrapper is released. A result that JavaScript only reads pays for
+// machinery it never uses.
+//
+// Marking the type in the manifest converts it once instead:
+//
+//	r.Plain(api.Result{})
+//
+// Plain data has no methods, cannot be written back, and is an ordinary
+// JavaScript object: it survives JSON, structuredClone and a framework's
+// equality checks. The mark applies wherever the type appears, and to every
+// struct reachable from it, since a plain value cannot contain a live one.
+// The generated declarations show which types those are.
+//
+// # Cost
+//
+// Crossing the boundary costs about the same whoever writes the binding, so
+// the thing to reduce is the number of crossings rather than the work in each.
+// One call returning an aggregate beats many small ones, a field read in a loop
+// is a call in a loop, and bulk data travels faster as []byte than as a string.
+// The bench directory measures each kind of crossing.
+//
+// # The generated file
+//
+// crystalline_gen.go is written next to the manifest and carries a js build
+// tag. Commit it: a plain go build for wasm then works without running the
+// generator first, and a change to the JavaScript surface shows up in review
+// rather than appearing at deploy time.
+//
 // # Struct tags
 //
 // A nil slice or map maps to null, which JS code expecting a collection

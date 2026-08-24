@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 
 import { boot } from "../harness.mjs";
 
+// A namespace read before initialisation says so, rather than being undefined
+// and failing somewhere else entirely.
+const early = await import("./crystalline.js");
+
+assert.throws(() => early.greeting.Greet, /initializeCrystalline/);
+
 const { greeting } = await boot(import.meta.dirname);
 
 assert.equal(greeting.Greet("Vilsol"), "Hello, Vilsol!");

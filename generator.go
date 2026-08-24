@@ -29,6 +29,10 @@ type Generator struct {
 	roots []*packages.Package
 	pkgs  []*packages.Package
 
+	// banner is prepended to both generated files, for the pragmas a project's
+	// linters and formatters expect at the top of generated sources.
+	banner string
+
 	// marks carries the method decisions the current build declared.
 	marks marks
 
@@ -50,6 +54,15 @@ type GeneratorOption func(*Generator)
 func WithQuoteStyle(quote string) GeneratorOption {
 	return func(g *Generator) {
 		g.style.quote = quote
+	}
+}
+
+// WithBanner prepends text to the generated JavaScript and declarations, for
+// the pragmas a project's tooling expects at the top of a generated file, such
+// as an eslint-disable comment.
+func WithBanner(text string) GeneratorOption {
+	return func(g *Generator) {
+		g.banner = text
 	}
 }
 

@@ -38,6 +38,27 @@ const jsWrapHelper = `const wrap = (fn) => {
   }
 };`
 
+// jsPendingHelper stands in for a namespace until initializeCrystalline runs.
+//
+// The bindings cannot exist before the wasm module does, and an undefined
+// namespace fails somewhere else entirely: destructuring one snapshots the
+// undefined, and the error surfaces later as a missing property on nothing.
+// Reading through this says what actually went wrong.
+//
+// Symbols and then are let through, so that logging, awaiting and the probing
+// bundlers do are not turned into spurious failures.
+func jsPendingHelper(style jsStyle) string {
+	return "const pending = (name) => new Proxy({}, {\n" +
+		"  get(target, property) {\n" +
+		"    if (typeof property === " + style.quoted("symbol") + " || property === " + style.quoted("then") + ") {\n" +
+		"      return undefined;\n" +
+		"    }\n" +
+		"    throw new Error(" + style.quoted("crystalline: ") + " + name + " + style.quoted(".") + " + String(property) + " +
+		style.quoted(" was read before initializeCrystalline() ran. Start the Go wasm module, then call initializeCrystalline().") + ");\n" +
+		"  }\n" +
+		"});"
+}
+
 // initGuard fails loudly when the module has not started, instead of letting
 // the caller trip over an undefined property.
 func initGuard(style jsStyle, appName string) string {

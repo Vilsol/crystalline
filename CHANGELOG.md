@@ -40,8 +40,6 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   rejecting unknown properties and mistyped values.
 - `Skipped` reporting: anything that cannot be bound is named with its reason.
 - Golden-file tests for the emitted declarations and module.
-- `Output.Skipped`, so a caller that only builds the declarations still sees
-  what could not be bound. The report was reachable from `BuildGo` alone.
 - Three worked examples under `examples`, each a page backed by a real wasm
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
@@ -49,8 +47,12 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `r.Plain(T{})` marshals a type as ordinary JavaScript data instead of a
   live wrapper: converted once, no methods, no bridge slots and nothing to
   release. Measured at 9x cheaper for a slice of 32 structs. The mark reaches
-  every struct the type contains, since a plain value cannot hold a live one,
-  and a method it cannot carry is reported rather than quietly dropped.
+  every struct the type contains, since a plain value cannot hold a live one.
+- `-js-out`, `-ts-out` and `-banner` on the command, and `WithBanner` on the
+  generator, so a project can name its own output files and put the pragmas
+  its linters expect at the top of them.
+- `Output.Skipped`, so a caller that only builds the declarations still sees
+  what could not be bound. The report was reachable from `BuildGo` alone.
 
 #### Changed
 
@@ -69,6 +71,19 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   are reported when generating rather than at run time.
 - Method marks are checked against the real method set, so a rename fails the
   build instead of silently changing the surface.
+- A value exposed with `r.Value` defaults to the namespace of its own type's
+  package rather than the manifest's. Exposing `data.Nodes` from a manifest in
+  package `exposition` used to land it in `exposition`, so every call needed
+  an explicit `bind.InNamespace`.
+- Reading a struct-typed field returns the same wrapper every time. It used to
+  build a fresh one per read, which broke `===`, `Map` keys and every
+  framework's memo comparison, and allocated a handle and a set of bridge
+  slots on each access. A struct field has a stable address, so the cached
+  wrapper is still a live view; a pointer field is keyed on the pointer.
+- A namespace read before `initializeCrystalline()` throws an error naming
+  itself, rather than being `undefined` and failing somewhere unrelated.
+- Fields declared `readonly` when they cannot be written back, and plain data
+  declared `readonly` throughout.
 - Minimum Go version is 1.26.
 
 #### Removed
@@ -117,12 +132,7 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   nothing. Only basic types had a setter; every other write was accepted and
   discarded, leaving the Go value untouched and reporting nothing. Writes now
   go through the same converters a parameter does, a bad value throws where
-  the write happened, and a field with no way back is declared `readonly`.
-- Reading a struct-typed field returns the same wrapper every time. It used to
-  build a fresh one per read, which broke `===`, `Map` keys and every
-  framework's memo comparison, and allocated a handle and a set of bridge
-  slots on each access. A struct field has a stable address, so the cached
-  wrapper is still a live view; a pointer field is keyed on the pointer.
+  the write happened, and a field with no way back is `readonly`.
 
 ### Migrating from 0.0.15
 

@@ -10,7 +10,16 @@ const wrap = (fn) => {
   }
 };
 
-export let account;
+const pending = (name) => new Proxy({}, {
+  get(target, property) {
+    if (typeof property === 'symbol' || property === 'then') {
+      return undefined;
+    }
+    throw new Error('crystalline: ' + name + '.' + String(property) + ' was read before initializeCrystalline() ran. Start the Go wasm module, then call initializeCrystalline().');
+  }
+});
+
+export let account = pending('account');
 
 export const initializeCrystalline = () => {
   if (globalThis['go']?.['accounts'] === undefined) {

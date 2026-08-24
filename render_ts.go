@@ -62,6 +62,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 
 	var tsd, bindings strings.Builder
 
+	tsd.WriteString(g.bannerText())
 	tsd.WriteString(resultDeclarations)
 
 	names := make([]string, 0, len(namespaces))
@@ -90,11 +91,14 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 
 	var js strings.Builder
 
+	js.WriteString(g.bannerText())
 	js.WriteString(jsWrapHelper)
+	js.WriteString("\n\n")
+	js.WriteString(jsPendingHelper(g.style))
 	js.WriteString("\n\n")
 
 	for _, name := range names {
-		js.WriteString("export let " + name + ";\n")
+		js.WriteString("export let " + name + " = pending(" + g.style.quoted(name) + ");\n")
 	}
 
 	js.WriteString("\nexport const initializeCrystalline = () => {\n")
@@ -103,6 +107,16 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	js.WriteString("};")
 
 	return Output{TypeScript: tsd.String(), JavaScript: js.String(), Skipped: analysed.skipped}, nil
+}
+
+// bannerText renders the configured banner, ending it with a newline so the
+// generated content starts on its own line.
+func (g *Generator) bannerText() string {
+	if g.banner == "" {
+		return ""
+	}
+
+	return strings.TrimRight(g.banner, "\n") + "\n\n"
 }
 
 // renderNamespace renders the interfaces a package declares, then the entities

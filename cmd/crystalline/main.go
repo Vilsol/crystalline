@@ -30,6 +30,9 @@ func run() error {
 		goOut        = flag.String("go-out", "", "file the Go bindings are written to (defaults to crystalline_gen.go beside the manifest)")
 		goPackage    = flag.String("go-package", "", "package name for the generated Go file (defaults to the manifest's package)")
 		goImportPath = flag.String("go-import-path", "", "import path of the generated Go file (defaults to the manifest's package)")
+		jsOut        = flag.String("js-out", "", "file the JavaScript module is written to (defaults to <out>/crystalline.js)")
+		tsOut        = flag.String("ts-out", "", "file the declarations are written to (defaults to <out>/crystalline.d.ts)")
+		banner       = flag.String("banner", "", "text prepended to the generated JavaScript and declarations")
 		quote        = flag.String("quote", "'", "quote character used in the generated JavaScript")
 		trailing     = flag.Bool("trailing-comma", false, "emit trailing commas in the generated JavaScript")
 	)
@@ -52,6 +55,10 @@ func run() error {
 		options = append(options, crystalline.WithTrailingComma())
 	}
 
+	if *banner != "" {
+		options = append(options, crystalline.WithBanner(*banner))
+	}
+
 	generator := crystalline.NewGenerator(*app, options...)
 
 	if err := generator.Load(*dir, patterns...); err != nil {
@@ -72,11 +79,25 @@ func run() error {
 		return err
 	}
 
-	if err := rendered.WriteFiles(filepath.Join(*out, "crystalline.js"), filepath.Join(*out, "crystalline.d.ts")); err != nil {
+	for _, skipped := range rendered.Skipped {
+		fmt.Fprintln(os.Stderr, "crystalline: skipped", skipped)
+	}
+
+	if err := rendered.WriteFiles(orDefault(*jsOut, *out, "crystalline.js"), orDefault(*tsOut, *out, "crystalline.d.ts")); err != nil {
 		return err
 	}
 
 	return writeGo(generator, declarations, *goOut, *goPackage, *goImportPath)
+}
+
+// orDefault resolves an output path, falling back to a default name inside the
+// output directory.
+func orDefault(target string, dir string, name string) string {
+	if target != "" {
+		return target
+	}
+
+	return filepath.Join(dir, name)
 }
 
 // writeGo renders the Go bindings, defaulting their location to sit beside the
@@ -107,10 +128,6 @@ func writeGo(generator *crystalline.Generator, declarations crystalline.Declarat
 	bindings, err := generator.BuildGo(declarations, pkgName, importPath)
 	if err != nil {
 		return err
-	}
-
-	for _, skipped := range bindings.Skipped {
-		fmt.Fprintln(os.Stderr, "crystalline: skipped", skipped)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {

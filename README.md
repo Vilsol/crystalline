@@ -92,6 +92,7 @@ api.Apply({ Timeout: 30 });       // literals work too, validated field by field
 | `map[K]V` | `Record<K, V>` |
 | `*T` | `T \| undefined` |
 | `struct` | `interface`, live fields and methods |
+| `struct` marked `r.Plain` | `interface`, read-only data, no methods |
 | `func(...)` | function type |
 | `error` as a value | `Error` |
 | `(T, error)` return | `Result<T>` with `unwrap` and `unwrapOr` |
@@ -99,6 +100,12 @@ api.Apply({ Timeout: 30 });       // literals work too, validated field by field
 | `<-chan T` parameter | `AsyncIterable<T>` the caller supplies |
 | `context.Context` first parameter | `AbortSignal` |
 | `panic` | thrown or rejected `Error` with the Go stack |
+
+A struct arrives as a *live view*: each field read and write is a call into Go,
+and each field and method holds a slot in the Go/JS bridge until the wrapper is
+released. `r.Plain(T{})` converts a type to ordinary JavaScript data instead —
+once, with no methods and no writing back — which is what a result that is only
+read wants. See [Performance](#performance).
 
 A channel parameter accepts any iterable, including a plain array, and must say
 its direction — `chan T` is refused rather than guessed at. Send-only channels
@@ -111,6 +118,20 @@ Anything that cannot be bound is named, with the reason:
 ```
 crystalline: skipped api.Watch: type chan Event cannot be read from JS
 ```
+
+## Performance
+
+Everything crosses a bridge, and the bridge is the cost. Measured with
+`./bench/run.sh` — the ratios travel, the absolute numbers do not.
+
+* A call costs about 5.5 µs whether crystalline wrote the binding or you did.
+  Count crossings, not conversions: one call returning an aggregate beats many
+  small ones.
+* A wrapper field is a call, not a property: about 6.8 µs against 6 ns on plain
+  data. Read it into a local rather than in a loop.
+* Building a struct wrapper costs about 68 µs, so a slice of them is expensive.
+  `r.Plain` makes the same result about 10x cheaper.
+* Bulk data crosses about 3x faster as `[]byte` than as a string.
 
 ## Examples and benchmarks
 
