@@ -116,6 +116,9 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   underlying basic type, so the same `time.Duration` was milliseconds as a
   value and nanoseconds as a key, both declared `number`. A mapping that
   cannot become a property name, such as one to a `Date`, is refused.
+- A type that is both mapped and an enum crosses as its mapping. The value set
+  was asked about first, so `time.Duration` was declared as its own constants
+  in a `time` namespace while the bindings sent milliseconds.
 
 #### Changed
 

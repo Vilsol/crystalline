@@ -183,10 +183,17 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 		}
 
 		if _, ok := typed.Underlying().(*types.Struct); !ok {
+			// A mapping wins over everything else the type might be. A type can
+			// be both: time.Duration has constants of its own, and it crosses
+			// as a number of milliseconds rather than as one of them.
+			if _, mapped := m.marshallerFor(typed); mapped {
+				return
+			}
+
 			// An enum's value set and an interface's method set are both
-			// declared: they say what a caller may pass.
-			// error and context.Context are interfaces with a counterpart of
-			// their own, so neither is something JavaScript supplies.
+			// declared: they say what a caller may pass. error and
+			// context.Context are interfaces with a counterpart of their own,
+			// so neither is something JavaScript supplies.
 			_, isInterface := typed.Underlying().(*types.Interface)
 			supplied := isInterface && !isErrorType(typed) && !isContextType(typed)
 
