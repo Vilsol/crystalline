@@ -82,6 +82,13 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   stale copy, instead of repeating advice the caller has already followed.
   Destructuring an export snapshots it, so the local keeps pointing at the
   placeholder however many times the real binding is reassigned.
+- A call that returns a channel is no longer wrapped in a promise just for
+  taking a context. The stream is already asynchronous, so the wrapper only
+  made callers write `for await (const x of await f())`. Whether a call is a
+  promise is now decided in one place shared by both renderers.
+- `Result` is declared only when something on the surface can fail. A surface
+  with nothing fallible used to carry a type a consumer could name but never
+  receive.
 - Reading a struct-typed field returns the same wrapper every time. It used to
   build a fresh one per read, which broke `===`, `Map` keys and every
   framework's memo comparison, and allocated a handle and a set of bridge

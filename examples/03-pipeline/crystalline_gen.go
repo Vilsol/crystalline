@@ -583,20 +583,18 @@ func crystallineFnFeedPrimes(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("Primes: expected 2 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	return crystallinePromise(func() any {
-		crystallineCtx, crystallineStop := crystallineContext(args[0])
+	crystallineCtx, crystallineStop := crystallineContext(args[0])
 
-		r0 := feed.Primes(crystallineCtx, crystallineMust(crystallineToInt(args[1])))
+	r0 := feed.Primes(crystallineCtx, crystallineMust(crystallineToInt(args[1])))
 
-		return crystallineIterator(func() (any, bool) {
-			item, ok := <-r0
-			if !ok {
-				return nil, false
-			}
+	return crystallineIterator(func() (any, bool) {
+		item, ok := <-r0
+		if !ok {
+			return nil, false
+		}
 
-			return float64(item), true
-		}, crystallineStop)
-	})
+		return float64(item), true
+	}, crystallineStop)
 }
 
 func crystallineFnFeedAverage(this js.Value, args []js.Value) (result any) {

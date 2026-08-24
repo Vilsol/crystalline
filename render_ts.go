@@ -20,6 +20,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	}
 
 	g.readonly = analysed.readonly
+	g.usesResult = false
 
 	entities := make(map[string][]Entry)
 
@@ -60,10 +61,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		namespaces[namespace] = true
 	}
 
-	var tsd, bindings strings.Builder
-
-	tsd.WriteString(g.bannerText())
-	tsd.WriteString(resultDeclarations)
+	var rendered, bindings strings.Builder
 
 	names := make([]string, 0, len(namespaces))
 
@@ -74,12 +72,12 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		exposed := entities[namespace]
 		sort.SliceStable(exposed, func(i, j int) bool { return exposed[i].Name < exposed[j].Name })
 
-		rendered, err := g.renderNamespace(namespace, declared, exposed)
+		namespaced, err := g.renderNamespace(namespace, declared, exposed)
 		if err != nil {
 			return Output{}, err
 		}
 
-		tsd.WriteString(rendered)
+		rendered.WriteString(namespaced)
 
 		if bound := g.renderNamespaceJS(namespace, exposed); bound != "" {
 			names = append(names, namespace)
@@ -87,6 +85,17 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		}
 	}
 
+	// Composed last, because whether Result is declared depends on what the
+	// namespaces turned out to contain.
+	var tsd strings.Builder
+
+	tsd.WriteString(g.bannerText())
+
+	if g.usesResult {
+		tsd.WriteString(resultDeclarations)
+	}
+
+	tsd.WriteString(rendered.String())
 	tsd.WriteString("export const initializeCrystalline: () => void;")
 
 	var js strings.Builder
@@ -286,6 +295,11 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 // renderSignature renders a function type. Named signatures become
 // "Name(a: T): R"; anonymous ones become "(a: T) => R".
 func (g *Generator) renderSignature(name string, sig *types.Signature, named bool, promise bool) (string, error) {
+	// Whether a call is a promise is decided in one place, shared with the
+	// emitter, so the declarations cannot describe a shape the bindings do not
+	// produce.
+	promise = promise || asyncSignature(sig)
+
 	var result strings.Builder
 
 	if named {
@@ -306,10 +320,6 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 			if err := checkChannelParameter(channel, param.Name()); err != nil {
 				return "", err
 			}
-
-			// A channel the caller fills is drained on a goroutine, which
-			// cannot happen without yielding to the event loop.
-			promise = true
 		}
 
 		// A Go call blocks the single JS thread, so a context is the only way
@@ -321,8 +331,6 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 			}
 
 			result.WriteString(name + ": AbortSignal")
-
-			promise = true
 
 			continue
 		}
@@ -358,11 +366,6 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 		}
 
 		result.WriteString(argName + ": " + jsName)
-
-		// A callback parameter forces the whole call to be asynchronous.
-		if _, isFunc := param.Type().Underlying().(*types.Signature); isFunc {
-			promise = true
-		}
 	}
 
 	result.WriteString(")")
@@ -374,6 +377,9 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 	}
 
 	results, fallible := splitError(sig.Results())
+	if fallible {
+		g.usesResult = true
+	}
 
 	if promise {
 		result.WriteString("Promise<")

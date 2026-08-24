@@ -305,3 +305,41 @@ func namespaceOf(t *testing.T, source string, opener string, closer string, memb
 
 	return ""
 }
+
+// TestStreamingCallsAreNotWrappedInAPromise pins that a call returning a
+// channel stays synchronous even when it takes a context.
+//
+// The stream is already asynchronous, so wrapping it made the caller write
+// "for await (const x of await f())": an await whose only purpose was to unwrap
+// something that had nothing to wait for.
+func TestStreamingCallsAreNotWrappedInAPromise(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Ticks(signal: AbortSignal, count: number): AsyncIterable<number>;"),
+		"a cancellable stream must not be a promise:\n"+out.TypeScript)
+}
+
+// TestResultIsDeclaredOnlyWhenUsed pins that a surface with nothing fallible
+// does not carry the Result declaration, which would be a type a consumer can
+// name but never receive.
+func TestResultIsDeclaredOnlyWhenUsed(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/crosspkg/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "interface Result"),
+		"nothing here can fail, so Result must not be declared:\n"+out.TypeScript)
+
+	// The sample surface does have fallible calls, so it must still carry it.
+	used, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(used.TypeScript, "export interface Result<T> {"),
+		"a fallible surface must declare Result:\n"+used.TypeScript)
+}

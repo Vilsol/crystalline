@@ -60,7 +60,7 @@ export declare namespace sample {
   function Rich(): sample.Richer;
   function Stream(count: number): AsyncIterable<string>;
   function Sum(values: AsyncIterable<number>): Promise<number>;
-  function Ticks(signal: AbortSignal, count: number): Promise<AsyncIterable<number>>;
+  function Ticks(signal: AbortSignal, count: number): AsyncIterable<number>;
   const Titles: Record<number, string> | undefined;
 }
 export const initializeCrystalline: () => void;

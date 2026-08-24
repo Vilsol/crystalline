@@ -14,6 +14,6 @@ export declare namespace feed {
   function Average(values: AsyncIterable<number>): Promise<number>;
   function Crunch(signal: AbortSignal, rounds: number): Promise<Result<number>>;
   function Digest(text: string, rounds: number): Promise<string>;
-  function Primes(signal: AbortSignal, limit: number): Promise<AsyncIterable<number>>;
+  function Primes(signal: AbortSignal, limit: number): AsyncIterable<number>;
 }
 export const initializeCrystalline: () => void;

@@ -347,7 +347,7 @@ func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
 		return "", err
 	}
 
-	body.WriteString(wrapPromise(returns, entry.Promise || e.gen.isPromise(fn) || hasCallback(sig) || takesContext(sig) || takesChannel(sig), 1))
+	body.WriteString(wrapPromise(returns, entry.Promise || e.gen.isPromise(fn) || asyncSignature(sig), 1))
 	body.WriteString("}\n\n")
 
 	return body.String(), nil
@@ -357,6 +357,25 @@ func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
 // asynchronous, matching what the declarations promise.
 // hasCallback reports whether the signature takes a function, which cannot be
 // serviced without yielding to the JS event loop.
+// asyncSignature reports whether a call has to be a promise whatever the
+// manifest asked for.
+//
+// A callback and a channel parameter both need the event loop to turn before
+// the call can finish, and a context says the call is long enough to be worth
+// interrupting. A call that returns a channel is the exception: it hands the
+// stream over and returns, and the stream is already asynchronous, so wrapping
+// it only makes the caller await something with nothing to wait for.
+//
+// The declarations and the bindings both read this one answer, so they cannot
+// disagree about which calls are promises.
+func asyncSignature(sig *types.Signature) bool {
+	if hasCallback(sig) || takesChannel(sig) {
+		return true
+	}
+
+	return takesContext(sig) && !returnsChannel(sig)
+}
+
 // takesContext reports whether the signature starts with a context, which
 // forces the call to be asynchronous so the signal can interrupt it.
 func takesContext(sig *types.Signature) bool {

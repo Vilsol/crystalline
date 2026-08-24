@@ -40,6 +40,10 @@ type Generator struct {
 	// by the analysis Build runs before rendering.
 	readonly map[string]bool
 
+	// usesResult records whether anything rendered can fail, so that a surface
+	// with nothing fallible does not carry a Result declaration.
+	usesResult bool
+
 	// promises records which declarations carry the promise directive, keyed by
 	// a stable name rather than by object identity: a package loaded twice
 	// yields different objects for the same declaration.

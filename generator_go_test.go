@@ -103,6 +103,7 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"MiddleNull=!",
 		"MiddleValue=hello!",
 		// A returned stream outlives the call that produced it.
+		"TicksNotPromise=true",
 		"Ticks=0,1,2,3",
 		"TicksAborted=ended",
 		"TicksBroke=ok",
@@ -365,8 +366,11 @@ func main() {
 
 		// A context governs a returned stream, not the call that hands it
 		// back, so the stream must survive the call returning.
+		const ticking = s.Ticks(undefined, 4);
+		out.push("TicksNotPromise=" + (ticking.then === undefined));
+
 		const ticks = [];
-		for await (const tick of await s.Ticks(undefined, 4)) {
+		for await (const tick of ticking) {
 			ticks.push(tick);
 		}
 		out.push("Ticks=" + ticks.join(","));
@@ -374,7 +378,7 @@ func main() {
 		// Aborting must end a stream that would otherwise run for a long time.
 		const stopper = new AbortController();
 		let seen = 0;
-		for await (const tick of await s.Ticks(stopper.signal, 100000)) {
+		for await (const tick of s.Ticks(stopper.signal, 100000)) {
 			seen++;
 			if (seen === 2) { stopper.abort(); }
 		}
@@ -382,7 +386,7 @@ func main() {
 
 		// Breaking out of the loop must not hang.
 		const broken = new AbortController();
-		for await (const tick of await s.Ticks(broken.signal, 100000)) {
+		for await (const tick of s.Ticks(broken.signal, 100000)) {
 			break;
 		}
 		out.push("TicksBroke=ok");

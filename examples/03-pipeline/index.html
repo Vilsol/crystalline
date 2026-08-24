@@ -63,8 +63,8 @@ initializeCrystalline();
 
 const $ = (id) => document.getElementById(id);
 
-// A receive-only channel is an async iterable. The call itself is a promise
-// because the abort signal has to be wired up before anything can be produced.
+// A receive-only channel is an async iterable. The call itself is synchronous:
+// it hands the stream over, and the stream is what takes time.
 let streaming = null;
 
 $("start").onclick = async () => {
@@ -75,7 +75,7 @@ $("start").onclick = async () => {
 	$("stop").disabled = false;
 
 	// Aborting ends the stream, and so does breaking out of this loop.
-	for await (const prime of await feed.Primes(streaming.signal, Number($("limit").value))) {
+	for await (const prime of feed.Primes(streaming.signal, Number($("limit").value))) {
 		$("primes").textContent += `${prime} `;
 	}
 

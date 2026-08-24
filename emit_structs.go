@@ -239,7 +239,7 @@ func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, er
 	body.WriteString("\t\tif len(args) != " + strconv.Itoa(sig.Params().Len()) + " {\n")
 	body.WriteString("\t\t\treturn crystallineFail(" + strconv.Quote(method.Name()+": expected "+strconv.Itoa(sig.Params().Len())+" arguments, got ") + " + strconv.Itoa(len(args)))\n")
 	body.WriteString("\t\t}\n\n")
-	body.WriteString(wrapPromise(returns, e.isPromised(named, method.Name(), method) || hasCallback(sig) || takesContext(sig) || takesChannel(sig), 2))
+	body.WriteString(wrapPromise(returns, e.isPromised(named, method.Name(), method) || asyncSignature(sig), 2))
 	body.WriteString("\t}))")
 
 	return body.String(), nil

@@ -4,12 +4,14 @@ import { boot } from "../harness.mjs";
 
 const { feed } = await boot(import.meta.dirname);
 
-// A channel arrives as an async iterable. The call is a promise because the
-// context has to be wired up before anything can be produced.
+// A channel arrives as an async iterable. The call itself is synchronous: it
+// hands the stream over, and the stream is what takes time.
 const running = new AbortController();
 const primes = [];
 
-for await (const prime of await feed.Primes(running.signal, 20)) {
+assert.equal(feed.Primes(running.signal, 20).then, undefined);
+
+for await (const prime of feed.Primes(running.signal, 20)) {
 	primes.push(prime);
 }
 
@@ -19,7 +21,7 @@ assert.deepEqual(primes, [2, 3, 5, 7, 11, 13, 17, 19]);
 const stopping = new AbortController();
 const partial = [];
 
-for await (const prime of await feed.Primes(stopping.signal, 1000)) {
+for await (const prime of feed.Primes(stopping.signal, 1000)) {
 	partial.push(prime);
 
 	if (partial.length === 3) {
