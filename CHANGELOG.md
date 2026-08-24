@@ -90,6 +90,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   one marshaller called with both. `format.Source` only parses, so nothing
   noticed: the generator reported no error and wrote a file that failed to
   compile in the consumer's own build. Type identity now has one owner.
+- A complex parameter is refused by the bindings as well as the declarations.
+  `types.IsNumeric` includes the complex kinds, so the converter accepted one
+  and emitted `complex128(value.Float())` while the declarations refused it,
+  and a package containing one generated nothing at all.
 
 #### Changed
 

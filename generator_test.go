@@ -636,3 +636,33 @@ func TestInterfaceParametersComeFromJS(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "Record(event: string): void;"),
 		"with the methods it needs:\n"+out.TypeScript)
 }
+
+// TestComplexIsRefusedByBothPaths pins that the two builders agree about a type
+// with no JavaScript counterpart.
+//
+// types.IsNumeric includes complex, so the converter accepted it and emitted
+// complex128(value.Float()), while the declarations refused it outright. The
+// command runs Build first, so a package containing one complex parameter
+// generated nothing at all and reported an error rather than a skip.
+func TestComplexIsRefusedByBothPaths(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/nobind/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err, "one unbindable parameter must not stop the build")
+
+	reported := make([]string, 0, len(out.Skipped))
+	for _, skipped := range out.Skipped {
+		reported = append(reported, skipped.String())
+	}
+
+	joined := strings.Join(reported, "\n")
+
+	testza.AssertTrue(t, strings.Contains(joined, "Scale"),
+		"a complex parameter must be reported, got:\n"+joined)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Scale"),
+		"and left out of the declarations:\n"+out.TypeScript)
+}

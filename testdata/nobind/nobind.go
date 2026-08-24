@@ -11,4 +11,5 @@ import (
 func Exports(r bind.Registry) {
 	r.Func(unbindable.Send)
 	r.Func(unbindable.Fine)
+	r.Func(unbindable.Scale)
 }

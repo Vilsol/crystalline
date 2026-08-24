@@ -329,6 +329,13 @@ func (e *emitter) emitBasicConverter(name string, goType string, basic *types.Ba
 		expected, accessor = "js.TypeBoolean", "value.Bool()"
 	case basic.Kind() == types.String:
 		expected, accessor = "js.TypeString", "value.String()"
+
+	// IsNumeric includes the complex kinds, which have no JS counterpart and
+	// which the declarations refuse. Accepting them here emitted
+	// complex128(value.Float()), and left the two sides disagreeing about
+	// whether the member could be bound at all.
+	case basic.Info()&types.IsComplex != 0:
+		return "", fmt.Errorf("%s cannot be converted to wasm", basic)
 	case basic.Info()&types.IsNumeric != 0:
 		expected, accessor = "js.TypeNumber", "value.Float()"
 	default:

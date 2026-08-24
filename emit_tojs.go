@@ -66,6 +66,11 @@ func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
 }
 
 func basicToJSExpr(expr string, basic *types.Basic) (string, error) {
+	// The same refusal as the declarations: complex has no counterpart.
+	if basic.Info()&types.IsComplex != 0 {
+		return "", fmt.Errorf("%s cannot be converted to wasm", basic)
+	}
+
 	switch basic.Kind() {
 	case types.Bool:
 		return "bool(" + expr + ")", nil
