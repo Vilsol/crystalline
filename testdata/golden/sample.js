@@ -41,6 +41,7 @@ export const initializeCrystalline = () => {
     Brighten: wrap(globalThis['go']['app']['marshal']['Brighten'])
   };
   sample = {
+    Advance: wrap(globalThis['go']['app']['sample']['Advance']),
     Basic: wrap(globalThis['go']['app']['sample']['Basic']),
     Big: wrap(globalThis['go']['app']['sample']['Big']),
     Cancellable: wrap(globalThis['go']['app']['sample']['Cancellable']),
@@ -53,6 +54,7 @@ export const initializeCrystalline = () => {
     Middle: wrap(globalThis['go']['app']['sample']['Middle']),
     NewTicker: wrap(globalThis['go']['app']['sample']['NewTicker']),
     OnlyFails: wrap(globalThis['go']['app']['sample']['OnlyFails']),
+    Phase: globalThis['go']['app']['sample']['Phase'],
     Readings: wrap(globalThis['go']['app']['sample']['Readings']),
     Rich: wrap(globalThis['go']['app']['sample']['Rich']),
     Stream: wrap(globalThis['go']['app']['sample']['Stream']),

@@ -30,6 +30,7 @@ func Exports(r bind.Registry) {
 	r.Func(sample.MakeEmbedder)
 	r.Func(sample.TakesTime)
 	r.Func(sample.MakeStamped)
+	r.Func(sample.Advance)
 
 	// Two instantiations of one generic type, so that the marshallers they
 	// generate are compiled and run rather than only matched as text.

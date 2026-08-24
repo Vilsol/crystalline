@@ -83,6 +83,11 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 		return "Error", false, nil
 	}
 
+	// An enum keeps its own name, so a signature says which values are meant.
+	if named, ok := t.(*types.Named); ok && len(enumConstants(named)) > 0 {
+		return qualifiedName(named), false, nil
+	}
+
 	// A mapped type crosses as its counterpart rather than as its structure. A
 	// declared mapping crosses as whatever its own functions carry.
 	if mapped, ok := g.marks.marshallerFor(t); ok {
@@ -169,7 +174,13 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 			return
 		}
 
+		// An enum is declared too: its value set is what a caller may pass.
 		if _, ok := typed.Underlying().(*types.Struct); !ok {
+			if len(enumConstants(typed)) > 0 {
+				seen[typed] = true
+				*order = append(*order, typed)
+			}
+
 			return
 		}
 

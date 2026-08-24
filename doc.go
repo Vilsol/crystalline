@@ -170,6 +170,23 @@
 // thirty methods and no readable data, and a real Date passed to it was
 // silently read as the zero time.
 //
+// # Enums
+//
+// Go spells an enum as a named integer or string type, a block of constants of
+// that type, and usually a String method. Bound as the underlying type, all of
+// that collapses into "number".
+//
+// The type is declared as the union of its values and its constants are bound
+// beside it, so a caller names a value instead of writing the number the type
+// happens to use:
+//
+//	type Phase int  ->  type Phase = 0 | 1 | 2;
+//	                    const Phase: { readonly PhaseIdle: 0, ... };
+//
+// The constants keep their Go names. Trimming the type's name off the front is
+// the usual convention, but it is a convention rather than a rule, and a name
+// that matches on both sides is one a reader can grep for.
+//
 // # Embedding
 //
 // A promoted method is bound, so a call that compiles in Go works in

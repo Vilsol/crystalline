@@ -110,6 +110,9 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"BadTime=threw",
 		"Colour=#203040",
 		"BadColour=threw",
+		"EnumIdle=0",
+		"EnumDone=2",
+		"EnumAdvance=1",
 		"PairString=a",
 		"PairSwapped=b",
 		"PairNumber=2",
@@ -516,6 +519,12 @@ func main() {
 			badColour = "threw";
 		}
 		out.push("BadColour=" + badColour);
+
+		// An enum's constants are nameable, and the type still crosses as its
+		// underlying number.
+		out.push("EnumIdle=" + s.Phase.PhaseIdle);
+		out.push("EnumDone=" + s.Phase.PhaseDone);
+		out.push("EnumAdvance=" + s.Advance(s.Phase.PhaseIdle));
 
 		// Distinct instantiations of one generic type, actually called.
 		out.push("PairString=" + g.Strings().First);

@@ -550,3 +550,21 @@ func TestDiagnosticsCarryTheirPosition(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(reported, "Send"),
 		"and still name the symbol, got: "+reported)
 }
+
+// TestEnumsKeepTheirNames pins that a named integer type with a fixed set of
+// constants arrives as more than a bare number.
+//
+// Go writes an enum as a named type plus a const block plus a String method,
+// and all three were collapsed to "number": the constants, their names and
+// their text were unreachable from JavaScript.
+func TestEnumsKeepTheirNames(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "type Phase = 0 | 1 | 2;"),
+		"the value set must be declared:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "const Phase: {"),
+		"the constants must be reachable by name:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Advance(p: sample.Phase): sample.Phase;"),
+		"and the type must be used where it appears:\n"+out.TypeScript)
+}

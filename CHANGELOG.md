@@ -44,6 +44,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
   a hand-written `syscall/js` binding doing the same conversions.
+- A named integer or string type with constants is declared as the union of
+  its values, and its constants are bound beside it, so a caller can name a
+  value rather than write the number behind it. The whole enum used to
+  collapse into `number`.
 - `r.Marshal(to, from)` maps a type onto a JavaScript counterpart with a pair
   of ordinary Go functions. The signatures carry the declaration and are
   checked when generating. `time.Time` and `time.Duration` are mapped this

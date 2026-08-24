@@ -324,6 +324,24 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 		}
 	}
 
+	// An enum's constants are published as one object, so a caller can name a
+	// value instead of writing the number the type happens to use.
+	seenEnums := make(map[*types.Named]bool)
+
+	for _, entry := range declarations.Entries {
+		reached := make([]*types.Named, 0)
+		collectNamed(e.marks, entry.Type, seenEnums, &reached)
+
+		for _, named := range reached {
+			constants := enumConstants(named)
+			if len(constants) == 0 {
+				continue
+			}
+
+			registrations.WriteString(e.emitEnum(named, constants))
+		}
+	}
+
 	// Marshallers can queue further marshallers, so drain until stable.
 	for len(e.pending) > 0 {
 		named := e.pending[0]
@@ -434,6 +452,23 @@ func (e *emitter) emitRegistry(values string) string {
 	out.WriteString("\tswitch resolved.Namespace + \"|\" + name {\n")
 	out.WriteString(values)
 	out.WriteString("\t}\n}\n\n")
+
+	return out.String()
+}
+
+// emitEnum publishes an enum's constants as a single frozen object.
+func (e *emitter) emitEnum(named *types.Named, constants []*types.Const) string {
+	var out strings.Builder
+
+	out.WriteString("\tcrystallineNamespace(" + strconv.Quote(e.gen.appName) + ", " +
+		strconv.Quote(named.Obj().Pkg().Name()) + ").Set(" + strconv.Quote(named.Obj().Name()) +
+		", map[string]any{\n")
+
+	for _, declared := range constants {
+		out.WriteString("\t\t" + strconv.Quote(declared.Name()) + ": " + enumJSValue(declared) + ",\n")
+	}
+
+	out.WriteString("\t})\n")
 
 	return out.String()
 }

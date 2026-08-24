@@ -64,6 +64,12 @@ export declare namespace sample {
     release(): void;
     [Symbol.dispose](): void;
   }
+  type Phase = 0 | 1 | 2;
+  const Phase: {
+    readonly PhaseIdle: 0;
+    readonly PhaseRunning: 1;
+    readonly PhaseDone: 2;
+  };
   interface Reading {
     readonly Label: string;
     readonly Values?: Array<number>;
@@ -103,6 +109,7 @@ export declare namespace sample {
     release(): void;
     [Symbol.dispose](): void;
   }
+  function Advance(p: sample.Phase): sample.Phase;
   function Basic(): number;
   function Big(n: number): number;
   function Cancellable(signal: AbortSignal, label: string): Promise<Result<string>>;

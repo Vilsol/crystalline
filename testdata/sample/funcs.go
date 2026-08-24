@@ -317,3 +317,34 @@ func TakesTime(t time.Time) string {
 func MakeStamped() Stamped {
 	return Stamped{Label: "stamped", At: time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}
 }
+
+// Phase is an enum in the Go sense: a named integer with a fixed set of values
+// and a String method. Bound as a bare number, the names and the text are lost.
+type Phase int
+
+const (
+	PhaseIdle Phase = iota
+	PhaseRunning
+	PhaseDone
+)
+
+func (p Phase) String() string {
+	switch p {
+	case PhaseIdle:
+		return "idle"
+	case PhaseRunning:
+		return "running"
+	case PhaseDone:
+		return "done"
+	}
+
+	return "unknown"
+}
+
+func Advance(p Phase) Phase {
+	if p == PhaseDone {
+		return PhaseDone
+	}
+
+	return p + 1
+}

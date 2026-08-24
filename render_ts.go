@@ -86,7 +86,15 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 
 		rendered.WriteString(namespaced)
 
-		if bound := g.renderNamespaceJS(namespace, exposed); bound != "" {
+		enums := make([]string, 0)
+
+		for _, named := range declared {
+			if len(enumConstants(named)) > 0 {
+				enums = append(enums, named.Obj().Name())
+			}
+		}
+
+		if bound := g.renderNamespaceJS(namespace, exposed, enums); bound != "" {
 			names = append(names, namespace)
 			bindings.WriteString(bound)
 		}
@@ -145,6 +153,12 @@ func (g *Generator) renderNamespace(namespace string, declared []*types.Named, e
 	var body strings.Builder
 
 	for _, named := range declared {
+		if constants := enumConstants(named); len(constants) > 0 {
+			body.WriteString(renderEnum(named, constants))
+
+			continue
+		}
+
 		rendered, err := g.renderInterface(named)
 		if err != nil {
 			return "", err
@@ -194,8 +208,8 @@ func (g *Generator) renderEntity(namespace string, entry Entry) (string, error) 
 
 // renderNamespaceJS binds one namespace out of the global object graph the Go
 // side publishes into.
-func (g *Generator) renderNamespaceJS(namespace string, bound []Entry) string {
-	if len(bound) == 0 {
+func (g *Generator) renderNamespaceJS(namespace string, bound []Entry, enums []string) string {
+	if len(bound) == 0 && len(enums) == 0 {
 		return ""
 	}
 
@@ -205,18 +219,35 @@ func (g *Generator) renderNamespaceJS(namespace string, bound []Entry) string {
 
 	out.WriteString("  " + namespace + " = {\n")
 
-	for i, entry := range bound {
-		comma := ","
-		if !g.style.trailingComma && i == len(bound)-1 {
-			comma = ""
-		}
+	names := make([]string, 0, len(bound)+len(enums))
+	accessors := make(map[string]string, len(bound)+len(enums))
 
+	for _, entry := range bound {
 		access := prefix + "[" + g.style.quoted(entry.Name) + "]"
 		if _, isFunc := entry.Type.(*types.Signature); isFunc {
 			access = "wrap(" + access + ")"
 		}
 
-		out.WriteString("    " + entry.Name + ": " + access + comma + "\n")
+		names = append(names, entry.Name)
+		accessors[entry.Name] = access
+	}
+
+	// An enum's constants are a value like any other, and not callable, so they
+	// are bound directly.
+	for _, name := range enums {
+		names = append(names, name)
+		accessors[name] = prefix + "[" + g.style.quoted(name) + "]"
+	}
+
+	sort.Strings(names)
+
+	for i, name := range names {
+		comma := ","
+		if !g.style.trailingComma && i == len(names)-1 {
+			comma = ""
+		}
+
+		out.WriteString("    " + name + ": " + accessors[name] + comma + "\n")
 	}
 
 	out.WriteString("  };\n")
