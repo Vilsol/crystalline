@@ -1,0 +1,450 @@
+//go:build !js
+
+package crystalline
+
+import (
+	"fmt"
+	"go/types"
+	"reflect"
+	"sort"
+	"strings"
+)
+
+// Rendering of the TypeScript declarations and the JavaScript module.
+func (g *Generator) Build(declarations Declarations) (Output, error) {
+	g.marks = newMarks(declarations)
+
+	entities := make(map[string][]Entry)
+
+	// A type is declared where it is defined, not where it was reached from,
+	// so interfaces are grouped by their own package rather than by the entry
+	// that pulled them in.
+	interfaces := make(map[string][]*types.Named)
+	seen := make(map[*types.Named]bool)
+
+	for _, entry := range declarations.Entries {
+		switch entry.Kind {
+		case EntryFunc, EntryValue:
+			entities[entry.Namespace] = append(entities[entry.Namespace], entry)
+		case EntryType:
+		default:
+			continue
+		}
+
+		reached := make([]*types.Named, 0)
+		collectNamed(entry.Type, seen, &reached)
+
+		for _, named := range reached {
+			owner := named.Obj().Name()
+			if named.Obj().Pkg() != nil {
+				owner = named.Obj().Pkg().Name()
+			}
+
+			interfaces[owner] = append(interfaces[owner], named)
+		}
+	}
+
+	namespaces := make(map[string]bool, len(entities)+len(interfaces))
+	for namespace := range entities {
+		namespaces[namespace] = true
+	}
+
+	for namespace := range interfaces {
+		namespaces[namespace] = true
+	}
+
+	var tsd, bindings strings.Builder
+
+	tsd.WriteString(resultDeclarations)
+
+	names := make([]string, 0, len(namespaces))
+
+	for _, namespace := range sortedKeys(namespaces) {
+		declared := interfaces[namespace]
+		sort.Slice(declared, func(i, j int) bool { return instantiatedName(declared[i]) < instantiatedName(declared[j]) })
+
+		exposed := entities[namespace]
+		sort.SliceStable(exposed, func(i, j int) bool { return exposed[i].Name < exposed[j].Name })
+
+		rendered, err := g.renderNamespace(namespace, declared, exposed)
+		if err != nil {
+			return Output{}, err
+		}
+
+		tsd.WriteString(rendered)
+
+		if bound := g.renderNamespaceJS(namespace, exposed); bound != "" {
+			names = append(names, namespace)
+			bindings.WriteString(bound)
+		}
+	}
+
+	tsd.WriteString("export const initializeCrystalline: () => void;")
+
+	var js strings.Builder
+
+	js.WriteString(jsWrapHelper)
+	js.WriteString("\n\n")
+
+	for _, name := range names {
+		js.WriteString("export let " + name + ";\n")
+	}
+
+	js.WriteString("\nexport const initializeCrystalline = () => {\n")
+	js.WriteString(initGuard(g.style, g.appName))
+	js.WriteString(bindings.String())
+	js.WriteString("};")
+
+	return Output{TypeScript: tsd.String(), JavaScript: js.String()}, nil
+}
+
+// renderNamespace renders the interfaces a package declares, then the entities
+// exposed under its name.
+func (g *Generator) renderNamespace(namespace string, declared []*types.Named, exposed []Entry) (string, error) {
+	var body strings.Builder
+
+	for _, named := range declared {
+		rendered, err := g.renderInterface(named)
+		if err != nil {
+			return "", err
+		}
+
+		body.WriteString(rendered)
+	}
+
+	for _, entry := range exposed {
+		rendered, err := g.renderEntity(namespace, entry)
+		if err != nil {
+			return "", err
+		}
+
+		body.WriteString(rendered)
+	}
+
+	return "export declare namespace " + namespace + " {\n" + body.String() + "}\n", nil
+}
+
+func (g *Generator) renderEntity(namespace string, entry Entry) (string, error) {
+	if sig, ok := entry.Type.(*types.Signature); ok {
+		promise := entry.Promise
+		if entry.Object != nil {
+			promise = promise || g.isPromise(entry.Object)
+		}
+
+		rendered, err := g.renderSignature(entry.Name, sig, true, promise)
+		if err != nil {
+			return "", fmt.Errorf("%s.%s: %w", namespace, entry.Name, err)
+		}
+
+		return "  function " + rendered + ";\n", nil
+	}
+
+	jsName, optional, err := g.tsType(entry.Type)
+	if err != nil {
+		return "", fmt.Errorf("%s.%s: %w", namespace, entry.Name, err)
+	}
+
+	if optional {
+		jsName += orUndefined
+	}
+
+	return "  const " + entry.Name + ": " + jsName + ";\n", nil
+}
+
+// renderNamespaceJS binds one namespace out of the global object graph the Go
+// side publishes into.
+func (g *Generator) renderNamespaceJS(namespace string, bound []Entry) string {
+	if len(bound) == 0 {
+		return ""
+	}
+
+	prefix := "globalThis[" + g.style.quoted("go") + "][" + g.style.quoted(g.appName) + "][" + g.style.quoted(namespace) + "]"
+
+	var out strings.Builder
+
+	out.WriteString("  " + namespace + " = {\n")
+
+	for i, entry := range bound {
+		comma := ","
+		if !g.style.trailingComma && i == len(bound)-1 {
+			comma = ""
+		}
+
+		access := prefix + "[" + g.style.quoted(entry.Name) + "]"
+		if _, isFunc := entry.Type.(*types.Signature); isFunc {
+			access = "wrap(" + access + ")"
+		}
+
+		out.WriteString("    " + entry.Name + ": " + access + comma + "\n")
+	}
+
+	out.WriteString("  };\n")
+
+	return out.String()
+}
+
+func (g *Generator) renderInterface(named *types.Named) (string, error) {
+	structType, ok := named.Underlying().(*types.Struct)
+	if !ok {
+		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
+	}
+
+	var result strings.Builder
+
+	result.WriteString("  interface " + instantiatedName(named) + " {\n")
+
+	for i := 0; i < structType.NumFields(); i++ {
+		field := structType.Field(i)
+		if !field.Exported() {
+			continue
+		}
+
+		tag := reflect.StructTag(structType.Tag(i)).Get(tagName)
+		if err := validateTag(tag); err != nil {
+			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), field.Name(), err)
+		}
+
+		jsName, optional, err := g.tsType(field.Type())
+		if err != nil {
+			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), field.Name(), err)
+		}
+
+		marker := ""
+		if optional && !tagHasOption(tag, tagNotNil) {
+			marker = "?"
+		}
+
+		result.WriteString("    " + field.Name() + marker + ": " + jsName + ";\n")
+	}
+
+	methods := make([]*types.Func, 0, named.NumMethods())
+	for i := 0; i < named.NumMethods(); i++ {
+		if method := named.Method(i); method.Exported() {
+			methods = append(methods, method)
+		}
+	}
+
+	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
+
+	for _, method := range methods {
+		if g.marks.ignored[markKey(named, method.Name())] {
+			continue
+		}
+
+		promise := g.marks.promised[markKey(named, method.Name())] || g.isPromise(method)
+
+		signature, err := g.renderSignature(method.Name(), method.Type().(*types.Signature), true, promise)
+		if err != nil {
+			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), method.Name(), err)
+		}
+
+		result.WriteString("    " + signature + ";\n")
+	}
+
+	result.WriteString("  }\n")
+
+	return result.String(), nil
+}
+
+// renderSignature renders a function type. Named signatures become
+// "Name(a: T): R"; anonymous ones become "(a: T) => R".
+func (g *Generator) renderSignature(name string, sig *types.Signature, named bool, promise bool) (string, error) {
+	var result strings.Builder
+
+	if named {
+		result.WriteString(name)
+	}
+
+	result.WriteString("(")
+
+	params := sig.Params()
+	for i := 0; i < params.Len(); i++ {
+		if i > 0 {
+			result.WriteString(", ")
+		}
+
+		param := params.At(i)
+
+		if channel, ok := param.Type().Underlying().(*types.Chan); ok {
+			if err := checkChannelParameter(channel, param.Name()); err != nil {
+				return "", err
+			}
+
+			// A channel the caller fills is drained on a goroutine, which
+			// cannot happen without yielding to the event loop.
+			promise = true
+		}
+
+		// A Go call blocks the single JS thread, so a context is the only way
+		// to cancel one; AbortSignal is how JS spells the same thing.
+		if i == 0 && isContextType(param.Type()) {
+			name := param.Name()
+			if name == "" || name == "ctx" {
+				name = "signal"
+			}
+
+			result.WriteString(name + ": AbortSignal")
+
+			promise = true
+
+			continue
+		}
+
+		var (
+			jsName   string
+			optional bool
+			err      error
+		)
+
+		// Go awaits whatever a JS callback returns, so a callback parameter is
+		// typed as returning a promise, and forces the whole call to be async.
+		if callback, isFunc := param.Type().Underlying().(*types.Signature); isFunc {
+			jsName, err = g.renderSignature("", callback, false, true)
+		} else {
+			jsName, optional, err = g.tsType(param.Type())
+		}
+
+		if err != nil {
+			return "", err
+		}
+
+		argName := param.Name()
+		if argName == "" {
+			argName = fmt.Sprintf("arg%d", i+1)
+		}
+
+		marker := ": "
+		if optional {
+			marker = "?: "
+		}
+
+		result.WriteString(argName + marker + jsName)
+
+		// A callback parameter forces the whole call to be asynchronous.
+		if _, isFunc := param.Type().Underlying().(*types.Signature); isFunc {
+			promise = true
+		}
+	}
+
+	result.WriteString(")")
+
+	if named {
+		result.WriteString(": ")
+	} else {
+		result.WriteString(" => ")
+	}
+
+	results, fallible := splitError(sig.Results())
+
+	if promise {
+		result.WriteString("Promise<")
+	}
+
+	// Failure is carried by the value rather than by timing: a call that can
+	// fail is not necessarily slow, and making it a promise would force every
+	// caller to be async for no reason.
+	if fallible {
+		result.WriteString("Result<")
+	}
+
+	returns, err := g.renderResults(results)
+	if err != nil {
+		return "", err
+	}
+
+	result.WriteString(returns)
+
+	if fallible {
+		result.WriteString(">")
+	}
+
+	if promise {
+		result.WriteString(">")
+	}
+
+	return result.String(), nil
+}
+
+// checkChannelParameter refuses a channel whose type does not say which way the
+// function uses it.
+//
+// Reading an undirected channel as a source would silently discard anything the
+// function sends, and a duplex over one channel cannot work either: both sides
+// would draw from the same queue, so Go could receive its own values. The
+// direction has to come from the author.
+func checkChannelParameter(channel *types.Chan, name string) error {
+	switch channel.Dir() {
+	case types.RecvOnly:
+		return nil
+	case types.SendOnly:
+		return fmt.Errorf("parameter %s: a send-only channel has no JS counterpart, return a <-chan instead", name)
+	}
+
+	return fmt.Errorf("parameter %s: a channel parameter must say its direction, use <-chan %s to receive what the caller supplies",
+		name, types.TypeString(channel.Elem(), nil))
+}
+
+// isContextType reports whether a type is context.Context.
+func isContextType(t types.Type) bool {
+	named, ok := t.(*types.Named)
+	if !ok {
+		return false
+	}
+
+	obj := named.Obj()
+
+	return obj.Pkg() != nil && obj.Pkg().Path() == contextPackage && obj.Name() == "Context"
+}
+
+// splitError separates a trailing error from the values a call produces.
+func splitError(results *types.Tuple) ([]*types.Var, bool) {
+	values := make([]*types.Var, 0, results.Len())
+
+	for i := 0; i < results.Len(); i++ {
+		values = append(values, results.At(i))
+	}
+
+	if len(values) == 0 || !isErrorType(values[len(values)-1].Type()) {
+		return values, false
+	}
+
+	return values[:len(values)-1], true
+}
+
+func (g *Generator) renderResults(results []*types.Var) (string, error) {
+	if len(results) == 0 {
+		return "void", nil
+	}
+
+	var result strings.Builder
+
+	if len(results) > 1 {
+		result.WriteString("[")
+	}
+
+	for i, value := range results {
+		if i > 0 {
+			result.WriteString(", ")
+		}
+
+		jsName, optional, err := g.tsType(value.Type())
+		if err != nil {
+			return "", err
+		}
+
+		if optional {
+			result.WriteString("(" + jsName + " | undefined)")
+		} else {
+			result.WriteString(jsName)
+		}
+	}
+
+	if len(results) > 1 {
+		result.WriteString("]")
+	}
+
+	return result.String(), nil
+}
+
+// tsType renders a Go type as its TypeScript name, reporting whether the value
+// can be absent on the JS side.

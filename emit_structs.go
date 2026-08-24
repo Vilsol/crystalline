@@ -1,0 +1,143 @@
+//go:build !js
+
+package crystalline
+
+import (
+	"fmt"
+	"go/types"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+// Emission of struct wrappers: the live object JavaScript sees, its methods, and
+// the handle that keeps it identified across the boundary.
+func (e *emitter) qualifier(pkg *types.Package) string {
+	return e.imports.qualifier(pkg)
+}
+
+func (e *emitter) isIgnored(named *types.Named, method string) bool {
+	return e.marks.ignored[markKey(named, method)]
+}
+
+func (e *emitter) isPromised(named *types.Named, method string, obj types.Object) bool {
+	return e.marks.promised[markKey(named, method)] || e.gen.isPromise(obj)
+}
+
+func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
+	structType, ok := named.Underlying().(*types.Struct)
+	if !ok {
+		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
+	}
+
+	name := instantiatedName(named)
+
+	var body strings.Builder
+
+	body.WriteString("func " + marshalName(name) + "(v *" + e.declaredName(named) + ") any {\n")
+	body.WriteString("\tif v == nil {\n\t\treturn nil\n\t}\n\n")
+	body.WriteString("\tout := js.Global().Get(\"Object\").New()\n")
+	body.WriteString("\tscope := &crystallineScope{}\n\n")
+
+	for i := 0; i < structType.NumFields(); i++ {
+		field := structType.Field(i)
+		if !field.Exported() {
+			continue
+		}
+
+		tag := reflect.StructTag(structType.Tag(i)).Get(tagName)
+		if err := validateTag(tag); err != nil {
+			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
+		}
+
+		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
+		if err != nil {
+			e.skip(name+"."+field.Name(), err.Error())
+
+			continue
+		}
+
+		setter, err := e.fieldSetter("v."+field.Name(), field.Type())
+		if err != nil {
+			// A field that cannot be written back is still readable.
+			setter = "func(js.Value) {}"
+		}
+
+		body.WriteString("\tcrystallineDefine(scope, out, " + strconv.Quote(field.Name()) + ", func() any {\n\t\treturn " + expr + "\n\t}, " + setter + ")\n")
+	}
+
+	methods := make([]*types.Func, 0, named.NumMethods())
+	for i := 0; i < named.NumMethods(); i++ {
+		if method := named.Method(i); method.Exported() {
+			methods = append(methods, method)
+		}
+	}
+
+	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
+
+	for _, method := range methods {
+		if e.isIgnored(named, method.Name()) {
+			continue
+		}
+
+		bound, err := e.emitMethod(named, method)
+		if err != nil {
+			e.skip(name+"."+method.Name(), err.Error())
+
+			continue
+		}
+
+		body.WriteString("\tout.Set(" + strconv.Quote(method.Name()) + ", " + bound + ")\n")
+	}
+
+	body.WriteString("\n\tcrystallineAttach(out, crystallineRetain(v, scope), scope)\n\n")
+	body.WriteString("\treturn out\n}\n\n")
+
+	return body.String(), nil
+}
+
+func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, error) {
+	sig := method.Type().(*types.Signature)
+
+	call, preamble, err := e.emitArguments(sig)
+	if err != nil {
+		return "", err
+	}
+
+	returns, err := e.emitReturn("v."+method.Name()+"("+strings.Join(call, ", ")+")", sig.Results())
+	returns = preamble + returns
+	if err != nil {
+		return "", err
+	}
+
+	var body strings.Builder
+
+	body.WriteString("crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {\n")
+	body.WriteString("\t\tdefer crystallineRecover(&result)\n\n")
+	body.WriteString("\t\tif len(args) != " + strconv.Itoa(sig.Params().Len()) + " {\n")
+	body.WriteString("\t\t\treturn crystallineFail(" + strconv.Quote(method.Name()+": expected "+strconv.Itoa(sig.Params().Len())+" arguments, got ") + " + strconv.Itoa(len(args)))\n")
+	body.WriteString("\t\t}\n\n")
+	body.WriteString(wrapPromise(returns, e.isPromised(named, method.Name(), method) || hasCallback(sig) || takesContext(sig) || takesChannel(sig), 2))
+	body.WriteString("\t}))")
+
+	return body.String(), nil
+}
+
+func (e *emitter) queue(named *types.Named) {
+	if _, done := e.marshallers[instantiatedName(named)]; done {
+		return
+	}
+
+	e.pending = append(e.pending, named)
+}
+
+func isErrorType(t types.Type) bool {
+	obj := namedObject(t)
+
+	return obj != nil && obj.Pkg() == nil && obj.Name() == "error"
+}
+
+// prelude is the fixed support code every generated file carries. It is
+// duplicated per package rather than imported so that generated bindings never
+// depend on the reflect-based runtime.
