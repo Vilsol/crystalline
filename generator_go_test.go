@@ -1155,3 +1155,160 @@ func TestModuleReadsWhatTheBindingsPublish(t *testing.T) {
 			spelling.name+": the module reads names the bindings never published: "+strings.Join(slices.Compact(missing), ", "))
 	}
 }
+
+// camelNaming is the surface a camelCase build presents, checked through the
+// generated module rather than through the object graph beneath it.
+//
+// The static tests prove the module and the bindings agree about every name.
+// This proves the names work: the module is imported, the binary is booted the
+// way a page boots it, and every kind of member is called by its new name.
+const camelNaming = `import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+
+// wasm_exec.js is a plain script that defines globalThis.Go.
+createRequire(import.meta.url)("./wasm_exec.js");
+
+const loaded = await import("./crystalline.js");
+const { sample } = await loaded.boot(await readFile(new URL("./app.wasm", import.meta.url)));
+
+const out = [];
+
+// A function, and the Go spelling gone rather than there as well.
+out.push("fn=" + sample.basic());
+out.push("goneFn=" + (sample.Basic === undefined));
+
+// A field and a method on a live wrapper.
+const wrapper = sample.fooBar();
+out.push("field=" + wrapper.firstValue);
+out.push("method=" + wrapper.a(true));
+out.push("goneField=" + (wrapper.FirstValue === undefined));
+
+// A write has to reach the Go value under the new name too.
+wrapper.firstValue = "written";
+out.push("write=" + wrapper.one());
+
+// An object literal is validated against the names it now has.
+const rich = sample.rich();
+out.push("literal=" + rich.configure({ firstValue: "literal" }));
+
+let staleKey = "accepted";
+try {
+	rich.configure({ FirstValue: "stale" });
+} catch (error) {
+	staleKey = error.message.includes("unknown property") ? "threw" : "wrong:" + error.message;
+}
+out.push("staleKey=" + staleKey);
+
+// An object JavaScript supplies is written in JavaScript, so Go calls out
+// through the new names as well.
+const recorded = [];
+const level = await sample.replay({
+	record: (event) => { recorded.push(event); },
+	level: () => 7,
+}, ["a", "b"]);
+out.push("supplied=" + level + ":" + recorded.join(","));
+
+// An acronym lowers as a whole, and an explicit name wins over the convention.
+const ledger = sample.newLedger();
+out.push("acronym=" + ledger.id);
+out.push("renamed=" + ledger.memo);
+
+console.log(out.join(" | "));
+
+process.exit(0);
+`
+
+// buildCamelModule generates the whole surface with camelCase on and assembles
+// a directory a page could load: the binary, the module and the runtime shim.
+func buildCamelModule(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+
+	repo, err := filepath.Abs(".")
+	testza.AssertNoError(t, err)
+
+	g := NewGenerator("app", WithCamelCase())
+	testza.AssertNoError(t, g.Load(".", "./testdata/bindings/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	rendered, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	bindings, err := g.BuildGo(declarations, WithPackageName("main"), WithImportPath("bindtest"))
+	testza.AssertNoError(t, err)
+
+	shim := filepath.Join(strings.TrimSpace(runGo(t, "env", "GOROOT")), "lib", "wasm", "wasm_exec.js")
+
+	script, err := os.ReadFile(shim)
+	testza.AssertNoError(t, err, "the Go wasm shim must be readable at "+shim)
+
+	sum, err := os.ReadFile("go.sum")
+	testza.AssertNoError(t, err)
+
+	gomod := "module bindtest\n\ngo 1.27\n\nrequire github.com/Vilsol/crystalline v0.0.0\n\nreplace github.com/Vilsol/crystalline => " + repo + "\n"
+
+	for name, content := range map[string]string{
+		"crystalline_gen.go": bindings.Source,
+		"crystalline.js":     rendered.JavaScript,
+		"wasm_exec.js":       string(script),
+		"run.mjs":            camelNaming,
+		"go.mod":             gomod,
+		"go.sum":             string(sum),
+		// The bindings register themselves, so the program only has to stay
+		// alive for JavaScript to call into.
+		"main.go": "package main\n\nfunc main() {\n\tselect {}\n}\n",
+	} {
+		testza.AssertNoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+
+	goCommand(t, dir, "mod", "tidy")
+	goCommand(t, dir, "build", "-ldflags=-s -w", "-o", "app.wasm", ".")
+
+	return dir
+}
+
+func TestCamelCaseNamesWorkAtRuntime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a wasm binary and runs it under node")
+	}
+
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+
+	dir := buildCamelModule(t)
+
+	cmd := exec.Command(node, filepath.Join(dir, "run.mjs"))
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+
+	output, err := cmd.CombinedOutput()
+	testza.AssertNoError(t, err, string(output))
+
+	reported := probeResults(t, string(output))
+
+	for _, expected := range []string{
+		"fn=420",
+		"goneFn=true",
+		"field=hello",
+		"method=true",
+		"goneField=true",
+		"write=written",
+		"literal=literal",
+		// The unknown-property check has to know the new names, or a stale one
+		// would be accepted and silently zeroed.
+		"staleKey=threw",
+		// Go calls out through the names JavaScript supplied.
+		"supplied=7:a,b",
+		// ID lowers as a whole rather than becoming iD.
+		"acronym=9007199254740993",
+		// And name= wins over the convention.
+		"renamed=exact",
+	} {
+		key, value, _ := strings.Cut(expected, "=")
+		testza.AssertEqual(t, value, reported[key], key+" was wrong in:\n"+string(output))
+	}
+}
