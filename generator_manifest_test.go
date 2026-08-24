@@ -131,3 +131,20 @@ func TestGeneratingIntoTheManifestPackage(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(bindings.Source, strconv.Quote(self)),
 		"generated code must not import its own package:\n"+bindings.Source)
 }
+
+// TestManifestRejectsPromiseOnAValue pins that asking for a promise where one
+// cannot exist is refused.
+//
+// A promise is a way of returning, and a value does not return. The option was
+// recorded and then read only for function types, so it compiled, generated and
+// did nothing, in a project whose whole claim is that nothing is dropped
+// silently.
+func TestManifestRejectsPromiseOnAValue(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badpromise"))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err, "a promise on a non-function value must be refused")
+	testza.AssertTrue(t, strings.Contains(errText(err), "AsPromise"),
+		"the error must name the option, got: "+errText(err))
+}

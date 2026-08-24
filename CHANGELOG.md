@@ -137,6 +137,13 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - A call that takes a context and fails before handing back a stream now
   cancels that context. Nothing existed to take it over, so the abort
   listener and its callback were stranded.
+- A variadic function compiles. Go spreads the final slice at the call site
+  and the generated file passed it whole, so binding any `...T` function
+  produced a package that would not build. JavaScript passes the values as
+  an array.
+- `bind.AsPromise()` on something that is not a function is refused. A
+  promise is a way of returning and a value does not return, so the option
+  was recorded and then never read.
 
 #### Removed
 

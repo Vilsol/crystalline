@@ -95,6 +95,7 @@ api.Apply({ Timeout: 30 });       // literals work too, validated field by field
 | `struct` | `interface`, live fields and methods |
 | `struct` marked `r.Plain` | `interface`, read-only data, no methods |
 | `func(...)` | function type |
+| `...T` variadic | `Array<T>` |
 | `error` as a value | `Error` |
 | `(T, error)` return | `Result<T>` with `unwrap` and `unwrapOr` |
 | `chan T`, `<-chan T` return | `AsyncIterable<T>` |

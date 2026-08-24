@@ -24,6 +24,7 @@ const pending = (name) => new Proxy({}, {
   }
 });
 
+export let generic = pending('generic');
 export let sample = pending('sample');
 
 export const initializeCrystalline = () => {
@@ -31,6 +32,10 @@ export const initializeCrystalline = () => {
     throw new Error('crystalline: globalThis.go.app is not set. Start the Go wasm module before calling initializeCrystalline().');
   }
 
+  generic = {
+    Numbers: wrap(globalThis['go']['app']['generic']['Numbers']),
+    Strings: wrap(globalThis['go']['app']['generic']['Strings'])
+  };
   sample = {
     Basic: wrap(globalThis['go']['app']['sample']['Basic']),
     Big: wrap(globalThis['go']['app']['sample']['Big']),
@@ -48,7 +53,8 @@ export const initializeCrystalline = () => {
     Streamable: wrap(globalThis['go']['app']['sample']['Streamable']),
     Sum: wrap(globalThis['go']['app']['sample']['Sum']),
     Ticks: wrap(globalThis['go']['app']['sample']['Ticks']),
-    Titles: globalThis['go']['app']['sample']['Titles']
+    Titles: globalThis['go']['app']['sample']['Titles'],
+    Total: wrap(globalThis['go']['app']['sample']['Total'])
   };
 
   initialized = true;

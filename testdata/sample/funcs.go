@@ -264,3 +264,15 @@ func Streamable(ctx context.Context, ok bool) (<-chan int, error) {
 
 	return out, nil
 }
+
+// Total is variadic. Go spreads the final slice at the call site; generated
+// code that passes it as a plain argument does not compile.
+func Total(nums ...int) int {
+	sum := 0
+
+	for _, n := range nums {
+		sum += n
+	}
+
+	return sum
+}

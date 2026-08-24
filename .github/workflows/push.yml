@@ -61,6 +61,11 @@ jobs:
           git add -N examples
           git diff --exit-code examples
 
+      # The Go tests treat the declarations as text, so nothing else notices
+      # when they stop being valid TypeScript.
+      - name: Typecheck the generated declarations
+        run: ./examples/typecheck.sh
+
       # One iteration of each, which proves the benchmarks still run without
       # trying to get a usable measurement out of a shared runner.
       - name: Benchmarks

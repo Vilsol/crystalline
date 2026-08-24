@@ -129,6 +129,13 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 
 	options := readOptions(pkg, call.Args[2:])
 
+	// A promise is a way of returning, and a value does not return. Recording
+	// the option and reading it only for function types meant asking for one
+	// here compiled, generated and did nothing.
+	if _, isFunc := valueType.Underlying().(*types.Signature); options.Promise && !isFunc {
+		return Entry{}, fmt.Errorf("%s: bind.AsPromise() applies to a function, and %s is not one", where, valueType)
+	}
+
 	namespace := options.Namespace
 	if namespace == "" {
 		namespace = valueNamespace(valueType, pkg.Name)

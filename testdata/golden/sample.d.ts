@@ -10,6 +10,26 @@ export interface Result<T> {
   /** Returns the value, or the fallback if the call failed. */
   unwrapOr(fallback: T): T;
 }
+export declare namespace generic {
+  interface PairOfInt {
+    First: number;
+    Second: number;
+    Swapped(): generic.PairOfInt;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
+  interface PairOfString {
+    First: string;
+    Second: string;
+    Swapped(): generic.PairOfString;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
+  function Numbers(): generic.PairOfInt;
+  function Strings(): generic.PairOfString;
+}
 export declare namespace sample {
   interface FnSample {
     FirstValue: string;
@@ -74,5 +94,6 @@ export declare namespace sample {
   function Sum(values: AsyncIterable<number>): Promise<number>;
   function Ticks(signal: AbortSignal, count: number): AsyncIterable<number>;
   const Titles: Record<number, string> | undefined;
+  function Total(nums: Array<number> | undefined): number;
 }
 export const initializeCrystalline: () => void;

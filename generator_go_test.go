@@ -41,7 +41,7 @@ func TestGeneratedBindingsWork(t *testing.T) {
 
 	dir := buildGeneratedModule(t)
 
-	output := runWasm(t, dir)
+	reported := probeResults(t, runWasm(t, dir))
 
 	for _, expected := range []string{
 		"Basic=420",
@@ -100,6 +100,10 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"OwnKeys=ok,value",
 		// Streams, in both directions.
 		"Stream=item,item,item",
+		"Total=15",
+		"PairString=a",
+		"PairSwapped=b",
+		"PairNumber=2",
 		"SumArray=6",
 		"SumAsync=30",
 		"BadFeed=threw",
@@ -119,9 +123,36 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		// Explicit disposal.
 		"Disposed=yes",
 	} {
-		testza.AssertTrue(t, strings.Contains(output, expected),
-			"missing "+expected+" in:\n"+output)
+		key, want, _ := strings.Cut(expected, "=")
+
+		got, ok := reported[key]
+		testza.AssertTrue(t, ok, "the probe never reported "+key)
+		testza.AssertEqual(t, want, got, key+" was wrong")
 	}
+}
+
+// probeResults splits the probe's output into one value per assertion.
+//
+// Matching each expectation as a substring of the whole output was weaker than
+// it looked: "Ticks=0,1,2,3" passed on five ticks, "First=1" on "First=10", and
+// "PlainLength=2" on twenty. Exact comparison per key is what was meant.
+func probeResults(t *testing.T, output string) map[string]string {
+	t.Helper()
+
+	results := make(map[string]string)
+
+	for _, pair := range strings.Split(strings.TrimSpace(output), " | ") {
+		key, value, found := strings.Cut(pair, "=")
+		if !found {
+			continue
+		}
+
+		results[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+
+	testza.AssertTrue(t, len(results) > 0, "the probe reported nothing:\n"+output)
+
+	return results
 }
 
 // TestGeneratedBindingsReportGaps pins that anything the emitter cannot bind is
@@ -251,6 +282,7 @@ import "syscall/js"
 func main() {
 	result := js.Global().Call("eval", ` + "`" + `(async () => {
 		const s = globalThis.go.app.sample;
+		const g = globalThis.go.app.generic;
 		const out = [];
 		out.push("Basic=" + s.Basic());
 		const f = s.FooBar();
@@ -442,6 +474,12 @@ func main() {
 		out.push("Cancellable=" + (await s.Cancellable(undefined, "live")).unwrap());
 
 		// A channel parameter accepts anything iterable.
+		out.push("Total=" + s.Total([4, 5, 6]));
+
+		// Distinct instantiations of one generic type, actually called.
+		out.push("PairString=" + g.Strings().First);
+		out.push("PairSwapped=" + g.Strings().Swapped().First);
+		out.push("PairNumber=" + g.Numbers().Second);
 		out.push("SumArray=" + await s.Sum([1, 2, 3]));
 		async function* generated() { yield 10; yield 20; }
 		out.push("SumAsync=" + await s.Sum(generated()));

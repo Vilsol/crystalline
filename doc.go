@@ -176,6 +176,10 @@
 //
 // If the range matters, carry the value as a string across the boundary.
 //
+// A variadic function takes its values as an array from JavaScript:
+//
+//	func Total(nums ...int) int   ->   Total(nums: Array<number>): number
+//
 // # What it will not do
 //
 // Send-only channels, complex numbers and unsafe pointers have no JS

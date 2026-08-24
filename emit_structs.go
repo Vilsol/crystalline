@@ -226,7 +226,7 @@ func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, er
 	sig := method.Type().(*types.Signature)
 
 	returns, err := e.emitCall(sig, func(call []string) string {
-		return "v." + method.Name() + "(" + strings.Join(call, ", ") + ")"
+		return "v." + method.Name() + "(" + spread(sig, call) + ")"
 	})
 	if err != nil {
 		return "", err

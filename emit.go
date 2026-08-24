@@ -468,7 +468,7 @@ func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
 	body.WriteString("\t}\n\n")
 
 	returns, err := e.emitCall(sig, func(call []string) string {
-		return qualified(e.qualifier(fn.Pkg()), fn.Name()) + "(" + strings.Join(call, ", ") + ")"
+		return qualified(e.qualifier(fn.Pkg()), fn.Name()) + "(" + spread(sig, call) + ")"
 	})
 	if err != nil {
 		return "", err
@@ -484,6 +484,23 @@ func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
 // asynchronous, matching what the declarations promise.
 // hasCallback reports whether the signature takes a function, which cannot be
 // serviced without yielding to the JS event loop.
+// spread renders a call's arguments, expanding the final slice for a variadic
+// function.
+//
+// A variadic parameter is an ordinary slice on this side of the boundary, and
+// JavaScript passes it as an array. Go still needs it spread at the call site;
+// passing it whole does not compile, which is what the generated file used to
+// do for every variadic function.
+func spread(sig *types.Signature, call []string) string {
+	joined := strings.Join(call, ", ")
+
+	if sig.Variadic() && len(call) > 0 {
+		joined += "..."
+	}
+
+	return joined
+}
+
 // qualified joins a package qualifier to a name.
 //
 // The qualifier is empty for the package the generated file itself belongs to,

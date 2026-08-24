@@ -35,6 +35,11 @@ func TestGenericInstantiationsStayDistinct(t *testing.T) {
 
 // TestGenericBindingsCompile pins that the emitted Go for a generic type is
 // valid, which is where instantiation names leak into identifiers.
+//
+// It checks the shape only. Whether the source really compiles is settled by
+// TestGeneratedBindingsWork, which builds and runs both instantiations: this
+// test passing while the generated file did not compile was possible until the
+// generic fixtures joined the bindings manifest.
 func TestGenericBindingsCompile(t *testing.T) {
 	g := NewGenerator("app")
 	testza.AssertNoError(t, g.Load(".", "./testdata/genericmanifest"))
