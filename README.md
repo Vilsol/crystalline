@@ -5,15 +5,25 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 ## Features
 
 * Generates JS bindings and TypeScript declarations from Go source at build time.
-* No `reflect` in the generated code — around 25% smaller wasm binaries.
-* One compiler-checked manifest function declares the whole JS surface.
-* Exposes symbols from third-party packages you cannot annotate.
-* `//crystalline:export` directive as shorthand for your own code.
-* Hide or promote individual methods per type.
-* Promises via option, doc directive, or automatically for callbacks and contexts.
-* Generic instantiations kept distinct.
-* Configurable quote style and trailing commas.
-* `go:generate` command and library API, with `-watch` to regenerate on save.
+* No `reflect` in the generated code — 23% smaller wasm on a real project.
+* One compiler-checked manifest declares the whole surface, including symbols
+  from packages you do not own. `//crystalline:export` is the shorthand for ones
+  you do.
+* Structs arrive as live wrappers, or as plain data with `r.Plain` — 9x cheaper
+  for a result that is only read.
+* `r.Marshal` maps a type onto a JavaScript counterpart with two Go functions.
+  `time.Time` and `time.Duration` are mapped as standard.
+* Enums keep their names: a union type plus a constants object.
+* Interfaces go the other way — Go declares what it needs, JavaScript supplies
+  an object with those methods.
+* Promises by option, by doc directive, or automatically for callbacks, contexts
+  and channel parameters.
+* Generic instantiations stay distinct, embedded methods are promoted, and two
+  packages may each declare a `Config`.
+* The generated module starts itself: `const { api } = await boot("app.wasm")`.
+* Skips and warnings carry `file:line`, so editors and CI annotate them.
+* `-watch` regenerates on save, `-profile` counts crossings, and the output
+  files, quote style, trailing commas and banner are all configurable.
 
 ## Install
 
@@ -78,6 +88,46 @@ api.Apply(config);                // Go receives the original, not a copy
 api.Apply({ Timeout: 30 });       // literals work too, validated field by field
 ```
 
+## Modelling
+
+Go's own way of describing a domain crosses as JavaScript's.
+
+```go
+type Status int                     // an enum: a union type plus a constants
+const (                             // object, so a caller names the value
+	StatusDraft Status = iota
+	StatusPublished
+)
+
+type Money struct{ Cents int }      // meaning is its text, not its field
+func MoneyToText(Money) string
+func MoneyFromText(string) (Money, error)
+
+type Item struct {
+	Audited                     // embedded: Listed() is promoted onto Item
+	Price  Money
+	Status Status
+}
+
+type Notifier interface {           // supplied from JavaScript
+	Notify(message string)
+}
+```
+
+One line in the manifest maps the type; everything else follows from the Go.
+
+```go
+r.Marshal(api.MoneyToText, api.MoneyFromText)
+```
+
+```ts
+item.Price = "20.00";                 // refused if it cannot be read
+item.Status = api.Status.StatusDraft; // named, not numbered
+item.Listed();                        // promoted, as in Go
+
+await api.Restock({ Notify: (m) => log(m) }, names);
+```
+
 ## Type mapping
 
 | Go | TypeScript |
@@ -122,7 +172,14 @@ and complex numbers have no counterpart and are reported.
 Anything that cannot be bound is named, with the reason:
 
 ```
-crystalline: skipped api.Watch: type chan Event cannot be read from JS
+api/watch.go:31:1: api.Watch: type chan Event cannot be read from JS
+```
+
+Anything bound at a cost is named too, rather than left to be discovered:
+
+```
+api/report.go:12:1: api.Totals: int64 is bound as a JavaScript number, which
+cannot represent values beyond 2^53 exactly
 ```
 
 ## Performance
@@ -138,12 +195,14 @@ Everything crosses a bridge, and the bridge is the cost. Measured with
 * A wrapper field is a call, not a property: about 6.8 µs against 6 ns on plain
   data. Read it into a local rather than in a loop.
 * Building a struct wrapper costs about 68 µs, so a slice of them is expensive.
-  `r.Plain` makes the same result about 10x cheaper.
+  `r.Plain` makes the same result about 9x cheaper.
 * Bulk data crosses about 3x faster as `[]byte` than as a string.
 
 ## Examples and benchmarks
 
-Three worked examples, each a page backed by a real wasm binary:
+Four worked examples, each a page backed by a real wasm binary: the smallest
+thing that works, structs and `Result`, channels and cancellation, and a
+domain modelled with enums, mapped types and a supplied interface.
 
 ```sh
 mise run examples        # generate, build and check them under node
