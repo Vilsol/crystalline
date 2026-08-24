@@ -295,12 +295,12 @@
 // TinyGo's wasm target implements no recover, so a panic aborts the module
 // rather than arriving in JavaScript as an Error. Generated code does not panic
 // to report a failure: a mistyped argument, an unknown property, a field that
-// cannot be written and a value a channel could not carry are reported and
-// returned instead. Three things still raise one — a panic in your own Go code,
-// and the wrong type returned by a JavaScript callback or by a method of an
-// object supplied for an interface. The last two convert inside a function
-// whose Go signature is the consumer's, so there is nowhere to report to and
-// nothing to return but a guess.
+// cannot be written, a value a channel could not carry and a source that
+// rejects mid-stream are reported and returned instead. Two things still raise
+// one — a panic in your own Go code, and a JavaScript callback or a method of a
+// supplied object that returns the wrong type or rejects. The second converts
+// inside a function whose Go signature is the consumer's, so there is nowhere
+// to report to and nothing to return but a guess.
 //
 // # What it will not do
 //

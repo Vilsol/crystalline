@@ -35,11 +35,11 @@ All four examples build and pass under TinyGo 0.41.1 with
 Run `./examples/tinygo.sh <example>`. TinyGo is not pinned in `mise.toml`, so
 either install it or run the script through `mise exec tinygo@0.41.1 --`.
 
-Between them the examples cover promises, streams in both directions, aborting
-mid-stream, an explicit `AsPromise`, live wrappers, deterministic release,
-enums, a mapped type, a promoted embedded method, an interface supplied from
-JavaScript, and every error path the smoke tests can reach. `js.CopyBytesToGo`
-and `js.CopyBytesToJS` copy correctly.
+Stronger than the examples: the generated surface the test suite exercises —
+82 probe checks over every kind of crossing — produces byte-identical results
+under TinyGo and under the standard toolchain, with nothing on stderr. Rebuild
+it with the `DUMP_DIR` probe if it needs checking again. `js.CopyBytesToGo` and
+`js.CopyBytesToJS` copy correctly.
 
 What made this work is that generated code no longer panics to report a
 conversion failure. **`recover()` is not implemented on TinyGo's wasm target**:
@@ -64,6 +64,7 @@ caveat:
 - The two conversions above, which need either a TinyGo with recover or a JS
   contract that cannot supply the wrong type in the first place. A consumer's
   own panic is the same problem one level up and is not crystalline's to fix.
+  These are the only two probe checks that cannot run under TinyGo.
 - Whether TinyGo's conservative collector disturbs the handle table.
 - A consumer of real size. The examples are small, and `-scheduler=asyncify`
   rewrites every function that can block.

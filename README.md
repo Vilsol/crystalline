@@ -216,20 +216,23 @@ about a fifth of the size:
 | 01-hello | 430K | 2.3M |
 | 04-catalogue | 661K | 2.5M |
 
+The generated test surface — 82 checks covering every kind of crossing, not just
+what the examples reach — produces identical results under both toolchains.
+
 One difference is not cosmetic. **TinyGo's wasm target implements no `recover`**,
 so a panic aborts the module rather than arriving in JavaScript as an `Error`.
 Generated code does not panic to report a failure — a mistyped argument, an
 unknown property on an object literal, a field that cannot be written, a value a
-channel could not carry are all reported and returned — but three things still
-raise one:
+channel could not carry, a source that rejects mid-stream are all reported and
+returned — but two things still raise one:
 
 * a panic in your own Go code;
-* the wrong type returned by a JavaScript callback;
-* the wrong type returned by a method of an object supplied for an interface.
+* a JavaScript callback, or a method of an object supplied for an interface,
+  that returns the wrong type or rejects.
 
-The last two convert inside a Go function whose signature is yours, so there is
+The second converts inside a Go function whose signature is yours, so there is
 nowhere to report to and nothing to return but a guess. Under the standard
-toolchain all three become a thrown or rejected `Error` carrying the Go stack.
+toolchain both become a thrown or rejected `Error` carrying the Go stack.
 
 ## Examples and benchmarks
 

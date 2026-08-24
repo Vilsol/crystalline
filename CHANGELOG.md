@@ -41,6 +41,15 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   supplied object returned, where the Go signature leaves nowhere to report to.
   Costs between 0.03% and 0.09% of binary size across the four examples, and
   makes all four run under TinyGo, whose wasm target implements no `recover`.
+- A source that rejects mid-stream fails the call instead of ending the program.
+  The feed awaited each step through a helper that panics on rejection, inside a
+  goroutine with no recover, so one rejected `next()` took the whole module down
+  under either toolchain. It reports what ended the feed, as it already did for
+  a value the channel could not carry.
+- A rejection carries its message. `js.Value.String()` on an `Error` gives the
+  literal `<object>`, which is what a rejection almost always is, so every
+  rejected promise reported `<object>` and nothing else.
+- A field that cannot be written reports the refusal rather than panicking it.
 - Manifest functions marked `//crystalline:exports`, declaring the whole JS
   surface in one compiler-checked place, including symbols from packages you do
   not own.

@@ -268,7 +268,15 @@ func crystallineFeed[T any](source js.Value, convert func(js.Value) (T, error)) 
 		defer close(out)
 
 		for {
-			step := crystallineAwait(iterator.Call("next"))
+			step, err := crystallineAwaited(iterator.Call("next"))
+			if err != nil {
+				// A rejecting source used to panic here, in a goroutine with
+				// no recover, which ends the program rather than the call.
+				failure = err
+
+				return
+			}
+
 			if step.Get("done").Truthy() {
 				return
 			}
@@ -481,9 +489,22 @@ func crystallineUnknownProperty(value js.Value, typeName string, known map[strin
 	return nil
 }
 
+// crystallineAwait resolves a thenable and panics if it rejects, which is the
+// only answer in a function whose Go signature belongs to the consumer.
 func crystallineAwait(value js.Value) js.Value {
+	resolved, err := crystallineAwaited(value)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return resolved
+}
+
+// crystallineAwaited is the same wait for a caller that has somewhere to report
+// a rejection to. A feed does: it already carries whatever ended it.
+func crystallineAwaited(value js.Value) (js.Value, error) {
 	if value.Type() != js.TypeObject || value.Get("then").Type() != js.TypeFunction {
-		return value
+		return value, nil
 	}
 
 	settled := make(chan js.Value, 1)
@@ -504,7 +525,7 @@ func crystallineAwait(value js.Value) js.Value {
 		if len(args) == 0 {
 			failed <- "promise rejected"
 		} else {
-			failed <- args[0].String()
+			failed <- crystallineErrorText(args[0])
 		}
 
 		return nil
@@ -515,10 +536,23 @@ func crystallineAwait(value js.Value) js.Value {
 
 	select {
 	case result := <-settled:
-		return result
+		return result, nil
 	case message := <-failed:
-		panic(message)
+		return js.Undefined(), errors.New(message)
 	}
+}
+
+// crystallineErrorText renders whatever a promise rejected with. Value.String()
+// on an Error object gives the literal "<object>", which names nothing, and
+// that is what a rejection almost always carries.
+func crystallineErrorText(value js.Value) string {
+	if value.Type() == js.TypeObject {
+		if message := value.Get("message"); message.Type() == js.TypeString {
+			return message.String()
+		}
+	}
+
+	return value.String()
 }
 
 // crystallineDefine installs accessors so that reads and writes from JS reach

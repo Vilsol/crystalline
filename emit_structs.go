@@ -65,7 +65,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 			// on the way past beats accepting the write and dropping it.
 			e.readonly[identity+"."+field.Name()] = true
 
-			setter = "func(js.Value) {\n\t\tpanic(" +
+			setter = "func(js.Value) {\n\t\tcrystallineFail(" +
 				strconv.Quote(identity+"."+field.Name()+" cannot be written from JavaScript: "+err.Error()) + ")\n\t}"
 		}
 

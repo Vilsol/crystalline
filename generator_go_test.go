@@ -127,6 +127,7 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"SumArray=6",
 		"SumAsync=30",
 		"BadFeed=threw",
+		"RejectingFeed=threw",
 		"First=1",
 		"FeedStopped=true",
 		// A pointer parameter takes null as well as a value.
@@ -594,6 +595,19 @@ func main() {
 		}
 		out.push("BadFeed=" + badFeed);
 
+		// A source that rejects mid-stream must fail the call. The feed awaited
+		// each step through a helper that panics on rejection, inside a bare
+		// goroutine with no recover, so one rejected next() took the whole
+		// module down under either toolchain.
+		let rejectingFeed = "accepted";
+		try {
+			async function* failing() { yield 1; throw new Error("source failed"); }
+			await s.Sum(failing());
+		} catch (e) {
+			rejectingFeed = e.message.includes("source failed") ? "threw" : "wrong:" + e.message;
+		}
+		out.push("RejectingFeed=" + rejectingFeed);
+
 		// Abandoning the channel must stop the feed rather than strand it.
 		let stopped = false;
 		const endless = {
@@ -900,4 +914,19 @@ func TestConsumerSignaturesStillPanic(t *testing.T) {
 		testza.AssertTrue(t, strings.Contains(bindings.Source, expected),
 			"missing "+expected+", which has nowhere else to report")
 	}
+}
+
+// A field that cannot be written reported the refusal by panicking. It is the
+// one refusal the move to reported failures missed, because it is emitted where
+// the setter is built rather than where a conversion is.
+func TestUnwritableFieldsDoNotPanic(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	body := bodyOf(t, bindings.Source, "crystallineMarshalSampleTicker")
+
+	testza.AssertTrue(t, strings.Contains(body, "cannot be written from JavaScript"),
+		"the refusal must still name the field and the reason:\n"+body)
+	testza.AssertFalse(t, strings.Contains(body, "panic("),
+		"the refusal must be reported rather than panicked:\n"+body)
 }
