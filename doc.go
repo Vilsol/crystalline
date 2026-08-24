@@ -285,6 +285,23 @@
 //
 //	func Total(nums ...int) int   ->   Total(nums: Array<number>): number
 //
+// # TinyGo
+//
+// Every example builds and passes under TinyGo 0.41 with -scheduler=asyncify,
+// at about a fifth of the size. The generated runtime needs js.FuncOf,
+// channels, goroutines, sync.Once, sync.Mutex and generics, and no reflect,
+// fmt or finalizers, which is the usual obstacle.
+//
+// TinyGo's wasm target implements no recover, so a panic aborts the module
+// rather than arriving in JavaScript as an Error. Generated code does not panic
+// to report a failure: a mistyped argument, an unknown property, a field that
+// cannot be written and a value a channel could not carry are reported and
+// returned instead. Three things still raise one — a panic in your own Go code,
+// and the wrong type returned by a JavaScript callback or by a method of an
+// object supplied for an interface. The last two convert inside a function
+// whose Go signature is the consumer's, so there is nowhere to report to and
+// nothing to return but a guess.
+//
 // # What it will not do
 //
 // Send-only channels, complex numbers and unsafe pointers have no JS

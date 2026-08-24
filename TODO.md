@@ -58,10 +58,12 @@ report to and nothing to return but a guess. A consumer's own panic is the same
 problem one level up. Under the standard toolchain all three become a thrown or
 rejected `Error` carrying the Go stack; under TinyGo they abort the module.
 
-So TinyGo is not yet a claim worth making in the README. What is left:
+The README states this, with the caveat. What is left before it can drop the
+caveat:
 
 - The two conversions above, which need either a TinyGo with recover or a JS
-  contract that cannot supply the wrong type in the first place.
+  contract that cannot supply the wrong type in the first place. A consumer's
+  own panic is the same problem one level up and is not crystalline's to fix.
 - Whether TinyGo's conservative collector disturbs the handle table.
 - A consumer of real size. The examples are small, and `-scheduler=asyncify`
   rewrites every function that can block.

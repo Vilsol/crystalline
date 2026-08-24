@@ -1,6 +1,6 @@
 # examples
 
-Three pages, each one step further in. Every one is a real wasm binary built
+Four pages, each one step further in. Every one is a real wasm binary built
 from the Go beside it.
 
 | | shows |
@@ -19,6 +19,10 @@ mise run examples:serve  # then open http://localhost:8000/01-hello/
 
 Generating with `-profile` adds `stats()`, which counts and times every call the
 page makes. `-watch` regenerates when the Go changes.
+
+`./tinygo.sh <example>` builds and checks one under TinyGo instead, which is
+where the size difference shows. TinyGo is not pinned in `mise.toml`, so either
+install it or run the script through `mise exec go@1.26.7 tinygo@0.41.1 --`.
 
 ## What is in each one
 
