@@ -20,55 +20,6 @@ JavaScript render what Go computed.
 
 Revisit if someone shows a workload that genuinely has to originate in Go.
 
-### TinyGo
-
-All four examples build and pass under TinyGo 0.41.1 with
-`-scheduler=asyncify`, at roughly a fifth of the size:
-
-| example | tinygo | go   |
-| ------- | ------ | ---- |
-| 01-hello    | 430K | 2.3M |
-| 02-accounts | 574K | 2.4M |
-| 03-pipeline | 516K | 2.5M |
-| 04-catalogue| 661K | 2.5M |
-
-Run `./examples/tinygo.sh <example>`. TinyGo is not pinned in `mise.toml`, so
-either install it or run the script through `mise exec tinygo@0.41.1 --`.
-
-Stronger than the examples: the generated surface the test suite exercises —
-82 probe checks over every kind of crossing — produces byte-identical results
-under TinyGo and under the standard toolchain, with nothing on stderr. Rebuild
-it with the `DUMP_DIR` probe if it needs checking again. `js.CopyBytesToGo` and
-`js.CopyBytesToJS` copy correctly.
-
-What made this work is that generated code no longer panics to report a
-conversion failure. **`recover()` is not implemented on TinyGo's wasm target**:
-`runtime.panicOrGoexit` consults `supportsRecover()`, which is false because
-unwinding needs `tinygo_longjmp`, and `asm_tinygowasm.S` is the only
-architecture stub that does not define it. Measured rather than reasoned — the
-same probe recovers under `tinygo build` for linux/amd64 and traps under
-`-target wasm`, in `main` itself, through a callee and inside a goroutine,
-written as a closure and as a named deferred function, from a plain callee and
-from a generic one.
-
-Two panics remain, and cannot be removed: what a JavaScript callback returned
-and what a method of a JavaScript-supplied object returned are converted inside
-a Go function whose signature belongs to the consumer, so there is nowhere to
-report to and nothing to return but a guess. A consumer's own panic is the same
-problem one level up. Under the standard toolchain all three become a thrown or
-rejected `Error` carrying the Go stack; under TinyGo they abort the module.
-
-The README states this, with the caveat. What is left before it can drop the
-caveat:
-
-- The two conversions above, which need either a TinyGo with recover or a JS
-  contract that cannot supply the wrong type in the first place. A consumer's
-  own panic is the same problem one level up and is not crystalline's to fix.
-  These are the only two probe checks that cannot run under TinyGo.
-- Whether TinyGo's conservative collector disturbs the handle table.
-- A consumer of real size. The examples are small, and `-scheduler=asyncify`
-  rewrites every function that can block.
-
 ### Opt-in bigint for 64-bit integers
 
 `int64` and `uint64` are bound as JavaScript numbers with a warning, because
@@ -106,6 +57,31 @@ rather than assumed to be the first.
 The evidence against it is that the second hot spot in a real migration was a
 map read rather than a call, which batching cannot touch, and `r.Plain` fixed
 it for nothing.
+
+### Chasing full TinyGo support
+
+It already works. Every example and the generator's own test surface — 82 checks
+over every kind of crossing — produce identical results under TinyGo 0.41 and
+under the standard toolchain, at roughly a fifth of the size. `./examples/tinygo.sh`
+runs it. README says so, with the caveat.
+
+Trialled on timeless-jewels, which is the consumer that cares most about the
+cost of a crossing: it worked, and it was slower overall. `-scheduler=asyncify`
+rewrites every function that can block, and that is not free. For a tool built
+to squeeze the boundary, a fifth of the download does not pay for it.
+
+So the remaining work is parked rather than planned:
+
+- Two panics that cannot be reported: a JavaScript callback, or a method of a
+  supplied object, that returns the wrong type or rejects. Both convert inside a
+  Go function whose signature belongs to the consumer. They are the only two
+  probe checks that cannot run under TinyGo, and closing them needs either a
+  TinyGo with recover or a JS contract that cannot supply the wrong type.
+- Whether TinyGo's conservative collector disturbs the handle table.
+
+Revisit if a consumer turns up whose binary size matters more than its latency —
+a page loaded once and thrown away rather than one used for an hour. Nothing has
+to change for them today; they get the caveat and the size.
 
 ### Binary size attribution
 
