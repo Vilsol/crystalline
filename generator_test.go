@@ -692,3 +692,33 @@ func TestEnumsAreFoundAcrossPackages(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Switch(m: inner.Mode): inner.Mode;"),
 		"and be used where it appears:\n"+out.TypeScript)
 }
+
+// TestPointersToMappedTypesAreMapped pins that a pointer honours its element's
+// mapping.
+//
+// The pointer case reached for the struct marshaller before asking whether the
+// type had a mapping, so *time.Time produced the thirty-method live wrapper
+// that mapping time.Time exists to avoid, and the declarations described a
+// shape the bindings never published.
+func TestPointersToMappedTypesAreMapped(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function MaybeStamp(ok: boolean): (Date | undefined);"),
+		"a pointer to a mapped type must cross as its counterpart:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "namespace time"),
+		"and must not drag in the type it replaced:\n"+out.TypeScript)
+}
+
+// TestPointersToMappedTypesBindAsMapped is the same claim about the bindings.
+//
+// The declarations were already right, so checking them alone would have missed
+// this: the Go called the wrapper marshaller, which is both the wrong shape and
+// the thirty bound methods the mapping exists to avoid.
+func TestPointersToMappedTypesBindAsMapped(t *testing.T) {
+	pkg, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	testza.AssertFalse(t, strings.Contains(pkg.Source, "crystallineMarshalTimeTime"),
+		"a mapped type must not also get a wrapper marshaller:\n"+pkg.Source)
+}

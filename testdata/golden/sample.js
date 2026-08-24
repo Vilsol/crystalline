@@ -51,6 +51,7 @@ export const initializeCrystalline = () => {
     MakeEmbedder: wrap('sample.MakeEmbedder', globalThis['go']['app']['sample']['MakeEmbedder']),
     MakeStamped: wrap('sample.MakeStamped', globalThis['go']['app']['sample']['MakeStamped']),
     MayFail: wrap('sample.MayFail', globalThis['go']['app']['sample']['MayFail']),
+    MaybeStamp: wrap('sample.MaybeStamp', globalThis['go']['app']['sample']['MaybeStamp']),
     Middle: wrap('sample.Middle', globalThis['go']['app']['sample']['Middle']),
     NewTicker: wrap('sample.NewTicker', globalThis['go']['app']['sample']['NewTicker']),
     OnlyFails: wrap('sample.OnlyFails', globalThis['go']['app']['sample']['OnlyFails']),

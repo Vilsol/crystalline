@@ -123,6 +123,7 @@ export declare namespace sample {
   function MakeEmbedder(): sample.Embedder;
   function MakeStamped(): sample.Stamped;
   function MayFail(ok: boolean): Result<string>;
+  function MaybeStamp(ok: boolean): (Date | undefined);
   function Middle(first: sample.FnSample | undefined, label: string): string;
   function NewTicker(): sample.Ticker;
   function OnlyFails(ok: boolean): Result<void>;

@@ -15,7 +15,12 @@ func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
 	case *types.Named, *types.Alias:
 		return e.namedToJSExpr(expr, t)
 	case *types.Pointer:
-		if named, ok := typed.Elem().(*types.Named); ok {
+		// A mapped element is asked about first: it is usually a struct, and
+		// reaching for the wrapper marshaller here would emit the very shape
+		// the mapping replaces.
+		_, mapped := e.marks.marshallerFor(typed.Elem())
+
+		if named, ok := typed.Elem().(*types.Named); ok && !mapped {
 			if _, isStruct := named.Underlying().(*types.Struct); isStruct {
 				e.queue(named)
 
@@ -24,7 +29,9 @@ func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
 		}
 
 		// A pointer to anything else is just an optional value.
-		inner, err := e.toJS("*"+expr, typed.Elem(), false)
+		// Parenthesised: the element's own conversion may call a method on it,
+		// and *r0.UnixMilli() dereferences the result rather than the pointer.
+		inner, err := e.toJS("(*"+expr+")", typed.Elem(), false)
 		if err != nil {
 			return "", fmt.Errorf("pointer to %s is not supported: %w", typed.Elem(), err)
 		}

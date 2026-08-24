@@ -364,3 +364,16 @@ func Replay(r Recorder, events []string) int {
 
 	return r.Level()
 }
+
+// MaybeStamp returns a pointer to a mapped type. The pointer case reached for
+// the struct marshaller directly, so it produced the live wrapper the mapping
+// exists to avoid.
+func MaybeStamp(ok bool) *time.Time {
+	if !ok {
+		return nil
+	}
+
+	at := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	return &at
+}

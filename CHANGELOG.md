@@ -105,6 +105,11 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   same walk that decides what to declare, and that walk asks whether a type
   has constants, which cannot be answered before the package holding them is
   loaded. The type quietly became a number.
+- A pointer to a mapped type honours the mapping. `*time.Time` reached for the
+  struct marshaller before asking, so it produced the thirty-method wrapper
+  that mapping `time.Time` exists to avoid, while the declarations said
+  `Date`. Dereferencing is also parenthesised now, since the element's own
+  conversion may call a method on it.
 
 #### Changed
 

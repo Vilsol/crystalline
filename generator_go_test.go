@@ -108,6 +108,8 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"TimeOut=true",
 		"TimeValue=2020-01-02T03:04:05.000Z",
 		"BadTime=threw",
+		"MaybeStamp=2020-01-02T03:04:05.000Z",
+		"MaybeStampNil=null",
 		"Colour=#203040",
 		"BadColour=threw",
 		"EnumIdle=0",
@@ -511,6 +513,10 @@ func main() {
 			badTime = "threw";
 		}
 		out.push("BadTime=" + badTime);
+
+		// A pointer to a mapped type crosses as its counterpart, or as null.
+		out.push("MaybeStamp=" + s.MaybeStamp(true).toISOString());
+		out.push("MaybeStampNil=" + JSON.stringify(s.MaybeStamp(false)));
 
 		// A declared mapping: Colour crosses as a string, both ways.
 		const m = globalThis.go.app.marshal;
