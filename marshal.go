@@ -36,7 +36,7 @@ type marshaller struct {
 	intermediate types.Type
 }
 
-// declaredByManifest reports whether the mapping came from r.Marshal rather
+// declaredByManifest reports whether the mapping came from the manifest rather
 // than from the built-in table.
 func (m marshaller) declaredByManifest() bool {
 	return m.to != nil

@@ -115,7 +115,7 @@ $("parse").onclick = () => {
 };
 
 $("snapshot").onclick = () => {
-	// Declared with r.Plain, so this is an ordinary JavaScript object: it
+	// Declared with bind.Plain(), so this is an ordinary JavaScript object: it
 	// crossed once, holds nothing in Go, and survives JSON.
 	$("snapshotted").textContent = JSON.stringify(selected().Snapshot(), null, 2);
 };

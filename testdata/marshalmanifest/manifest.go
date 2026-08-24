@@ -10,7 +10,7 @@ import (
 func Exports(r bind.Registry) {
 	// The two functions say everything: Colour crosses as a string, out through
 	// the first and back through the second.
-	r.Marshal(marshal.ColourToHex, marshal.ColourFromHex)
+	r.Type(marshal.Colour{}, bind.MarshalledBy(marshal.ColourToHex, marshal.ColourFromHex))
 
 	r.Func(marshal.Brighten)
 }

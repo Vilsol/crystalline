@@ -9,9 +9,10 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 * One compiler-checked manifest declares the whole surface, including symbols
   from packages you do not own. `//crystalline:export` is the shorthand for ones
   you do.
-* Structs arrive as live wrappers, or as plain data with `r.Plain` — 9x cheaper
+* Structs arrive as live wrappers, or as plain data with `bind.Plain()` — 9x cheaper
   for a result that is only read.
-* `r.Marshal` maps a type onto a JavaScript counterpart with two Go functions.
+* `bind.MarshalledBy` maps a type onto a JavaScript counterpart with two Go
+  functions.
   `time.Time` and `time.Duration` are mapped as standard.
 * Enums keep their names: a union type plus a constants object.
 * Interfaces go the other way — Go declares what it needs, JavaScript supplies
@@ -52,7 +53,7 @@ only their types are read at generate time.
 func Exports(r bind.Registry) {
 	r.Func(api.Greet)
 	r.Func(api.Load, bind.AsPromise())
-	r.Ignore(vendor.Client{}, "internalHelper")
+	r.Type(vendor.Client{}, bind.Without("internalHelper"))
 
 	index := make(map[uint32]*api.Node)
 	for _, node := range api.Nodes {
@@ -117,7 +118,7 @@ type Notifier interface {           // supplied from JavaScript
 One line in the manifest maps the type; everything else follows from the Go.
 
 ```go
-r.Marshal(api.MoneyToText, api.MoneyFromText)
+r.Type(api.Money{}, bind.MarshalledBy(api.MoneyToText, api.MoneyFromText))
 ```
 
 ```ts
@@ -142,11 +143,11 @@ await api.Restock({ Notify: (m) => log(m) }, names);
 | `map[K]V` | `Record<K, V>` |
 | `*T` | `T \| undefined` |
 | `struct` | `interface`, live fields and methods |
-| `struct` marked `r.Plain` | `interface`, read-only data, no methods |
+| `struct` marked `bind.Plain()` | `interface`, read-only data, no methods |
 | named int or string with constants | union type plus a constants object |
 | `time.Time` | `Date` |
 | `time.Duration` | `number` of milliseconds |
-| type mapped with `r.Marshal` | whatever its functions carry |
+| type mapped with `bind.MarshalledBy` | whatever its functions carry |
 | `func(...)` | function type |
 | `...T` variadic | `Array<T>` |
 | `error` as a value | `Error` |
@@ -159,7 +160,8 @@ await api.Restock({ Notify: (m) => log(m) }, names);
 
 A struct arrives as a *live view*: each field read and write is a call into Go,
 and each field and method holds a slot in the Go/JS bridge until the wrapper is
-released. `r.Plain(T{})` converts a type to ordinary JavaScript data instead —
+released. `r.Type(T{}, bind.Plain())` converts a type to ordinary JavaScript
+data instead —
 once, with no methods and no writing back — which is what a result that is only
 read wants. See [Performance](#performance).
 
@@ -190,12 +192,13 @@ Everything crosses a bridge, and the bridge is the cost. Measured with
 * A call costs about 5.5 µs whether crystalline wrote the binding or you did.
   **Count crossings, not conversions**: 98 small calls spend half a millisecond
   crossing before doing any work, where one call returning the same data as an
-  aggregate spends 5.5 µs. This is the one cost `r.Plain` cannot remove, because
+  aggregate spends 5.5 µs. This is the one cost `bind.Plain()` cannot remove,
+  because
   it is per crossing rather than per conversion.
 * A wrapper field is a call, not a property: about 6.8 µs against 6 ns on plain
   data. Read it into a local rather than in a loop.
 * Building a struct wrapper costs about 68 µs, so a slice of them is expensive.
-  `r.Plain` makes the same result about 9x cheaper.
+  `bind.Plain()` makes the same result about 9x cheaper.
 * Bulk data crosses about 3x faster as `[]byte` than as a string.
 
 ## Examples and benchmarks

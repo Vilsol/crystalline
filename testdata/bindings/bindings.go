@@ -42,10 +42,10 @@ func Exports(r bind.Registry) {
 	r.Func(generic.Numbers)
 
 	// A type of the fixture's own, crossing as a string.
-	r.Marshal(marshal.ColourToHex, marshal.ColourFromHex)
+	r.Type(marshal.Colour{}, bind.MarshalledBy(marshal.ColourToHex, marshal.ColourFromHex))
 	r.Func(marshal.Brighten)
 
-	r.Plain(sample.Reading{})
+	r.Type(sample.Reading{}, bind.Plain())
 
 	// A map whose key names a package but whose element does not.
 	r.Value("Titles", map[sample.Kind]string{1: "one"})

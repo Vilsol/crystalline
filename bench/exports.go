@@ -34,5 +34,5 @@ func Exports(r bind.Registry) {
 	r.Func(payload.Rounds, bind.AsPromise())
 
 	// The same shape as Point, handed over as data rather than as a wrapper.
-	r.Plain(payload.Reading{})
+	r.Type(payload.Reading{}, bind.Plain())
 }

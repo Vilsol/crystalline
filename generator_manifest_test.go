@@ -169,3 +169,42 @@ func TestNamespacesMustBeIdentifiers(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(errText(err), "my-api"),
 		"the error must name it, got: "+errText(err))
 }
+
+// A type's option on a function used to be folded into the resolved options and
+// then read only where it applied, so asking for it compiled, generated and did
+// nothing.
+func TestTypeOptionOnAFunctionIsAnError(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badoption", "./testdata/sample"))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err)
+	testza.AssertTrue(t, strings.Contains(errText(err), "bind.Plain() says how a type crosses, so it belongs on r.Type"),
+		"the error must name the option and where it belongs, got: "+errText(err))
+}
+
+// The type a mapping is declared on and the type its functions describe are two
+// statements of one fact. Nothing compared them before the mapping moved onto
+// r.Type, because the functions were the only statement there was.
+func TestMappingMustDescribeTheTypeItIsDeclaredOn(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badmarshal", "./testdata/marshal", "./testdata/sample"))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err)
+	testza.AssertTrue(t, strings.Contains(errText(err), "ColourToHex takes"),
+		"the error must name the function and what it takes, got: "+errText(err))
+	testza.AssertTrue(t, strings.Contains(errText(err), "the mapping was declared on"),
+		"the error must say the declaration disagrees, got: "+errText(err))
+}
+
+// A type does not return, so the bare bind.AsPromise() has nothing to apply to.
+func TestBarePromiseOnATypeIsAnError(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badtypepromise", "./testdata/sample"))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err)
+	testza.AssertTrue(t, strings.Contains(errText(err), "is not a function; name the methods that return a promise"),
+		"the error must say how to name the methods instead, got: "+errText(err))
+}

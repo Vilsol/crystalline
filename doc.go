@@ -20,7 +20,7 @@
 //	func Exports(r bind.Registry) {
 //		r.Func(api.Greet)
 //		r.Func(api.Load, bind.AsPromise())
-//		r.Ignore(vendor.Client{}, "internalHelper")
+//		r.Type(vendor.Client{}, bind.Without("internalHelper"))
 //		r.Value("Version", api.Version)
 //	}
 //
@@ -106,7 +106,8 @@
 //	// crystalline:promise
 //	func (s Service) Load() Result { ... }
 //
-// or from the manifest with r.Promise, which checks the method exists. Calls
+// or from the manifest with bind.AsPromise on the type, which checks the
+// method exists. Calls
 // taking a callback or a context are always promises, whether or not they are
 // marked: neither can be serviced without yielding to the event loop.
 //
@@ -131,7 +132,7 @@
 //
 // Marking the type in the manifest converts it once instead:
 //
-//	r.Plain(api.Result{})
+//	r.Type(api.Result{}, bind.Plain())
 //
 // Plain data has no methods, cannot be written back, and is an ordinary
 // JavaScript object: it survives JSON, structuredClone and a framework's
@@ -194,7 +195,7 @@
 // useful about a type whose value is not its fields. A pair of ordinary Go
 // functions maps one onto something JavaScript already has:
 //
-//	r.Marshal(api.ColourToHex, api.ColourFromHex)
+//	r.Type(api.Colour{}, bind.MarshalledBy(api.ColourToHex, api.ColourFromHex))
 //
 // The signatures carry the declaration. func(Colour) string says Colour crosses
 // as a string; func(string) (Colour, error) says how it comes back and that it

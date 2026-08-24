@@ -8,7 +8,7 @@ from the Go beside it.
 | [01-hello](01-hello) | one call each way: a string and an int |
 | [02-accounts](02-accounts) | a struct with live fields and bound methods, `Result`, plain data, deterministic release |
 | [03-pipeline](03-pipeline) | channels in both directions, a context as an `AbortSignal`, a promise by request |
-| [04-catalogue](04-catalogue) | an enum, a type mapped with `r.Marshal`, `time.Time` as a `Date`, a promoted method, an interface supplied from JavaScript |
+| [04-catalogue](04-catalogue) | an enum, a type mapped with `bind.MarshalledBy`, `time.Time` as a `Date`, a promoted method, an interface supplied from JavaScript |
 
 ## Running them
 

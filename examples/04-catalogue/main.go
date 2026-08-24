@@ -14,7 +14,7 @@ import (
 func Exports(r bind.Registry) {
 	// Money's meaning is its text, so it crosses as text. The two signatures
 	// say the rest: func(Money) string out, func(string) (Money, error) back.
-	r.Marshal(catalogue.MoneyToText, catalogue.MoneyFromText)
+	r.Type(catalogue.Money{}, bind.MarshalledBy(catalogue.MoneyToText, catalogue.MoneyFromText))
 
 	r.Func(catalogue.All)
 	r.Func(catalogue.Describe)

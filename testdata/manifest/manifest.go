@@ -15,11 +15,9 @@ func Exports(r bind.Registry) {
 	r.Func(sample.Basic)
 	r.Func(sample.FooBar, bind.AsPromise())
 
-	// A method kept off the surface, on a type declared elsewhere.
-	r.Ignore(sample.FnSample{}, "Three")
-
-	// A method promoted to a promise without touching its source.
-	r.Promise(sample.FnSample{}, "Two")
+	// A type declared elsewhere, with one method kept off the surface and
+	// another promoted to a promise without touching its source.
+	r.Type(sample.FnSample{}, bind.Without("Three"), bind.AsPromise("Two"))
 
 	// A plain package level value.
 	r.Value("Lookup", Lookup)

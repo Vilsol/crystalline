@@ -17,10 +17,10 @@ func Exports(r bind.Registry) {
 	r.Func(account.ParseAmount)
 
 	// Exported in Go, absent from JavaScript.
-	r.Ignore(account.Account{}, "Audit")
+	r.Type(account.Account{}, bind.Without("Audit"))
 
 	// A read-only result: plain data rather than a live wrapper.
-	r.Plain(account.Statement{})
+	r.Type(account.Statement{}, bind.Plain())
 }
 
 func main() {

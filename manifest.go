@@ -49,14 +49,14 @@ func (g *Generator) readManifest(pkg *packages.Package, fn *ast.FuncDecl) ([]Ent
 			return true
 		}
 
-		entry, err := g.readCall(pkg, fn.Name.Name, selector.Sel.Name, call)
+		read, err := g.readCall(pkg, fn.Name.Name, selector.Sel.Name, call)
 		if err != nil {
 			failure = err
 
 			return false
 		}
 
-		entries = append(entries, entry)
+		entries = append(entries, read...)
 
 		return true
 	})
@@ -64,27 +64,31 @@ func (g *Generator) readManifest(pkg *packages.Package, fn *ast.FuncDecl) ([]Ent
 	return entries, failure
 }
 
-func (g *Generator) readCall(pkg *packages.Package, manifest string, method string, call *ast.CallExpr) (Entry, error) {
+func (g *Generator) readCall(pkg *packages.Package, manifest string, method string, call *ast.CallExpr) ([]Entry, error) {
 	where := pkg.PkgPath + "." + manifest + ": r." + method
 
 	switch method {
 	case "Func":
-		return g.readFunc(pkg, where, call)
+		entry, err := g.readFunc(pkg, where, call)
+
+		return oneEntry(entry, err)
 	case "Value":
-		return g.readValue(pkg, where, call)
+		entry, err := g.readValue(pkg, where, call)
+
+		return oneEntry(entry, err)
 	case "Type":
-		return g.readType(pkg, where, call, EntryType)
-	case "Plain":
-		return g.readType(pkg, where, call, EntryPlain)
-	case "Marshal":
-		return g.readMarshal(pkg, where, call)
-	case "Ignore":
-		return g.readMethodMark(pkg, where, call, EntryIgnore)
-	case "Promise":
-		return g.readMethodMark(pkg, where, call, EntryPromise)
+		return g.readType(pkg, where, call)
 	}
 
-	return Entry{}, fmt.Errorf("%s is not a Registry method", where)
+	return nil, fmt.Errorf("%s is not a Registry method", where)
+}
+
+func oneEntry(entry Entry, err error) ([]Entry, error) {
+	if err != nil {
+		return nil, err
+	}
+
+	return []Entry{entry}, nil
 }
 
 func (g *Generator) readFunc(pkg *packages.Package, where string, call *ast.CallExpr) (Entry, error) {
@@ -97,7 +101,14 @@ func (g *Generator) readFunc(pkg *packages.Package, where string, call *ast.Call
 		return Entry{}, fmt.Errorf("%s needs a function named directly, so that it can be resolved without running anything", where)
 	}
 
-	options := readOptions(pkg, call.Args[1:])
+	options, err := readOptions(pkg, where, call.Args[1:])
+	if err != nil {
+		return Entry{}, err
+	}
+
+	if err := options.rejectTypeOnly(where); err != nil {
+		return Entry{}, err
+	}
 
 	namespace := obj.Pkg().Name()
 	if options.Namespace != "" {
@@ -129,7 +140,14 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 		return Entry{}, fmt.Errorf("%s: could not determine the type of the value", where)
 	}
 
-	options := readOptions(pkg, call.Args[2:])
+	options, err := readOptions(pkg, where, call.Args[2:])
+	if err != nil {
+		return Entry{}, err
+	}
+
+	if err := options.rejectTypeOnly(where); err != nil {
+		return Entry{}, err
+	}
 
 	// A promise is a way of returning, and a value does not return. Recording
 	// the option and reading it only for function types meant asking for one
@@ -153,22 +171,70 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 	}, nil
 }
 
-func (g *Generator) readType(pkg *packages.Package, where string, call *ast.CallExpr, kind EntryKind) (Entry, error) {
+// readType reads a declared type and the options that say how it crosses.
+//
+// One call produces every decision made about the type, so a reader sees them
+// together and the generator has one place to check them against each other.
+func (g *Generator) readType(pkg *packages.Package, where string, call *ast.CallExpr) ([]Entry, error) {
 	if len(call.Args) == 0 {
-		return Entry{}, fmt.Errorf("%s needs a value of the type to declare", where)
+		return nil, fmt.Errorf("%s needs a value of the type to declare", where)
 	}
 
 	named, err := namedArgument(pkg, where, call.Args[0])
 	if err != nil {
-		return Entry{}, err
+		return nil, err
 	}
 
+	options, err := readOptions(pkg, where, call.Args[1:])
+	if err != nil {
+		return nil, err
+	}
+
+	if err := options.checkForType(where, named); err != nil {
+		return nil, err
+	}
+
+	base := Entry{
+		Kind:      EntryType,
+		Namespace: named.Obj().Pkg().Name(),
+		Name:      named.Obj().Name(),
+		Type:      named,
+	}
+
+	switch {
+	case options.hasMarshal:
+		// A mapped type is not declared as a struct as well: what it crosses
+		// as is whatever its functions carry, and declaring both would
+		// describe a shape the bindings never publish.
+		base, err = g.readMarshal(where, named, options)
+		if err != nil {
+			return nil, err
+		}
+	case options.Plain:
+		base.Kind = EntryPlain
+	}
+
+	entries := []Entry{base}
+
+	for _, method := range options.Without {
+		entries = append(entries, methodMark(named, EntryIgnore, method))
+	}
+
+	for _, method := range options.PromiseMethods {
+		entries = append(entries, methodMark(named, EntryPromise, method))
+	}
+
+	return entries, nil
+}
+
+func methodMark(named *types.Named, kind EntryKind, method string) Entry {
 	return Entry{
 		Kind:      kind,
 		Namespace: named.Obj().Pkg().Name(),
 		Name:      named.Obj().Name(),
+		Method:    method,
 		Type:      named,
-	}, nil
+	}
 }
 
 // valueNamespace picks the namespace an exposed value belongs in.
@@ -221,25 +287,18 @@ func packageOf(t types.Type) string {
 	return ""
 }
 
-// readMarshal reads a declared mapping from the pair of functions that define
-// it.
+// readMarshal checks the pair of functions that define a mapping, and turns
+// them into the entry that carries it.
 //
 // The signatures say everything: func(T) X gives the Go type and what it
 // crosses as, and func(X) (T, error) gives the way back and the admission that
 // it can refuse. Both are checked here rather than at run time, because a
 // mapping that does not line up would otherwise emit code that does not
-// compile, several steps away from the manifest that asked for it.
-func (g *Generator) readMarshal(pkg *packages.Package, where string, call *ast.CallExpr) (Entry, error) {
-	if len(call.Args) < 2 {
-		return Entry{}, fmt.Errorf("%s needs a function out and a function back", where)
-	}
-
-	to := referencedObject(pkg, call.Args[0])
-	from := referencedObject(pkg, call.Args[1])
-
-	if to == nil || from == nil {
-		return Entry{}, fmt.Errorf("%s needs both functions named directly, so that they can be resolved without running anything", where)
-	}
+// compile, several steps away from the manifest that asked for it. They are
+// checked against the type they were given to as well, since that is a third
+// statement of the same fact and nothing else compares them.
+func (g *Generator) readMarshal(where string, subject *types.Named, options manifestOptions) (Entry, error) {
+	to, from := options.marshalTo, options.marshalFrom
 
 	out, ok := to.Type().(*types.Signature)
 	if !ok || out.Params().Len() != 1 || out.Results().Len() != 1 {
@@ -251,9 +310,9 @@ func (g *Generator) readMarshal(pkg *packages.Package, where string, call *ast.C
 		return Entry{}, fmt.Errorf("%s: %s must take what it crosses as and return the type and an error", where, from.Name())
 	}
 
-	subject, ok := out.Params().At(0).Type().(*types.Named)
-	if !ok {
-		return Entry{}, fmt.Errorf("%s: %s must take a named type", where, to.Name())
+	if !types.Identical(out.Params().At(0).Type(), subject) {
+		return Entry{}, fmt.Errorf("%s: %s takes %s, but the mapping was declared on %s", where,
+			to.Name(), out.Params().At(0).Type(), subject)
 	}
 
 	if !types.Identical(subject, back.Results().At(0).Type()) {
@@ -273,34 +332,6 @@ func (g *Generator) readMarshal(pkg *packages.Package, where string, call *ast.C
 		Type:      subject,
 		Object:    to,
 		From:      from,
-	}, nil
-}
-
-func (g *Generator) readMethodMark(pkg *packages.Package, where string, call *ast.CallExpr, kind EntryKind) (Entry, error) {
-	if len(call.Args) < 2 {
-		return Entry{}, fmt.Errorf("%s needs a value of the type and a method name", where)
-	}
-
-	named, err := namedArgument(pkg, where, call.Args[0])
-	if err != nil {
-		return Entry{}, err
-	}
-
-	method, ok := stringLiteral(pkg, call.Args[1])
-	if !ok {
-		return Entry{}, fmt.Errorf("%s needs a literal method name, so that it can be resolved without running anything", where)
-	}
-
-	if !namedHasMethod(named, method) {
-		return Entry{}, fmt.Errorf("%s: %s has no exported method %q", where, named, method)
-	}
-
-	return Entry{
-		Kind:      kind,
-		Namespace: named.Obj().Pkg().Name(),
-		Name:      named.Obj().Name(),
-		Method:    method,
-		Type:      named,
 	}, nil
 }
 
@@ -337,35 +368,141 @@ func namedArgument(pkg *packages.Package, where string, arg ast.Expr) (*types.Na
 	return named, nil
 }
 
+// manifestOptions is the resolved form of the options on one registry call.
+//
+// It carries the declared symbols alongside bind.Options, because a mapping is
+// read as a pair of go/types objects here and as a pair of values at run time.
+type manifestOptions struct {
+	bind.Options
+
+	marshalTo   types.Object
+	marshalFrom types.Object
+	hasMarshal  bool
+}
+
 // readOptions folds the bind.Option arguments of a call. Options are recognised
 // by the function being called, so they cannot be hidden behind a variable.
-func readOptions(pkg *packages.Package, args []ast.Expr) bind.Options {
-	var resolved bind.Options
+func readOptions(pkg *packages.Package, where string, args []ast.Expr) (manifestOptions, error) {
+	var resolved manifestOptions
 
 	for _, arg := range args {
 		call, ok := arg.(*ast.CallExpr)
 		if !ok {
-			continue
+			return manifestOptions{}, fmt.Errorf("%s needs its options written as calls, so that they can be read without running anything", where)
 		}
 
 		obj := referencedObject(pkg, call.Fun)
 		if obj == nil {
-			continue
+			return manifestOptions{}, fmt.Errorf("%s needs its options named directly, so that they can be read without running anything", where)
 		}
 
 		switch obj.Name() {
 		case "AsPromise":
-			resolved.Promise = true
+			methods, err := literalNames(pkg, where, obj.Name(), call.Args)
+			if err != nil {
+				return manifestOptions{}, err
+			}
+
+			if len(methods) == 0 {
+				resolved.Promise = true
+			}
+
+			resolved.PromiseMethods = append(resolved.PromiseMethods, methods...)
+		case "Without":
+			methods, err := literalNames(pkg, where, obj.Name(), call.Args)
+			if err != nil {
+				return manifestOptions{}, err
+			}
+
+			resolved.Without = append(resolved.Without, methods...)
+		case "Plain":
+			resolved.Plain = true
 		case "InNamespace":
 			if len(call.Args) == 1 {
-				if name, ok := stringLiteral(pkg, call.Args[0]); ok {
-					resolved.Namespace = name
+				name, ok := stringLiteral(pkg, call.Args[0])
+				if !ok {
+					return manifestOptions{}, fmt.Errorf("%s: bind.InNamespace needs a literal name, so that it can be read without running anything", where)
 				}
+
+				resolved.Namespace = name
 			}
+		case "MarshalledBy":
+			if len(call.Args) != 2 {
+				return manifestOptions{}, fmt.Errorf("%s: bind.MarshalledBy needs a function out and a function back", where)
+			}
+
+			to := referencedObject(pkg, call.Args[0])
+			from := referencedObject(pkg, call.Args[1])
+
+			if to == nil || from == nil {
+				return manifestOptions{}, fmt.Errorf("%s: bind.MarshalledBy needs both functions named directly, so that they can be resolved without running anything", where)
+			}
+
+			resolved.marshalTo, resolved.marshalFrom, resolved.hasMarshal = to, from, true
+		default:
+			return manifestOptions{}, fmt.Errorf("%s: bind.%s is not an option", where, obj.Name())
 		}
 	}
 
-	return resolved
+	return resolved, nil
+}
+
+// literalNames reads the method names an option was given.
+func literalNames(pkg *packages.Package, where string, option string, args []ast.Expr) ([]string, error) {
+	names := make([]string, 0, len(args))
+
+	for _, arg := range args {
+		name, ok := stringLiteral(pkg, arg)
+		if !ok {
+			return nil, fmt.Errorf("%s: bind.%s needs literal method names, so that they can be resolved without running anything", where, option)
+		}
+
+		names = append(names, name)
+	}
+
+	return names, nil
+}
+
+// rejectTypeOnly refuses the options that only mean something for a type,
+// rather than accepting them on a function or a value and doing nothing.
+func (o manifestOptions) rejectTypeOnly(where string) error {
+	switch {
+	case o.Plain:
+		return fmt.Errorf("%s: bind.Plain() says how a type crosses, so it belongs on r.Type", where)
+	case len(o.Without) > 0:
+		return fmt.Errorf("%s: bind.Without names methods of a type, so it belongs on r.Type", where)
+	case len(o.PromiseMethods) > 0:
+		return fmt.Errorf("%s: bind.AsPromise names methods of a type, so it belongs on r.Type; on a function it takes no names", where)
+	case o.hasMarshal:
+		return fmt.Errorf("%s: bind.MarshalledBy maps a type, so it belongs on r.Type", where)
+	}
+
+	return nil
+}
+
+// checkForType refuses the options that cannot apply to a type, and the
+// combinations that contradict each other.
+func (o manifestOptions) checkForType(where string, named *types.Named) error {
+	switch {
+	case o.Promise:
+		return fmt.Errorf("%s: %s is not a function; name the methods that return a promise, as bind.AsPromise(%q)", where, named, "Method")
+	case o.Namespace != "":
+		return fmt.Errorf("%s: bind.InNamespace applies to a function or a value; a type follows the package that declares it", where)
+	case o.Plain && o.hasMarshal:
+		return fmt.Errorf("%s: bind.Plain() and bind.MarshalledBy say different things about how %s crosses", where, named)
+	case o.Plain && len(o.Without)+len(o.PromiseMethods) > 0:
+		return fmt.Errorf("%s: %s is plain data, which has no methods to name", where, named)
+	case o.hasMarshal && len(o.Without)+len(o.PromiseMethods) > 0:
+		return fmt.Errorf("%s: %s is mapped by its own functions, which have no methods to name", where, named)
+	}
+
+	for _, method := range append(append([]string{}, o.Without...), o.PromiseMethods...) {
+		if !namedHasMethod(named, method) {
+			return fmt.Errorf("%s: %s has no exported method %q", where, named, method)
+		}
+	}
+
+	return nil
 }
 
 // referencedObject resolves an expression that names a symbol directly.

@@ -21,6 +21,9 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `crystalline` command, installable as a module tool with `go get -tool` and
   runnable from `go:generate`.
 - `bind` package: a reflect-free `Registry` that manifests are written against.
+  It declares three things — `Func`, `Value` and `Type` — and everything else
+  is an option on one of them, so a decision about a type is written where the
+  type is declared rather than in a call of its own.
 - Manifest functions marked `//crystalline:exports`, declaring the whole JS
   surface in one compiler-checked place, including symbols from packages you do
   not own.
@@ -64,13 +67,14 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   its values, and its constants are bound beside it, so a caller can name a
   value rather than write the number behind it. The whole enum used to
   collapse into `number`.
-- `r.Marshal(to, from)` maps a type onto a JavaScript counterpart with a pair
-  of ordinary Go functions. The signatures carry the declaration and are
-  checked when generating. `time.Time` and `time.Duration` are mapped this
+- `bind.MarshalledBy(to, from)` maps a type onto a JavaScript counterpart with
+  a pair of ordinary Go functions. The signatures carry the declaration and are
+  checked when generating, against each other and against the type they are
+  given to. `time.Time` and `time.Duration` are mapped this
   way as standard, to a `Date` and to milliseconds; `time.Time` previously
   bound as a wrapper with thirty methods and no readable data, and silently
   read a real `Date` as the zero time.
-- `r.Plain(T{})` marshals a type as ordinary JavaScript data instead of a
+- `bind.Plain()` marshals a type as ordinary JavaScript data instead of a
   live wrapper: converted once, no methods, no bridge slots and nothing to
   release. Measured at 9x cheaper for a slice of 32 structs. The mark reaches
   every struct the type contains, since a plain value cannot hold a live one.
@@ -298,7 +302,7 @@ func Expose() *crystalline.Exposer {
 func Exports(r bind.Registry) {
 	r.Func(api.Greet)
 	r.Func(api.Load, bind.AsPromise())
-	r.Ignore(vendor.Client{}, "internalHelper")
+	r.Type(vendor.Client{}, bind.Without("internalHelper"))
 	r.Value("Version", api.Version, bind.InNamespace("api"))
 }
 ```

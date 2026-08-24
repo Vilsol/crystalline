@@ -197,7 +197,7 @@ func BenchmarkStructsOut(b *testing.B) {
 		})
 	})
 
-	// The same shape declared with r.Plain: converted once, no handles, no
+	// The same shape declared with bind.Plain(): converted once, no handles, no
 	// accessors, no methods. This is the lever for an aggregate result.
 	b.Run("plain", func(b *testing.B) {
 		readings := api().Get("MakeReadings")

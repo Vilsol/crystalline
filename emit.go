@@ -437,11 +437,7 @@ func (e *emitter) emitRegistry(values string) string {
 	out.WriteString("// this file compiling before it has been regenerated.\n")
 	out.WriteString("type crystallineRegistry struct{ " + bindAlias + ".Registry }\n\n")
 	out.WriteString("func (crystallineRegistry) Func(fn any, opts ..." + bindAlias + ".Option) {}\n\n")
-	out.WriteString("func (crystallineRegistry) Plain(zero any) {}\n\n")
-	out.WriteString("func (crystallineRegistry) Marshal(to any, from any) {}\n\n")
-	out.WriteString("func (crystallineRegistry) Type(zero any) {}\n\n")
-	out.WriteString("func (crystallineRegistry) Ignore(zero any, method string) {}\n\n")
-	out.WriteString("func (crystallineRegistry) Promise(zero any, method string) {}\n\n")
+	out.WriteString("func (crystallineRegistry) Type(zero any, opts ..." + bindAlias + ".Option) {}\n\n")
 
 	out.WriteString("func (crystallineRegistry) Value(name string, value any, opts ..." + bindAlias + ".Option) {\n")
 

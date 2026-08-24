@@ -34,7 +34,7 @@ One machine, node 24, Go 1.26. The ratios travel; the absolute numbers do not.
 | object in, 256 keys | 465 µs | 537 µs | 1.8 µs per key |
 | object out, 256 keys | 111 µs | 105 µs | 0.4 µs per key |
 | **32 structs out, wrappers** | **2899 µs** | 204 µs | 91 µs per wrapper |
-| **32 structs out, `r.Plain`** | **318 µs** | 204 µs | **9.1× faster than wrappers** |
+| **32 structs out, `bind.Plain()`** | **318 µs** | 204 µs | **9.1× faster than wrappers** |
 | one wrapper out, released | 102 µs | | |
 | field read, wrapper | 6.7 µs | 9.1 ns (plain data) | |
 | field read, nested struct | 6.8 µs | | cached per parent, so no worse than a scalar |
@@ -54,7 +54,7 @@ One machine, node 24, Go 1.26. The ratios travel; the absolute numbers do not.
 1. **A crossing costs about 5.5 µs, whoever writes it.** For scalar calls
    crystalline is indistinguishable from a hand-written binding, so the thing to
    count is crossings, not conversions.
-2. **Mark a read-only result `r.Plain`.** A live wrapper costs 91 µs to build
+2. **Mark a read-only result `bind.Plain()`.** A live wrapper costs 91 µs to build
    and holds a bridge slot per field and method; the same data converted once
    costs 9.1× less and lands within 1.6× of a hand-written plain object.
 3. **A wrapper field is a function call, not a property**: 6.7 µs against 9.1 ns
