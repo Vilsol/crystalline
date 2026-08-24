@@ -124,6 +124,18 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   method being implemented, and an unexported one was skipped, leaving a type
   that did not satisfy the interface. Neither showed up until the consumer's
   own build failed.
+- `crystalline:"not_nil"` is checked against the field it is on. It promises an
+  empty collection where there would be a null, which only a slice or a map
+  has, and on a pointer it dropped the `?` from the declaration and changed
+  nothing at run time.
+- A namespace that cannot be a JavaScript identifier is refused. The name went
+  straight into `export let`, so `bind.InNamespace("my-api")` produced a
+  module that does not parse.
+- `boot` checks the response before treating it as a binary, so a 404 says so
+  rather than arriving as a complaint about the wasm magic word.
+- The declarations name the TypeScript libraries they rely on, so a project
+  whose tsconfig differs is told what to turn on rather than given a dozen
+  errors about `Symbol.dispose`.
 
 #### Changed
 

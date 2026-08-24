@@ -153,3 +153,19 @@ func TestManifestRejectsPromiseOnAValue(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(errText(err), "AsPromise"),
 		"the error must name the option, got: "+errText(err))
 }
+
+// TestNamespacesMustBeIdentifiers pins that a namespace which cannot be a
+// JavaScript identifier is refused.
+//
+// The name went straight into "export let <name>", so bind.InNamespace("my-api")
+// produced a module that does not parse — found by whoever imported it rather
+// than by whoever wrote it.
+func TestNamespacesMustBeIdentifiers(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badnamespace"))
+
+	_, err := g.Declarations()
+	testza.AssertNotNil(t, err, "a namespace that cannot be an identifier must be refused")
+	testza.AssertTrue(t, strings.Contains(errText(err), "my-api"),
+		"the error must name it, got: "+errText(err))
+}

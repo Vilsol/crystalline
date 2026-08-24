@@ -1,3 +1,6 @@
+/// <reference lib="es2018" />
+/// <reference lib="dom" />
+/// <reference lib="esnext.disposable" />
 export type Result<T> = (
   | {
       /** Whether the call succeeded. */

@@ -768,3 +768,23 @@ func TestSuppliedInterfacesRefuseWhatJSCannotProvide(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(out.TypeScript, "UseLogger"),
 		"and left out of the declarations:\n"+out.TypeScript)
 }
+
+// TestNotNilIsRefusedWhereItCannotApply pins that the tag is checked against
+// the field it is on.
+//
+// not_nil promises an empty collection instead of null, which only a slice or a
+// map has. On a pointer it was accepted, dropped the ? from the declaration and
+// changed nothing at run time, so the type said the field was always there and
+// the value was null.
+func TestNotNilIsRefusedWhereItCannotApply(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/badtag"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	_, err = g.Build(declarations)
+	testza.AssertNotNil(t, err, "not_nil on a pointer must be refused")
+	testza.AssertTrue(t, strings.Contains(errText(err), "not_nil"),
+		"the error must name the option, got: "+errText(err))
+}

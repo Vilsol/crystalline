@@ -48,9 +48,17 @@ export const boot = async (wasm) => {
 
   const runtime = new globalThis['Go']();
 
-  const source = wasm instanceof ArrayBuffer || ArrayBuffer.isView(wasm)
-    ? wasm
-    : await (await fetch(wasm)).arrayBuffer();
+  let source = wasm;
+
+  if (!(wasm instanceof ArrayBuffer) && !ArrayBuffer.isView(wasm)) {
+    const response = await fetch(wasm);
+
+    if (!response.ok) {
+      throw new Error('crystalline: could not fetch ' + wasm + ': ' + response.status);
+    }
+
+    source = await response.arrayBuffer();
+  }
 
   const { instance } = await WebAssembly.instantiate(source, runtime.importObject);
 

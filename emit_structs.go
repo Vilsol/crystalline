@@ -48,7 +48,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 		}
 
 		tag := reflect.StructTag(structType.Tag(i)).Get(tagName)
-		if err := validateTag(tag); err != nil {
+		if err := validateTag(tag, field.Type()); err != nil {
 			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
 		}
 
@@ -159,7 +159,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 		}
 
 		tag := reflect.StructTag(structType.Tag(i)).Get(tagName)
-		if err := validateTag(tag); err != nil {
+		if err := validateTag(tag, field.Type()); err != nil {
 			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
 		}
 

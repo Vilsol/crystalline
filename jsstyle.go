@@ -128,9 +128,18 @@ func jsLoader(style jsStyle, namespaces []string) string {
 
 	// Bytes as well as a URL: a bundler may inline the binary, and fetch cannot
 	// read a file URL outside a browser.
-	out.WriteString("  const source = wasm instanceof ArrayBuffer || ArrayBuffer.isView(wasm)\n")
-	out.WriteString("    ? wasm\n")
-	out.WriteString("    : await (await fetch(wasm)).arrayBuffer();\n\n")
+	out.WriteString("  let source = wasm;\n\n")
+	out.WriteString("  if (!(wasm instanceof ArrayBuffer) && !ArrayBuffer.isView(wasm)) {\n")
+	out.WriteString("    const response = await fetch(wasm);\n\n")
+
+	// Checked, because a 404 body is not a wasm binary and the failure would
+	// otherwise arrive as a complaint about the magic word.
+	out.WriteString("    if (!response.ok) {\n")
+	out.WriteString("      throw new Error(" + style.quoted("crystalline: could not fetch ") +
+		" + wasm + " + style.quoted(": ") + " + response.status);\n")
+	out.WriteString("    }\n\n")
+	out.WriteString("    source = await response.arrayBuffer();\n")
+	out.WriteString("  }\n\n")
 	out.WriteString("  const { instance } = await WebAssembly.instantiate(source, runtime.importObject);\n\n")
 	out.WriteString("  // Not awaited: the Go program parks, so this never settles.\n")
 	out.WriteString("  runtime.run(instance);\n\n")
@@ -207,6 +216,17 @@ type Output struct {
 // still needs no narrowing at all — which is the part a bare union gets wrong,
 // and why this was one flat interface before. As one interface, ok said nothing
 // about value or error and neither branch of the obvious pattern compiled.
+// tsVoid is what a call returning nothing crosses as.
+const tsVoid = "void"
+
+// tsLibReference names the libraries the declarations rely on. Without it a
+// consumer whose tsconfig differs gets a dozen errors about Symbol.dispose and
+// AsyncIterable, none of which say what to turn on.
+const tsLibReference = `/// <reference lib="es2018" />
+/// <reference lib="dom" />
+/// <reference lib="esnext.disposable" />
+`
+
 const resultDeclarations = `export type Result<T> = (
   | {
       /** Whether the call succeeded. */
@@ -238,7 +258,7 @@ func awaitable(signature string) string {
 	}
 
 	returned := signature[arrow+len(" => "):]
-	if returned == "void" {
+	if returned == tsVoid {
 		return signature
 	}
 

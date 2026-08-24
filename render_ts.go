@@ -105,6 +105,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	var tsd strings.Builder
 
 	tsd.WriteString(g.bannerText())
+	tsd.WriteString(tsLibReference)
 
 	if g.usesResult {
 		tsd.WriteString(resultDeclarations)
@@ -307,7 +308,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 		}
 
 		tag := reflect.StructTag(structType.Tag(i)).Get(tagName)
-		if err := validateTag(tag); err != nil {
+		if err := validateTag(tag, field.Type()); err != nil {
 			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), field.Name(), err)
 		}
 
@@ -583,7 +584,7 @@ func splitError(results *types.Tuple) ([]*types.Var, bool) {
 
 func (g *Generator) renderResults(results []*types.Var) (string, error) {
 	if len(results) == 0 {
-		return "void", nil
+		return tsVoid, nil
 	}
 
 	var result strings.Builder

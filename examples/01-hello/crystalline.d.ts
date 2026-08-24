@@ -1,3 +1,6 @@
+/// <reference lib="es2018" />
+/// <reference lib="dom" />
+/// <reference lib="esnext.disposable" />
 export declare namespace greeting {
   function Add(a: number, b: number): number;
   function Greet(name: string): string;

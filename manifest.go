@@ -395,6 +395,13 @@ func checkNamespaces(entries []Entry) error {
 	owners := make(map[string]map[string]bool)
 
 	for _, entry := range entries {
+		// A namespace becomes "export let <name>" in the module, so a name
+		// JavaScript cannot spell produces a file that does not parse, found by
+		// whoever imports it rather than whoever wrote it.
+		if !isJSIdentifier(entry.Namespace) {
+			return fmt.Errorf("namespace %q is not a JavaScript identifier: give it a name with bind.InNamespace", entry.Namespace)
+		}
+
 		if entry.Object == nil || entry.Object.Pkg() == nil {
 			continue
 		}
@@ -422,4 +429,38 @@ func checkNamespaces(entries []Entry) error {
 	}
 
 	return nil
+}
+
+// isJSIdentifier reports whether a name can be a JavaScript binding.
+//
+// Deliberately narrower than the language allows: an ASCII identifier is what
+// a Go package name already is, so anything else came from an explicit
+// bind.InNamespace and is worth refusing rather than escaping.
+func isJSIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	for i, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_', r == '$':
+		case r >= '0' && r <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+
+	return !jsReserved[name]
+}
+
+// jsReserved are the words a binding cannot be named.
+var jsReserved = map[string]bool{
+	"break": true, "case": true, "catch": true, "class": true, "const": true,
+	"continue": true, "debugger": true, "default": true, "delete": true, "do": true,
+	"else": true, "enum": true, "export": true, "extends": true, "false": true,
+	"finally": true, "for": true, "function": true, "if": true, "import": true,
+	"in": true, "instanceof": true, "new": true, "null": true, "return": true,
+	"super": true, "switch": true, "this": true, "throw": true, "true": true,
+	"try": true, "typeof": true, "var": true, tsVoid: true, "while": true,
+	"with": true, "yield": true, "let": true, "static": true, "await": true,
 }

@@ -33,7 +33,13 @@ func tagHasOption(tag string, want string) bool {
 
 // validateTag rejects options this version does not understand, so that a
 // misspelled option fails the build instead of being quietly dropped.
-func validateTag(tag string) error {
+// validateTag checks a field's tag against the field it is on.
+//
+// not_nil promises an empty collection where there would be a null, which only
+// a slice or a map has. Accepting it anywhere meant a pointer field lost the ?
+// from its declaration and kept returning null: the type said the field was
+// always there and the value disagreed.
+func validateTag(tag string, t types.Type) error {
 	for len(tag) > 0 {
 		var option string
 		option, tag, _ = strings.Cut(tag, ",")
@@ -45,6 +51,10 @@ func validateTag(tag string) error {
 
 		if !slices.Contains(knownTagOptions, option) {
 			return fmt.Errorf("unknown %s tag option %q (known options: %s)", tagName, option, strings.Join(knownTagOptions, ", "))
+		}
+
+		if option == tagNotNil && !hasEmptyForm(t) {
+			return fmt.Errorf("%s applies to a slice or a map, and this is a %s", tagNotNil, t)
 		}
 	}
 
@@ -139,4 +149,15 @@ func capitalise(name string) string {
 	}
 
 	return strings.ToUpper(name[:1]) + name[1:]
+}
+
+// hasEmptyForm reports whether a type has an empty value that can stand in for
+// nil on the other side.
+func hasEmptyForm(t types.Type) bool {
+	switch t.Underlying().(type) {
+	case *types.Slice, *types.Map:
+		return true
+	}
+
+	return false
 }
