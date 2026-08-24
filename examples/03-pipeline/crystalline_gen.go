@@ -227,19 +227,25 @@ func crystallineSource(source js.Value) js.Value {
 //
 // The returned stop function ends the feed and tells the iterator no more will
 // be read, so abandoning the channel does not strand the goroutine.
-func crystallineFeed[T any](source js.Value, convert func(js.Value) (T, error)) (<-chan T, func()) {
+func crystallineFeed[T any](source js.Value, convert func(js.Value) (T, error)) (<-chan T, func() error) {
 	out := make(chan T)
 	done := make(chan struct{})
+	finished := make(chan struct{})
 
 	if source.IsUndefined() || source.IsNull() {
 		close(out)
 
-		return out, func() {}
+		return out, func() error { return nil }
 	}
 
 	iterator := crystallineSource(source)
 
+	// failure is written before finished is closed and read after, so the close
+	// orders the two.
+	var failure error
+
 	go func() {
+		defer close(finished)
 		defer close(out)
 
 		for {
@@ -250,6 +256,10 @@ func crystallineFeed[T any](source js.Value, convert func(js.Value) (T, error)) 
 
 			value, err := convert(step.Get("value"))
 			if err != nil {
+				// Ending the stream here would look like a clean end of input,
+				// and Go would answer for the values that did arrive.
+				failure = err
+
 				return
 			}
 
@@ -263,11 +273,17 @@ func crystallineFeed[T any](source js.Value, convert func(js.Value) (T, error)) 
 
 	var once sync.Once
 
-	return out, func() {
+	// Idempotent, and reports whatever ended the feed. The wrapper calls it
+	// after the Go function returns and fails the call if the input was bad.
+	return out, func() error {
 		once.Do(func() {
 			close(done)
 			iterator.Call("stop")
 		})
+
+		<-finished
+
+		return failure
 	}
 }
 
@@ -609,6 +625,10 @@ func crystallineFnFeedAverage(this js.Value, args []js.Value) (result any) {
 		defer crystallineFeed0Stop()
 
 		r0 := feed.Average(crystallineFeed0)
+
+		if err := crystallineFeed0Stop(); err != nil {
+			panic("values: " + err.Error())
+		}
 
 		return float64(r0)
 	})

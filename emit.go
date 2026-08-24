@@ -572,7 +572,7 @@ func wrapPromise(returns string, promise bool, depth int) string {
 func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) string) (string, error) {
 	streaming := takesContext(sig) && returnsChannel(sig)
 
-	call, preamble, err := e.emitArguments(sig, !streaming)
+	call, preamble, checks, err := e.emitArguments(sig, !streaming)
 	if err != nil {
 		return "", err
 	}
@@ -582,7 +582,7 @@ func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) stri
 		defer func() { e.streamStop = "" }()
 	}
 
-	returns, err := e.emitReturn(invoke(call), sig.Results())
+	returns, err := e.emitReturn(invoke(call), sig.Results(), checks)
 	if err != nil {
 		return "", err
 	}
@@ -606,10 +606,10 @@ func returnsChannel(sig *types.Signature) bool {
 
 // emitArguments renders the conversion of every parameter, plus any preamble
 // the conversions need.
-func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string, string, error) {
+func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string, string, string, error) {
 	call := make([]string, 0, sig.Params().Len())
 
-	var preamble strings.Builder
+	var preamble, checks strings.Builder
 
 	for i := 0; i < sig.Params().Len(); i++ {
 		param := sig.Params().At(i)
@@ -631,18 +631,29 @@ func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string,
 
 		if channel, ok := param.Type().Underlying().(*types.Chan); ok {
 			if err := checkChannelParameter(channel, param.Name()); err != nil {
-				return nil, "", err
+				return nil, "", "", err
 			}
 
 			converter, err := e.ensureValueConverter(channel.Elem())
 			if err != nil {
-				return nil, "", fmt.Errorf("channel element: %w", err)
+				return nil, "", "", fmt.Errorf("channel element: %w", err)
 			}
 
 			name := "crystallineFeed" + strconv.Itoa(i)
 
 			preamble.WriteString("\t" + name + ", " + name + "Stop := crystallineFeed(args[" + strconv.Itoa(i) + "], " + converter + ")\n")
 			preamble.WriteString("\tdefer " + name + "Stop()\n\n")
+
+			// Checked after the call rather than deferred, so a value the
+			// channel could not carry fails the call instead of arriving as an
+			// early end of input. Stopping twice is harmless.
+			// Panics rather than reporting through the error slot: the slot is
+			// read synchronously by the JS wrapper, and a channel parameter
+			// always makes the call a promise, so the failure would surface on
+			// an unrelated later call. A panic is recovered into a thrown error
+			// or a rejection, whichever the call is.
+			checks.WriteString("\tif err := " + name + "Stop(); err != nil {\n\t\tpanic(" +
+				strconv.Quote(param.Name()+": ") + " + err.Error())\n\t}\n\n")
 
 			call = append(call, name)
 
@@ -651,20 +662,23 @@ func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string,
 
 		expr, err := e.fromJS("args["+strconv.Itoa(i)+"]", param.Type())
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 
 		call = append(call, expr)
 	}
 
-	return call, preamble.String(), nil
+	return call, preamble.String(), checks.String(), nil
 }
 
 // emitReturn renders the call and the conversion of its results.
 //
 // A trailing error becomes a rejection rather than a returned value, matching
 // what the declarations promise.
-func (e *emitter) emitReturn(invocation string, results *types.Tuple) (string, error) {
+// emitReturn renders the call and the conversion of its results. checks are
+// emitted between the two, for anything that can only be judged once the call
+// has finished.
+func (e *emitter) emitReturn(invocation string, results *types.Tuple, checks string) (string, error) {
 	values, fallible := splitError(results)
 
 	total := len(values)
@@ -673,7 +687,7 @@ func (e *emitter) emitReturn(invocation string, results *types.Tuple) (string, e
 	}
 
 	if total == 0 {
-		return "\t" + invocation + "\n\n\treturn nil\n", nil
+		return "\t" + invocation + "\n\n" + checks + "\treturn nil\n", nil
 	}
 
 	names := make([]string, total)
@@ -684,6 +698,7 @@ func (e *emitter) emitReturn(invocation string, results *types.Tuple) (string, e
 	var body strings.Builder
 
 	body.WriteString("\t" + strings.Join(names, ", ") + " := " + invocation + "\n\n")
+	body.WriteString(checks)
 
 	if fallible {
 		body.WriteString("\tif " + names[total-1] + " != nil {\n\t\treturn crystallineErr(" + names[total-1] + ")\n\t}\n\n")

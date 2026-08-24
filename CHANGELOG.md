@@ -127,6 +127,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - A `[]byte` parameter checks that it was given a `Uint8Array`. Every typed
   array has a `byteLength`, so the old check never rejected anything and the
   failure surfaced as a `syscall/js` panic instead of a named error.
+- A value a channel parameter cannot carry fails the call. Feeding
+  `[1, "two", 3]` into a `<-chan int` used to end the stream at the bad
+  value, so Go saw a clean end of input and answered for the values that had
+  arrived.
 
 #### Removed
 

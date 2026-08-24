@@ -102,6 +102,7 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"Stream=item,item,item",
 		"SumArray=6",
 		"SumAsync=30",
+		"BadFeed=threw",
 		"First=1",
 		"FeedStopped=true",
 		// A pointer parameter takes null as well as a value.
@@ -444,6 +445,17 @@ func main() {
 		out.push("SumArray=" + await s.Sum([1, 2, 3]));
 		async function* generated() { yield 10; yield 20; }
 		out.push("SumAsync=" + await s.Sum(generated()));
+
+		// A value the channel cannot carry must fail the call, not end the
+		// stream early. Go used to see a clean EOF after the good values and
+		// return a plausible answer for a truncated input.
+		let badFeed = "accepted";
+		try {
+			await s.Sum([1, "two", 3]);
+		} catch (e) {
+			badFeed = "threw";
+		}
+		out.push("BadFeed=" + badFeed);
 
 		// Abandoning the channel must stop the feed rather than strand it.
 		let stopped = false;
