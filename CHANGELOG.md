@@ -40,6 +40,8 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   rejecting unknown properties and mistyped values.
 - `Skipped` reporting: anything that cannot be bound is named with its reason.
 - Golden-file tests for the emitted declarations and module.
+- `Output.Skipped`, so a caller that only builds the declarations still sees
+  what could not be bound. The report was reachable from `BuildGo` alone.
 - Three worked examples under `examples`, each a page backed by a real wasm
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
@@ -106,6 +108,16 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - An async iterable returned from Go now has a `return` method, so breaking
   out of a `for await` tears down whatever governs the stream instead of
   leaving it running.
+- Writing a slice, map, `[]byte`, struct or pointer field no longer does
+  nothing. Only basic types had a setter; every other write was accepted and
+  discarded, leaving the Go value untouched and reporting nothing. Writes now
+  go through the same converters a parameter does, a bad value throws where
+  the write happened, and a field with no way back is declared `readonly`.
+- Reading a struct-typed field returns the same wrapper every time. It used to
+  build a fresh one per read, which broke `===`, `Map` keys and every
+  framework's memo comparison, and allocated a handle and a set of bridge
+  slots on each access. A struct field has a stable address, so the cached
+  wrapper is still a live view; a pointer field is keyed on the pointer.
 
 ### Migrating from 0.0.15
 

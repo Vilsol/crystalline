@@ -60,11 +60,18 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 
 		setter, err := e.fieldSetter("v."+field.Name(), field.Type())
 		if err != nil {
-			// A field that cannot be written back is still readable.
-			setter = "func(js.Value) {}"
+			// A field that cannot be written back is still readable. Saying so
+			// on the way past beats accepting the write and dropping it.
+			e.readonly[name+"."+field.Name()] = true
+
+			setter = "func(js.Value) {\n\t\tpanic(" +
+				strconv.Quote(name+"."+field.Name()+" cannot be written from JavaScript: "+err.Error()) + ")\n\t}"
 		}
 
-		body.WriteString("\tcrystallineDefine(scope, out, " + strconv.Quote(field.Name()) + ", func() any {\n\t\treturn " + expr + "\n\t}, " + setter + ")\n")
+		preamble, getter := e.fieldGetter(field.Name(), "v."+field.Name(), field.Type(), expr)
+
+		body.WriteString(preamble)
+		body.WriteString("\tcrystallineDefine(scope, out, " + strconv.Quote(field.Name()) + ", " + getter + ", " + setter + ")\n")
 	}
 
 	methods := make([]*types.Func, 0, named.NumMethods())
@@ -95,6 +102,64 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 	body.WriteString("\treturn out\n}\n\n")
 
 	return body.String(), nil
+}
+
+// fieldGetter renders the read half of a field accessor, caching the wrapper a
+// struct-typed field hands back.
+//
+// Rebuilding it on every read allocated a handle and a set of bridge slots each
+// time, and meant a.Field !== a.Field, which breaks ===, Map keys and every
+// framework's memo comparison. A struct field has a stable address, so a
+// wrapper over it stays a live view however the field is reassigned. A pointer
+// field is keyed on the pointer, so it refreshes when Go points elsewhere.
+//
+// Slices and maps are deliberately not cached: converting one produces a
+// snapshot rather than a view, so a cached copy would hide a later change.
+func (e *emitter) fieldGetter(name string, target string, t types.Type, expr string) (string, string) {
+	plain := "func() any {\n\t\treturn " + expr + "\n\t}"
+
+	cache := "crystallineCache" + name
+	cached := "crystallineCached" + name
+
+	switch typed := t.(type) {
+	case *types.Named, *types.Alias:
+		if _, ok := t.Underlying().(*types.Struct); !ok {
+			return "", plain
+		}
+
+		preamble := "\tvar " + cache + " any\n\tvar " + cached + " bool\n\n"
+
+		return preamble, "func() any {\n" +
+			"\t\tif !" + cached + " {\n" +
+			"\t\t\t" + cached + " = true\n" +
+			"\t\t\t" + cache + " = " + expr + "\n" +
+			"\t\t}\n\n" +
+			"\t\treturn " + cache + "\n\t}"
+
+	case *types.Pointer:
+		if _, ok := typed.Elem().Underlying().(*types.Struct); !ok {
+			return "", plain
+		}
+
+		if _, ok := typed.Elem().(*types.Named); !ok {
+			return "", plain
+		}
+
+		holder := "crystallineCacheFor" + name
+
+		preamble := "\tvar " + cache + " any\n\tvar " + cached + " bool\n\tvar " + holder + " " +
+			types.TypeString(t, e.qualifier) + "\n\n"
+
+		return preamble, "func() any {\n" +
+			"\t\tif !" + cached + " || " + holder + " != " + target + " {\n" +
+			"\t\t\t" + cached + " = true\n" +
+			"\t\t\t" + holder + " = " + target + "\n" +
+			"\t\t\t" + cache + " = " + expr + "\n" +
+			"\t\t}\n\n" +
+			"\t\treturn " + cache + "\n\t}"
+	}
+
+	return "", plain
 }
 
 func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, error) {

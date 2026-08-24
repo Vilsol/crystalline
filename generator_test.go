@@ -213,3 +213,14 @@ func TestPointerParametersStayRequired(t *testing.T) {
 	testza.AssertFalse(t, strings.Contains(out.TypeScript, "first?:"),
 		"a pointer parameter must not be marked optional:\n"+out.TypeScript)
 }
+
+// TestNilableSliceParametersStayRequired covers the shape a consumer hit: a
+// slice can be nil, but a nil slice is a value rather than an absent argument,
+// so declaring it optional made the required parameter after it illegal.
+func TestNilableSliceParametersStayRequired(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Keys(ids: Array<number> | undefined, seed: number): number;"),
+		"a nilable slice parameter must stay required:\n"+out.TypeScript)
+}

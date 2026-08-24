@@ -45,12 +45,7 @@ type GoBindings struct {
 // The generated code registers through syscall/js directly, so a binary built
 // from it does not link reflect at all.
 func (g *Generator) BuildGo(declarations Declarations, packageName string, selfPath string) (GoBindings, error) {
-	e := &emitter{
-		gen:     g,
-		pkgName: packageName,
-		imports: newImports(selfPath),
-		marks:   newMarks(declarations),
-	}
+	e := newEmitter(g, packageName, selfPath, declarations)
 
 	source, err := e.emitBindings(declarations)
 	if err != nil {
@@ -69,6 +64,36 @@ func (g *Generator) BuildGo(declarations Declarations, packageName string, selfP
 	}, nil
 }
 
+func newEmitter(g *Generator, packageName string, selfPath string, declarations Declarations) *emitter {
+	return &emitter{
+		gen:     g,
+		pkgName: packageName,
+		imports: newImports(selfPath),
+		marks:   newMarks(declarations),
+	}
+}
+
+// analysis is what rendering the declarations needs to know about the Go side:
+// what could not be bound, and which fields can be read but not written.
+//
+// It comes from the same pass that emits the bindings, so the declarations
+// cannot promise something the bindings do not do. Keeping the two apart is how
+// they drifted before.
+type analysis struct {
+	skipped  []Skipped
+	readonly map[string]bool
+}
+
+func (g *Generator) analyse(declarations Declarations) (analysis, error) {
+	e := newEmitter(g, "crystalline", "", declarations)
+
+	if _, err := e.emitBindings(declarations); err != nil {
+		return analysis{}, err
+	}
+
+	return analysis{skipped: e.skipped, readonly: e.readonly}, nil
+}
+
 type emitter struct {
 	gen     *Generator
 	pkgName string
@@ -81,6 +106,10 @@ type emitter struct {
 	// streamStop names the teardown a returned channel takes over, empty when
 	// the call has nothing that outlives it.
 	streamStop string
+
+	// readonly records the fields that can be read but not written, so the
+	// declarations can say so rather than promising a write that throws.
+	readonly map[string]bool
 
 	// marshallers holds the generated struct marshal helpers, keyed by type
 	// name so each is emitted once.
@@ -98,6 +127,7 @@ func (e *emitter) skip(name string, reason string) {
 func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	e.marshallers = make(map[string]string)
 	e.converters = make(map[string]string)
+	e.readonly = make(map[string]bool)
 
 	var registrations, wrappers, values strings.Builder
 

@@ -34,12 +34,18 @@ export declare namespace sample {
     Fails(): Result<void>;
     WithCallback(cb: (v: string) => Promise<number>): Promise<boolean>;
   }
+  interface Ticker {
+    Name: string;
+    readonly Events: AsyncIterable<string>;
+  }
   function Basic(): number;
   function Cancellable(signal: AbortSignal, label: string): Promise<Result<string>>;
   function First(values: AsyncIterable<number>): Promise<number>;
   function FooBar(): sample.FnSample;
+  function Keys(ids: Array<number> | undefined, seed: number): number;
   function MayFail(ok: boolean): Result<string>;
   function Middle(first: sample.FnSample | undefined, label: string): string;
+  function NewTicker(): sample.Ticker;
   function OnlyFails(ok: boolean): Result<void>;
   function Rich(): sample.Richer;
   function Stream(count: number): AsyncIterable<string>;

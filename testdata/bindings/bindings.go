@@ -19,4 +19,6 @@ func Exports(r bind.Registry) {
 	r.Func(sample.First)
 	r.Func(sample.Middle)
 	r.Func(sample.Ticks)
+	r.Func(sample.Keys)
+	r.Func(sample.NewTicker)
 }

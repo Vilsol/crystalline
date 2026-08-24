@@ -503,13 +503,18 @@ func crystallineDefine(scope *crystallineScope, target js.Value, name string, ge
 		"get": scope.fn(func(this js.Value, args []js.Value) any {
 			return get()
 		}),
-		"set": scope.fn(func(this js.Value, args []js.Value) any {
+		// Wrapped, because a write now validates: handing a string to a number
+		// field has to throw where the write happened rather than poison the
+		// next unrelated call.
+		"set": crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
+			defer crystallineRecover(&result)
+
 			if len(args) > 0 {
 				set(args[0])
 			}
 
 			return nil
-		}),
+		})),
 	})
 }
 
@@ -822,17 +827,17 @@ func crystallineMarshalPoint(v *payload.Point) any {
 	crystallineDefine(scope, out, "X", func() any {
 		return float64(v.X)
 	}, func(value js.Value) {
-		v.X = float64(value.Float())
+		v.X = crystallineMust(crystallineToFloat64(value))
 	})
 	crystallineDefine(scope, out, "Y", func() any {
 		return float64(v.Y)
 	}, func(value js.Value) {
-		v.Y = float64(value.Float())
+		v.Y = crystallineMust(crystallineToFloat64(value))
 	})
 	crystallineDefine(scope, out, "Label", func() any {
 		return string(v.Label)
 	}, func(value js.Value) {
-		v.Label = string(value.String())
+		v.Label = crystallineMust(crystallineToString(value))
 	})
 	out.Set("Norm", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)

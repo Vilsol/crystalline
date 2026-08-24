@@ -492,13 +492,18 @@ func crystallineDefine(scope *crystallineScope, target js.Value, name string, ge
 		"get": scope.fn(func(this js.Value, args []js.Value) any {
 			return get()
 		}),
-		"set": scope.fn(func(this js.Value, args []js.Value) any {
+		// Wrapped, because a write now validates: handing a string to a number
+		// field has to throw where the write happened rather than poison the
+		// next unrelated call.
+		"set": crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
+			defer crystallineRecover(&result)
+
 			if len(args) > 0 {
 				set(args[0])
 			}
 
 			return nil
-		}),
+		})),
 	})
 }
 
@@ -636,12 +641,12 @@ func crystallineMarshalAccount(v *account.Account) any {
 	crystallineDefine(scope, out, "Owner", func() any {
 		return string(v.Owner)
 	}, func(value js.Value) {
-		v.Owner = string(value.String())
+		v.Owner = crystallineMust(crystallineToString(value))
 	})
 	crystallineDefine(scope, out, "Balance", func() any {
 		return float64(v.Balance)
 	}, func(value js.Value) {
-		v.Balance = int(value.Float())
+		v.Balance = crystallineMust(crystallineToInt(value))
 	})
 	crystallineDefine(scope, out, "History", func() any {
 		return func() any {
@@ -656,7 +661,9 @@ func crystallineMarshalAccount(v *account.Account) any {
 
 			return out
 		}()
-	}, func(js.Value) {})
+	}, func(value js.Value) {
+		v.History = crystallineMust(crystallineToSliceOfString(value))
+	})
 	out.Set("Deposit", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
 

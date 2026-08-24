@@ -14,6 +14,13 @@ import (
 func (g *Generator) Build(declarations Declarations) (Output, error) {
 	g.marks = newMarks(declarations)
 
+	analysed, err := g.analyse(declarations)
+	if err != nil {
+		return Output{}, err
+	}
+
+	g.readonly = analysed.readonly
+
 	entities := make(map[string][]Entry)
 
 	// A type is declared where it is defined, not where it was reached from,
@@ -95,7 +102,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	js.WriteString(bindings.String())
 	js.WriteString("};")
 
-	return Output{TypeScript: tsd.String(), JavaScript: js.String()}, nil
+	return Output{TypeScript: tsd.String(), JavaScript: js.String(), Skipped: analysed.skipped}, nil
 }
 
 // renderNamespace renders the interfaces a package declares, then the entities
@@ -214,7 +221,14 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 			marker = "?"
 		}
 
-		result.WriteString("    " + field.Name() + marker + ": " + jsName + ";\n")
+		// A field with no way back from JS throws when written, so the
+		// declaration says so instead of inviting the write.
+		prefix := ""
+		if g.readonly[instantiatedName(named)+"."+field.Name()] {
+			prefix = "readonly "
+		}
+
+		result.WriteString("    " + prefix + field.Name() + marker + ": " + jsName + ";\n")
 	}
 
 	methods := make([]*types.Func, 0, named.NumMethods())

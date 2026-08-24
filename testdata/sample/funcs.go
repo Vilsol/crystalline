@@ -66,7 +66,7 @@ func (r Richer) WithCallback(cb func(v string) int) bool {
 }
 
 func Rich() Richer {
-	return Richer{}
+	return Richer{Pointed: &FnSample{FirstValue: "pointed"}}
 }
 
 // Configure takes a struct by value, and echoes a field back so a caller can
@@ -178,4 +178,25 @@ func Ticks(ctx context.Context, count int) <-chan int {
 	}()
 
 	return out
+}
+
+// Keys takes a nilable slice before a required parameter. A nil slice arrives
+// as null, which is not the same as the argument being absent, so like a
+// pointer it must not be declared optional.
+func Keys(ids []int, seed int) int {
+	return len(ids) + seed
+}
+
+// Ticker carries a field that can be read but not written: a channel has no
+// way back from JavaScript.
+type Ticker struct {
+	Name   string
+	Events <-chan string
+}
+
+func NewTicker() Ticker {
+	events := make(chan string)
+	close(events)
+
+	return Ticker{Name: "ticker", Events: events}
 }

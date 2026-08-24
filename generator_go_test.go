@@ -61,6 +61,19 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"Callback=true",
 		// Assigning a field from JS must reach the Go value behind it.
 		"WriteThrough=written",
+		// A field write that cannot be converted used to be discarded in
+		// silence, leaving the Go value untouched and reporting nothing.
+		"SliceWrite=[\"written\"]",
+		"MapWrite={\"a\":1}",
+		"BytesWrite=7",
+		"StructWrite=nested",
+		"ReadOnlyWrite=threw",
+		"NestedIdentity=true",
+		"PointerIdentity=true",
+		"Pointed=pointed",
+		"NestedLive=via-cache",
+		"NestedReaches=via-cache",
+		"SliceIdentity=false",
 		"StructIdentity=written",
 		"StructLiteral=literal",
 		"TypoRejected=yes",
@@ -241,6 +254,42 @@ func main() {
 		live.FirstValue = "written";
 		out.push("WriteThrough=" + live.One());
 
+		// Every writable field must reach the Go value, not just the scalars.
+		r.NeverNil = ["written"];
+		out.push("SliceWrite=" + JSON.stringify(r.NeverNil));
+		r.Lookup = {a: 1};
+		out.push("MapWrite=" + JSON.stringify(r.Lookup));
+		r.Blob = new Uint8Array([7]);
+		out.push("BytesWrite=" + (r.Blob ? r.Blob[0] : "null"));
+		r.Inner = {FirstValue: "nested"};
+		out.push("StructWrite=" + r.Inner.FirstValue);
+
+		// A field that genuinely cannot be written must say so, not accept the
+		// write and drop it.
+		const ticker = s.NewTicker();
+		try {
+			ticker.Events = [];
+			out.push("ReadOnlyWrite=accepted");
+		} catch (e) {
+			out.push("ReadOnlyWrite=" + (e.message.includes("cannot be written") ? "threw" : e.message));
+		}
+
+		// Reading a struct field twice must give the same object: a fresh
+		// wrapper per read breaks ===, Map keys and every memo comparison, and
+		// allocates a handle each time.
+		out.push("NestedIdentity=" + (r.Inner === r.Inner));
+		out.push("PointerIdentity=" + (r.Pointed === r.Pointed));
+		out.push("Pointed=" + r.Pointed.FirstValue);
+
+		// Liveness must survive that: the cached wrapper still reaches Go.
+		r.Inner.FirstValue = "via-cache";
+		out.push("NestedLive=" + r.Inner.FirstValue);
+		out.push("NestedReaches=" + r.Configure(r.Inner));
+
+		// A slice field is a snapshot rather than a view, so it must not be
+		// cached: a Go-side change has to show up on the next read.
+		out.push("SliceIdentity=" + (r.NeverNil === r.NeverNil));
+
 		// A wrapper handed back to Go must resolve to the same Go value.
 		out.push("StructIdentity=" + r.Configure(live));
 
@@ -366,7 +415,7 @@ func main() {
 
 		return nil
 	}), js.FuncOf(func(this js.Value, args []js.Value) any {
-		js.Global().Get("console").Call("log", "REJECTED: "+args[0].String())
+		js.Global().Get("console").Call("log", "REJECTED: "+args[0].Call("toString").String())
 		close(done)
 
 		return nil

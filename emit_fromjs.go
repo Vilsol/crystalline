@@ -82,8 +82,13 @@ func (e *emitter) callbackFromJS(expr string, t types.Type, sig *types.Signature
 }
 
 // fieldSetter renders the write half of a field accessor.
+//
+// It goes through the same converters a parameter does. An earlier version
+// handled only basic types, so a write to a slice, map, struct or pointer field
+// was discarded in silence: the Go value kept its old contents and nothing was
+// reported.
 func (e *emitter) fieldSetter(target string, t types.Type) (string, error) {
-	converted, err := e.jsValueToGo("value", t)
+	converted, err := e.fromJS("value", t)
 	if err != nil {
 		return "", err
 	}

@@ -32,6 +32,10 @@ type Generator struct {
 	// marks carries the method decisions the current build declared.
 	marks marks
 
+	// readonly names the fields that can be read but not written, filled in
+	// by the analysis Build runs before rendering.
+	readonly map[string]bool
+
 	// promises records which declarations carry the promise directive, keyed by
 	// a stable name rather than by object identity: a package loaded twice
 	// yields different objects for the same declaration.

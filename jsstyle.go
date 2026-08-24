@@ -74,6 +74,10 @@ type Output struct {
 
 	// TypeScript is the matching .d.ts declaration file.
 	TypeScript string
+
+	// Skipped lists everything that could not be bound, so a caller that only
+	// builds the declarations still learns about the gaps.
+	Skipped []Skipped
 }
 
 // resultDeclarations declares the shape a fallible call returns.
