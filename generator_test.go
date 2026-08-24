@@ -394,3 +394,31 @@ func TestUnbindableMembersAreSkippedNotFatal(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(strings.Join(reported, "\n"), "Send"),
 		"and it must be named, got:\n"+strings.Join(reported, "\n"))
 }
+
+// TestWideIntegersAreWarnedAbout pins the one place crystalline knowingly loses
+// information rather than refusing.
+//
+// A JavaScript number is a double, so an int64 past 2^53 is silently rounded.
+// Refusing the type would break ordinary Go, since identifiers and timestamps
+// are routinely int64, so it is bound and the cost is stated at generate time.
+func TestWideIntegersAreWarnedAbout(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Big(n: number): number;"),
+		"a 64-bit integer is still bound as a number:\n"+out.TypeScript)
+
+	reported := make([]string, 0, len(out.Warnings))
+	for _, warning := range out.Warnings {
+		reported = append(reported, warning.String())
+	}
+
+	joined := strings.Join(reported, "\n")
+
+	testza.AssertTrue(t, strings.Contains(joined, "sample.Big"),
+		"the member must be named, got:\n"+joined)
+	testza.AssertTrue(t, strings.Contains(joined, "int64"),
+		"and the type responsible, got:\n"+joined)
+	testza.AssertTrue(t, strings.Contains(joined, "2^53"),
+		"and why it matters, got:\n"+joined)
+}

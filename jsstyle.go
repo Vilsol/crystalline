@@ -111,6 +111,9 @@ type Output struct {
 	// Skipped lists everything that could not be bound, so a caller that only
 	// builds the declarations still learns about the gaps.
 	Skipped []Skipped
+
+	// Warnings lists what was bound at a cost worth knowing about.
+	Warnings []Warning
 }
 
 // resultDeclarations declares the shape a fallible call returns.

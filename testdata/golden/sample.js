@@ -33,6 +33,7 @@ export const initializeCrystalline = () => {
 
   sample = {
     Basic: wrap(globalThis['go']['app']['sample']['Basic']),
+    Big: wrap(globalThis['go']['app']['sample']['Big']),
     Cancellable: wrap(globalThis['go']['app']['sample']['Cancellable']),
     First: wrap(globalThis['go']['app']['sample']['First']),
     FooBar: wrap(globalThis['go']['app']['sample']['FooBar']),

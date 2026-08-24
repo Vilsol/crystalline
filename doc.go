@@ -164,6 +164,18 @@
 //
 // Unrecognised options are rejected rather than ignored.
 //
+// # Wide integers
+//
+// A JavaScript number is a double, so an int64 or uint64 beyond 2^53 is rounded
+// rather than carried. Refusing those types would break ordinary Go, where
+// identifiers and timestamps are routinely int64, so they are bound as numbers
+// and every member that traffics in one is named at generate time:
+//
+//	crystalline: warning api.Timestamps: int64 is bound as a JavaScript number,
+//	which cannot represent values beyond 2^53 exactly
+//
+// If the range matters, carry the value as a string across the boundary.
+//
 // # What it will not do
 //
 // Send-only channels, complex numbers and unsafe pointers have no JS

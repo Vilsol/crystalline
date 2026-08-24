@@ -126,7 +126,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	js.WriteString("\n  initialized = true;\n")
 	js.WriteString("};")
 
-	return Output{TypeScript: tsd.String(), JavaScript: js.String(), Skipped: analysed.skipped}, nil
+	return Output{TypeScript: tsd.String(), JavaScript: js.String(), Skipped: analysed.skipped, Warnings: analysed.warnings}, nil
 }
 
 // bannerText renders the configured banner, ending it with a newline so the

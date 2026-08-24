@@ -48,6 +48,7 @@ export declare namespace sample {
     readonly Events: AsyncIterable<string>;
   }
   function Basic(): number;
+  function Big(n: number): number;
   function Cancellable(signal: AbortSignal, label: string): Promise<Result<string>>;
   function First(values: AsyncIterable<number>): Promise<number>;
   function FooBar(): sample.FnSample;

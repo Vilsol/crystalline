@@ -237,3 +237,9 @@ func Readings(count int) []Reading {
 
 // Kind is a named type over a builtin, the shape a lookup table is keyed by.
 type Kind uint32
+
+// Big traffics in 64-bit integers, which JavaScript numbers cannot represent
+// exactly beyond 2^53. It is still bound, with a warning.
+func Big(n int64) uint64 {
+	return uint64(n)
+}

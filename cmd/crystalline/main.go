@@ -83,6 +83,10 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "crystalline: skipped", skipped)
 	}
 
+	for _, warning := range rendered.Warnings {
+		fmt.Fprintln(os.Stderr, "crystalline: warning", warning)
+	}
+
 	if err := rendered.WriteFiles(orDefault(*jsOut, *out, "crystalline.js"), orDefault(*tsOut, *out, "crystalline.d.ts")); err != nil {
 		return err
 	}

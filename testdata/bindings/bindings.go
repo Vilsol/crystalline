@@ -22,6 +22,7 @@ func Exports(r bind.Registry) {
 	r.Func(sample.Keys)
 	r.Func(sample.NewTicker)
 	r.Func(sample.Readings)
+	r.Func(sample.Big)
 
 	r.Plain(sample.Reading{})
 

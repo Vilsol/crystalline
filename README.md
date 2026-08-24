@@ -85,6 +85,7 @@ api.Apply({ Timeout: 30 });       // literals work too, validated field by field
 | --- | --- |
 | `bool` | `boolean` |
 | `int`, `uint`, `float`, `uintptr` | `number` |
+| `int64`, `uint64` | `number`, with a warning past 2^53 |
 | `string` | `string` |
 | `[]byte`, `[N]byte` | `Uint8Array` |
 | `[]T`, `[N]T` | `Array<T>` |

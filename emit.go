@@ -23,6 +23,75 @@ func (s Skipped) String() string {
 	return s.Name + ": " + s.Reason
 }
 
+// Warning records something that was bound, but with a cost worth knowing
+// about. It is distinct from Skipped, which is something that was not bound at
+// all.
+type Warning struct {
+	Name   string
+	Reason string
+}
+
+func (w Warning) String() string {
+	return w.Name + ": " + w.Reason
+}
+
+// wideIntegers reports the 64-bit integer types reachable from t.
+//
+// A JavaScript number is a double, so an int64 beyond 2^53 is rounded rather
+// than carried. Refusing the type would break ordinary Go, where identifiers
+// and timestamps are routinely int64, so it is bound and the cost is reported.
+//
+// Plain int is 64 bits on wasm too, but warning about every int would drown the
+// signal: someone who wrote int64 chose the range deliberately.
+func wideIntegers(t types.Type, seen map[types.Type]bool) []string {
+	if t == nil || seen[t] {
+		return nil
+	}
+
+	seen[t] = true
+
+	switch typed := t.(type) {
+	case *types.Basic:
+		if typed.Kind() == types.Int64 || typed.Kind() == types.Uint64 {
+			return []string{typed.Name()}
+		}
+	case *types.Named, *types.Alias:
+		return wideIntegers(t.Underlying(), seen)
+	case *types.Pointer:
+		return wideIntegers(typed.Elem(), seen)
+	case *types.Slice:
+		return wideIntegers(typed.Elem(), seen)
+	case *types.Array:
+		return wideIntegers(typed.Elem(), seen)
+	case *types.Chan:
+		return wideIntegers(typed.Elem(), seen)
+	case *types.Map:
+		return append(wideIntegers(typed.Key(), seen), wideIntegers(typed.Elem(), seen)...)
+	case *types.Struct:
+		var found []string
+
+		for i := range typed.NumFields() {
+			found = append(found, wideIntegers(typed.Field(i).Type(), seen)...)
+		}
+
+		return found
+	case *types.Signature:
+		var found []string
+
+		for i := range typed.Params().Len() {
+			found = append(found, wideIntegers(typed.Params().At(i).Type(), seen)...)
+		}
+
+		for i := range typed.Results().Len() {
+			found = append(found, wideIntegers(typed.Results().At(i).Type(), seen)...)
+		}
+
+		return found
+	}
+
+	return nil
+}
+
 // GoBindings is the generated binding source for one package.
 type GoBindings struct {
 	// Package is the name of the package the source belongs to.
@@ -33,6 +102,9 @@ type GoBindings struct {
 
 	// Skipped lists everything that could not be bound.
 	Skipped []Skipped
+
+	// Warnings lists what was bound at a cost worth knowing about.
+	Warnings []Warning
 }
 
 // BuildGo emits reflect-free binding source for everything the loaded manifests
@@ -58,9 +130,10 @@ func (g *Generator) BuildGo(declarations Declarations, packageName string, selfP
 	}
 
 	return GoBindings{
-		Package: packageName,
-		Source:  string(formatted),
-		Skipped: e.skipped,
+		Package:  packageName,
+		Source:   string(formatted),
+		Skipped:  e.skipped,
+		Warnings: wideIntegerWarnings(declarations, droppedNames(e.skipped)),
 	}, nil
 }
 
@@ -87,6 +160,9 @@ type analysis struct {
 	// leave out the same things. Describing a member the bindings never
 	// published gave a wrap(undefined) and a TypeError at the call.
 	dropped map[string]bool
+
+	// warnings are the costs of what was bound, as opposed to what was not.
+	warnings []Warning
 }
 
 func (g *Generator) analyse(declarations Declarations) (analysis, error) {
@@ -96,12 +172,53 @@ func (g *Generator) analyse(declarations Declarations) (analysis, error) {
 		return analysis{}, err
 	}
 
-	dropped := make(map[string]bool, len(e.skipped))
-	for _, skipped := range e.skipped {
-		dropped[skipped.Name] = true
+	dropped := droppedNames(e.skipped)
+
+	return analysis{
+		skipped:  e.skipped,
+		readonly: e.readonly,
+		dropped:  dropped,
+		warnings: wideIntegerWarnings(declarations, dropped),
+	}, nil
+}
+
+// droppedNames indexes a skip report by the member it names.
+func droppedNames(skipped []Skipped) map[string]bool {
+	dropped := make(map[string]bool, len(skipped))
+
+	for _, one := range skipped {
+		dropped[one.Name] = true
 	}
 
-	return analysis{skipped: e.skipped, readonly: e.readonly, dropped: dropped}, nil
+	return dropped
+}
+
+// wideIntegerWarnings names each bound member that traffics in 64-bit integers.
+func wideIntegerWarnings(declarations Declarations, dropped map[string]bool) []Warning {
+	var warnings []Warning
+
+	said := make(map[string]bool)
+
+	for _, entry := range declarations.Entries {
+		name := entry.Namespace + "." + entry.Name
+		if dropped[name] || said[name] {
+			continue
+		}
+
+		found := wideIntegers(entry.Type, make(map[types.Type]bool))
+		if len(found) == 0 {
+			continue
+		}
+
+		said[name] = true
+
+		warnings = append(warnings, Warning{
+			Name:   name,
+			Reason: found[0] + " is bound as a JavaScript number, which cannot represent values beyond 2^53 exactly",
+		})
+	}
+
+	return warnings
 }
 
 type emitter struct {

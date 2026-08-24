@@ -53,6 +53,10 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   its linters expect at the top of them.
 - `Output.Skipped`, so a caller that only builds the declarations still sees
   what could not be bound. The report was reachable from `BuildGo` alone.
+- `Warnings` on both builders, for what was bound at a cost rather than not
+  bound at all. The first is 64-bit integers: `int64` and `uint64` stay
+  JavaScript numbers, since refusing them would break ordinary Go, and every
+  member carrying one is named at generate time.
 
 #### Changed
 
