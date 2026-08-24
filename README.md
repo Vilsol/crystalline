@@ -112,7 +112,7 @@ Anything that cannot be bound is named, with the reason:
 crystalline: skipped api.Watch: type chan Event cannot be read from JS
 ```
 
-## Examples
+## Examples and benchmarks
 
 Three worked examples, each a page backed by a real wasm binary:
 
@@ -120,5 +120,8 @@ Three worked examples, each a page backed by a real wasm binary:
 mise run examples        # generate, build and check them under node
 mise run examples:serve  # then open http://localhost:8000/01-hello/
 ```
+
+`./bench/run.sh` measures what each kind of crossing costs, against a
+hand-written `syscall/js` binding doing the same conversions.
 
 Requires Go 1.26 or newer.

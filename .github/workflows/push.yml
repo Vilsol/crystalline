@@ -55,3 +55,8 @@ jobs:
       # catches the case where the generator changed and they were not updated.
       - name: Generated output is current
         run: git diff --exit-code examples
+
+      # One iteration of each, which proves the benchmarks still run without
+      # trying to get a usable measurement out of a shared runner.
+      - name: Benchmarks
+        run: ./bench/run.sh -benchtime 1x
