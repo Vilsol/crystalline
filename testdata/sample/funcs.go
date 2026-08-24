@@ -234,3 +234,6 @@ func Readings(count int) []Reading {
 
 	return out
 }
+
+// Kind is a named type over a builtin, the shape a lookup table is keyed by.
+type Kind uint32

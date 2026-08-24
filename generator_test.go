@@ -257,3 +257,51 @@ func TestBuildReportsSkips(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(joined, "Sample.Describe"),
 		"a method dropped by plain marshalling must be named, got:\n"+joined)
 }
+
+// TestValueNamespacesAgreeAcrossArtifacts pins that a value is published under
+// one namespace, decided once.
+//
+// A consumer reported the declarations and the module disagreeing about a map
+// keyed by a named type, which would typecheck and then be undefined at run
+// time. All three artifacts are checked together here so that they cannot drift
+// apart, and so that the namespace follows the type rather than the manifest.
+func TestValueNamespacesAgreeAcrossArtifacts(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "const Titles: Record<number, string>"),
+		"the value must be declared:\n"+out.TypeScript)
+
+	declared := namespaceOf(t, out.TypeScript, "export declare namespace ", " {", "Titles")
+	bound := namespaceOf(t, out.JavaScript, "  ", " = {", "Titles")
+
+	testza.AssertEqual(t, "sample", declared,
+		"a map keyed by a named type belongs with that package:\n"+out.TypeScript)
+	testza.AssertEqual(t, declared, bound,
+		"the declarations and the module must agree:\n"+out.JavaScript)
+
+	pkg, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(pkg.Source, `crystallineNamespace("app", "`+declared+`").Set("Titles"`),
+		"the bindings must publish it where the declarations say:\n"+pkg.Source)
+}
+
+// namespaceOf finds which namespace block a member was rendered into.
+func namespaceOf(t *testing.T, source string, opener string, closer string, member string) string {
+	t.Helper()
+
+	current := ""
+
+	for _, line := range strings.Split(source, "\n") {
+		if trimmed := strings.TrimSpace(line); strings.HasPrefix(line, opener) && strings.HasSuffix(trimmed, strings.TrimSpace(closer)) {
+			current = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, strings.TrimSpace(opener)), strings.TrimSpace(closer)))
+		}
+
+		if strings.Contains(line, member+":") {
+			return current
+		}
+	}
+
+	return ""
+}

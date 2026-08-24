@@ -24,4 +24,7 @@ func Exports(r bind.Registry) {
 	r.Func(sample.Readings)
 
 	r.Plain(sample.Reading{})
+
+	// A map whose key names a package but whose element does not.
+	r.Value("Titles", map[sample.Kind]string{1: "one"})
 }

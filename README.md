@@ -125,8 +125,10 @@ Everything crosses a bridge, and the bridge is the cost. Measured with
 `./bench/run.sh` — the ratios travel, the absolute numbers do not.
 
 * A call costs about 5.5 µs whether crystalline wrote the binding or you did.
-  Count crossings, not conversions: one call returning an aggregate beats many
-  small ones.
+  **Count crossings, not conversions**: 98 small calls spend half a millisecond
+  crossing before doing any work, where one call returning the same data as an
+  aggregate spends 5.5 µs. This is the one cost `r.Plain` cannot remove, because
+  it is per crossing rather than per conversion.
 * A wrapper field is a call, not a property: about 6.8 µs against 6 ns on plain
   data. Read it into a local rather than in a loop.
 * Building a struct wrapper costs about 68 µs, so a slice of them is expensive.

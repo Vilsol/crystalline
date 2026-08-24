@@ -170,27 +170,46 @@ func (g *Generator) readType(pkg *packages.Package, where string, call *ast.Call
 // ended up writing bind.InNamespace on every call to say so. The value's type
 // usually names a package, so that is the better default, with the manifest's
 // own package as the fallback for types that name none.
+//
+// Every artifact reads this one answer off the entry, so the declarations, the
+// module and the bindings cannot disagree about where a value lives.
 func valueNamespace(t types.Type, fallback string) string {
-	for {
-		if obj := namedObject(t); obj != nil && obj.Pkg() != nil {
-			return obj.Pkg().Name()
+	if name := packageOf(t); name != "" {
+		return name
+	}
+
+	return fallback
+}
+
+// packageOf finds the package a type belongs to, looking through the containers
+// that hold one.
+//
+// What a container holds wins over what it is keyed by, so map[uint32]*api.Node
+// and map[api.Kind]string both land in api: a lookup table belongs with the
+// thing it describes either way.
+func packageOf(t types.Type) string {
+	if obj := namedObject(t); obj != nil && obj.Pkg() != nil {
+		return obj.Pkg().Name()
+	}
+
+	switch typed := t.(type) {
+	case *types.Pointer:
+		return packageOf(typed.Elem())
+	case *types.Slice:
+		return packageOf(typed.Elem())
+	case *types.Array:
+		return packageOf(typed.Elem())
+	case *types.Chan:
+		return packageOf(typed.Elem())
+	case *types.Map:
+		if name := packageOf(typed.Elem()); name != "" {
+			return name
 		}
 
-		switch typed := t.(type) {
-		case *types.Pointer:
-			t = typed.Elem()
-		case *types.Slice:
-			t = typed.Elem()
-		case *types.Array:
-			t = typed.Elem()
-		case *types.Map:
-			t = typed.Elem()
-		case *types.Chan:
-			t = typed.Elem()
-		default:
-			return fallback
-		}
+		return packageOf(typed.Key())
 	}
+
+	return ""
 }
 
 func (g *Generator) readMethodMark(pkg *packages.Package, where string, call *ast.CallExpr, kind EntryKind) (Entry, error) {

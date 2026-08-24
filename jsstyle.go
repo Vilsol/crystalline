@@ -45,13 +45,25 @@ const jsWrapHelper = `const wrap = (fn) => {
 // undefined, and the error surfaces later as a missing property on nothing.
 // Reading through this says what actually went wrong.
 //
+// Which of two things went wrong depends on whether initialisation has since
+// happened. Before it, the module was used too early. After it, the caller is
+// holding a copy taken too early -- destructuring an export snapshots it, so a
+// local keeps pointing at this proxy however many times the real binding is
+// reassigned. Telling the second case to call initializeCrystalline() would be
+// advice it has already followed.
+//
 // Symbols and then are let through, so that logging, awaiting and the probing
 // bundlers do are not turned into spurious failures.
 func jsPendingHelper(style jsStyle) string {
-	return "const pending = (name) => new Proxy({}, {\n" +
+	return "let initialized = false;\n\n" +
+		"const pending = (name) => new Proxy({}, {\n" +
 		"  get(target, property) {\n" +
 		"    if (typeof property === " + style.quoted("symbol") + " || property === " + style.quoted("then") + ") {\n" +
 		"      return undefined;\n" +
+		"    }\n" +
+		"    if (initialized) {\n" +
+		"      throw new Error(" + style.quoted("crystalline: this ") + " + name + " +
+		style.quoted(" was captured before initializeCrystalline() ran, so it is a stale copy. Read it from the module instead of destructuring it earlier, or move the import after initialisation.") + ");\n" +
 		"    }\n" +
 		"    throw new Error(" + style.quoted("crystalline: ") + " + name + " + style.quoted(".") + " + String(property) + " +
 		style.quoted(" was read before initializeCrystalline() ran. Start the Go wasm module, then call initializeCrystalline().") + ");\n" +

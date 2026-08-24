@@ -75,6 +75,13 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   package rather than the manifest's. Exposing `data.Nodes` from a manifest in
   package `exposition` used to land it in `exposition`, so every call needed
   an explicit `bind.InNamespace`.
+- That inference now looks through a map's key as well as its element, so
+  `map[data.Kind]string` lands in `data` like `map[uint32]*data.Node` does,
+  rather than falling back to the manifest's package.
+- A binding captured before `initializeCrystalline()` ran says that it is a
+  stale copy, instead of repeating advice the caller has already followed.
+  Destructuring an export snapshots it, so the local keeps pointing at the
+  placeholder however many times the real binding is reassigned.
 - Reading a struct-typed field returns the same wrapper every time. It used to
   build a fresh one per read, which broke `===`, `Map` keys and every
   framework's memo comparison, and allocated a handle and a set of bridge

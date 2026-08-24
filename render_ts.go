@@ -104,6 +104,10 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	js.WriteString("\nexport const initializeCrystalline = () => {\n")
 	js.WriteString(initGuard(g.style, g.appName))
 	js.WriteString(bindings.String())
+
+	// Recorded so that a stale binding captured before this ran can say which
+	// of the two mistakes it is.
+	js.WriteString("\n  initialized = true;\n")
 	js.WriteString("};")
 
 	return Output{TypeScript: tsd.String(), JavaScript: js.String(), Skipped: analysed.skipped}, nil
