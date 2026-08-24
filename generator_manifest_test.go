@@ -128,7 +128,7 @@ func TestGeneratingIntoTheManifestPackage(t *testing.T) {
 
 	self := "github.com/Vilsol/crystalline/testdata/crosspkg/manifest"
 
-	bindings, err := g.BuildGo(declarations, "manifest", self)
+	bindings, err := g.BuildGo(declarations, WithPackageName("manifest"), WithImportPath(self))
 	testza.AssertNoError(t, err)
 
 	testza.AssertTrue(t, strings.Contains(bindings.Source, "\tExports(crystallineRegistry{})"),

@@ -241,7 +241,7 @@ func generateBindings(t *testing.T, manifest string) (GoBindings, error) {
 		return GoBindings{}, err
 	}
 
-	return g.BuildGo(declarations, "main", "bindtest")
+	return g.BuildGo(declarations, WithPackageName("main"), WithImportPath("bindtest"))
 }
 
 func goCommand(t *testing.T, dir string, args ...string) string {
@@ -719,7 +719,8 @@ func TestSelfPackageBindingsCompile(t *testing.T) {
 	declarations, err := g.Declarations()
 	testza.AssertNoError(t, err)
 
-	pkg, err := g.BuildGo(declarations, "directive", "github.com/Vilsol/crystalline/testdata/directive")
+	pkg, err := g.BuildGo(declarations, WithPackageName("directive"),
+		WithImportPath("github.com/Vilsol/crystalline/testdata/directive"))
 	testza.AssertNoError(t, err, "bindings generated into their own package must be valid Go")
 
 	testza.AssertTrue(t, strings.Contains(pkg.Source, "r0 := Owned()"),
@@ -742,7 +743,7 @@ func TestSameNamedTypesStayDistinct(t *testing.T) {
 	declarations, err := g.Declarations()
 	testza.AssertNoError(t, err)
 
-	pkg, err := g.BuildGo(declarations, "main", "example.com/main")
+	pkg, err := g.BuildGo(declarations, WithPackageName("main"), WithImportPath("example.com/main"))
 	testza.AssertNoError(t, err)
 
 	testza.AssertTrue(t, strings.Contains(pkg.Source, "(v *alpha.Config)"),
@@ -753,4 +754,64 @@ func TestSameNamedTypesStayDistinct(t *testing.T) {
 	// The names have to differ, or the file declares one function twice.
 	testza.AssertEqual(t, 0, strings.Count(pkg.Source, "func crystallineMarshalConfig("),
 		"the bare name is ambiguous:\n"+pkg.Source)
+}
+
+// BuildGo took the package name and import path as bare strings, and the
+// command worked them out from the first manifest before every call. A library
+// user had to know to do the same, and nothing said what happened if they
+// guessed differently: the file names one package and the qualifier assumes
+// another, which format.Source parses happily.
+func TestBuildGoDefaultsToTheManifest(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/bindings/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	defaulted, err := g.BuildGo(declarations)
+	testza.AssertNoError(t, err)
+
+	spelled, err := g.BuildGo(declarations,
+		WithPackageName("bindings"),
+		WithImportPath("github.com/Vilsol/crystalline/testdata/bindings"))
+	testza.AssertNoError(t, err)
+
+	testza.AssertEqual(t, "bindings", defaulted.Package)
+	testza.AssertEqual(t, spelled.Source, defaulted.Source,
+		"the default must be what the manifest already says")
+}
+
+// Without a manifest there is nothing to default from, which is worth saying
+// rather than writing a file whose package declaration is empty.
+func TestBuildGoNeedsAPackageWithoutAManifest(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/directive"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	_, err = g.BuildGo(declarations)
+	testza.AssertNotNil(t, err)
+	testza.AssertTrue(t, strings.Contains(errText(err), "WithPackageName"),
+		"the error must name the option that fixes it, got: "+errText(err))
+}
+
+// Output could write its own files; the Go bindings could not, so every caller
+// wrote the same MkdirAll and WriteFile.
+func TestGoBindingsWriteFile(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/bindings/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	bindings, err := g.BuildGo(declarations)
+	testza.AssertNoError(t, err)
+
+	target := filepath.Join(t.TempDir(), "nested", "crystalline_gen.go")
+	testza.AssertNoError(t, bindings.WriteFile(target))
+
+	written, err := os.ReadFile(target)
+	testza.AssertNoError(t, err)
+	testza.AssertEqual(t, bindings.Source, string(written))
 }

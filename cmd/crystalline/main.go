@@ -134,14 +134,6 @@ func writeGo(generator *crystalline.Generator, declarations crystalline.Declarat
 
 	manifest := declarations.Manifests[0]
 
-	if importPath == "" {
-		importPath = manifest.Package
-	}
-
-	if pkgName == "" {
-		pkgName = manifest.PackageName
-	}
-
 	if target == "" {
 		if manifest.Dir == "" {
 			return fmt.Errorf("could not locate %s on disk, pass -go-out", manifest.Package)
@@ -150,14 +142,22 @@ func writeGo(generator *crystalline.Generator, declarations crystalline.Declarat
 		target = filepath.Join(manifest.Dir, "crystalline_gen.go")
 	}
 
-	bindings, err := generator.BuildGo(declarations, pkgName, importPath)
+	// The generator defaults to the same manifest, so the flags only need to
+	// speak when they disagree with it.
+	var options []crystalline.GoOption
+
+	if pkgName != "" {
+		options = append(options, crystalline.WithPackageName(pkgName))
+	}
+
+	if importPath != "" {
+		options = append(options, crystalline.WithImportPath(importPath))
+	}
+
+	bindings, err := generator.BuildGo(declarations, options...)
 	if err != nil {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("creating directory for %s: %w", target, err)
-	}
-
-	return os.WriteFile(target, []byte(bindings.Source), 0o644)
+	return bindings.WriteFile(target)
 }

@@ -24,6 +24,9 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   It declares three things — `Func`, `Value` and `Type` — and everything else
   is an option on one of them, so a decision about a type is written where the
   type is declared rather than in a call of its own.
+- `BuildGo` takes options and defaults to the package of the first manifest,
+  which is what the command already worked out for itself. `GoBindings.WriteFile`
+  writes the result, as `Output.WriteFiles` already did for the other two.
 - Manifest functions marked `//crystalline:exports`, declaring the whole JS
   surface in one compiler-checked place, including symbols from packages you do
   not own.

@@ -3,10 +3,13 @@
 package crystalline
 
 import (
+	"errors"
 	"fmt"
 	"go/format"
 	"go/token"
 	"go/types"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -132,17 +135,91 @@ type GoBindings struct {
 	Warnings []Warning
 }
 
+// WriteFile writes the source to the given path, creating the directory it
+// sits in. Output writes its own files; these were left to the caller, so
+// every caller wrote the same two lines.
+func (b GoBindings) WriteFile(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("creating directory for %s: %w", path, err)
+	}
+
+	if err := os.WriteFile(path, []byte(b.Source), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+
+	return nil
+}
+
+// GoOption configures where the generated Go bindings belong.
+type GoOption func(*goOptions)
+
+type goOptions struct {
+	packageName string
+	importPath  string
+}
+
+// WithPackageName sets the package the generated file declares. It defaults to
+// the package of the first manifest.
+func WithPackageName(name string) GoOption {
+	return func(o *goOptions) {
+		o.packageName = name
+	}
+}
+
+// WithImportPath sets the import path of the package the generated file
+// belongs to, which is how the emitter knows which references need qualifying.
+// It defaults to the package of the first manifest.
+func WithImportPath(path string) GoOption {
+	return func(o *goOptions) {
+		o.importPath = path
+	}
+}
+
+// resolveGoOptions works out where the bindings belong, from the manifest that
+// declared them and then from what the caller said.
+//
+// The manifest is the answer in every case the command handles, and it was the
+// command working it out rather than the generator: a library user had to
+// arrive at the same two strings by hand, with nothing checking that they had.
+func resolveGoOptions(declarations Declarations, opts []GoOption) (goOptions, error) {
+	var resolved goOptions
+
+	if len(declarations.Manifests) > 0 {
+		manifest := declarations.Manifests[0]
+		resolved.packageName = manifest.PackageName
+		resolved.importPath = manifest.Package
+	}
+
+	for _, opt := range opts {
+		opt(&resolved)
+	}
+
+	if resolved.packageName == "" {
+		return goOptions{}, errors.New("no manifest to take a package from: pass WithPackageName")
+	}
+
+	if resolved.importPath == "" {
+		return goOptions{}, errors.New("no manifest to take an import path from: pass WithImportPath")
+	}
+
+	return resolved, nil
+}
+
 // BuildGo emits reflect-free binding source for everything the loaded manifests
 // and directives declare.
 //
-// packageName is the package the generated file belongs to, and selfPath its
-// import path; both refer to a package the consumer owns, since generated code
-// cannot be written into a dependency.
+// It belongs to a package the consumer owns, since generated code cannot be
+// written into a dependency, and defaults to the package of the first manifest.
 //
 // The generated code registers through syscall/js directly, so a binary built
 // from it does not link reflect at all.
-func (g *Generator) BuildGo(declarations Declarations, packageName string, selfPath string) (GoBindings, error) {
-	e := newEmitter(g, packageName, selfPath, declarations)
+func (g *Generator) BuildGo(declarations Declarations, opts ...GoOption) (GoBindings, error) {
+	resolved, err := resolveGoOptions(declarations, opts)
+	if err != nil {
+		return GoBindings{}, err
+	}
+
+	e := newEmitter(g, resolved.packageName, resolved.importPath, declarations)
 
 	source, err := e.emitBindings(declarations)
 	if err != nil {
@@ -155,7 +232,7 @@ func (g *Generator) BuildGo(declarations Declarations, packageName string, selfP
 	}
 
 	return GoBindings{
-		Package:  packageName,
+		Package:  resolved.packageName,
 		Source:   string(formatted),
 		Skipped:  e.skipped,
 		Warnings: wideIntegerWarnings(e.marks, declarations, droppedNames(e.skipped), g.position),

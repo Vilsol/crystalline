@@ -47,7 +47,7 @@ func TestGenericBindingsCompile(t *testing.T) {
 	declarations, err := g.Declarations()
 	testza.AssertNoError(t, err)
 
-	bindings, err := g.BuildGo(declarations, "gen", "example.com/gen")
+	bindings, err := g.BuildGo(declarations, WithPackageName("gen"), WithImportPath("example.com/gen"))
 	testza.AssertNoError(t, err, "generic bindings must render as valid Go")
 
 	// One marshaller per instantiation, each typed to its own instantiation and
