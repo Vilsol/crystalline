@@ -9,11 +9,10 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 * One compiler-checked manifest declares the whole surface, including symbols
   from packages you do not own. `//crystalline:export` is the shorthand for ones
   you do.
-* Structs arrive as live wrappers, or as plain data with `bind.Plain()` — 9x cheaper
-  for a result that is only read.
+* Structs arrive as live wrappers, or as plain data with `bind.Plain()` — 9x
+  cheaper for a result that is only read.
 * `bind.MarshalledBy` maps a type onto a JavaScript counterpart with two Go
-  functions.
-  `time.Time` and `time.Duration` are mapped as standard.
+  functions. `time.Time` and `time.Duration` are mapped as standard.
 * Enums keep their names: a union type plus a constants object.
 * Interfaces go the other way — Go declares what it needs, JavaScript supplies
   an object with those methods.

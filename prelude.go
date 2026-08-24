@@ -303,7 +303,7 @@ func crystallineContext(signal js.Value) (context.Context, func()) {
 const crystallineHandleKey = "__crystallineHandle"
 
 // Wrappers are backed by a handle table rather than by copying, so a value
-// handed back to Go resolves to the object it came from. entries are released
+// handed back to Go resolves to the object it came from. Entries are released
 // when JS collects the wrapper.
 // crystallineScope collects the js.Func values a wrapper owns. Each one holds a
 // slot in the Go/JS bridge until it is released, so a wrapper that is never
