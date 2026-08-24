@@ -10,6 +10,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -99,6 +100,13 @@ func wideIntegers(m marks, t types.Type, seen map[types.Type]bool) []string {
 		var found []string
 
 		for i := range typed.NumFields() {
+			// A field carrying a bigint is not a number on the other side, so
+			// warning that it cannot hold one describes a field that no longer
+			// exists.
+			if tagHasOption(reflect.StructTag(typed.Tag(i)).Get(tagName), tagBigInt) {
+				continue
+			}
+
 			found = append(found, wideIntegers(m, typed.Field(i).Type(), seen)...)
 		}
 
@@ -852,7 +860,7 @@ func (e *emitter) emitArguments(sig *types.Signature, deferStop bool, onFailure 
 
 		name := "a" + strconv.Itoa(i)
 
-		statements, err := e.checkedFromJS(name, "args["+strconv.Itoa(i)+"]", param.Type(), true)
+		statements, err := e.checkedFromJS(name, "args["+strconv.Itoa(i)+"]", param.Type(), true, "")
 		if err != nil {
 			return nil, "", "", err
 		}

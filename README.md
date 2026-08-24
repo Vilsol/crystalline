@@ -14,6 +14,8 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 * `bind.MarshalledBy` maps a type onto a JavaScript counterpart with two Go
   functions. `time.Time` and `time.Duration` are mapped as standard.
 * Enums keep their names: a union type plus a constants object.
+* `crystalline:"bigint"` carries an `int64` across exactly, where a number
+  cannot.
 * Interfaces go the other way — Go declares what it needs, JavaScript supplies
   an object with those methods.
 * Promises by option, by doc directive, or automatically for callbacks, contexts
@@ -137,6 +139,7 @@ await api.Restock({ Notify: (m) => log(m) }, names);
 | `bool` | `boolean` |
 | `int`, `uint`, `float`, `uintptr` | `number` |
 | `int64`, `uint64` | `number`, with a warning past 2^53 |
+| `int64` with `crystalline:"bigint"` | `bigint`, exact both ways |
 | `string` | `string` |
 | `[]byte`, `[N]byte` | `Uint8Array` |
 | `[]T`, `[N]T` | `Array<T>` |

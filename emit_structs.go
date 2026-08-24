@@ -25,6 +25,36 @@ func (e *emitter) isPromised(named *types.Named, method string, obj types.Object
 	return e.marks.promised[markKey(named, method)] || e.gen.isPromise(obj)
 }
 
+// fieldValue renders what a field hands to JavaScript, honouring its tag.
+//
+// One answer for the live wrapper and the plain-data snapshot alike, so a tag
+// cannot mean one thing in a wrapper and something else in a copy of it.
+func (e *emitter) fieldValue(target string, t types.Type, tag string) (string, error) {
+	if tagHasOption(tag, tagBigInt) {
+		if isUnsignedWide(t) {
+			return "crystallineBigUint(uint64(" + target + "))", nil
+		}
+
+		return "crystallineBigInt(int64(" + target + "))", nil
+	}
+
+	return e.toJS(target, t, tagHasOption(tag, tagNotNil))
+}
+
+// fieldConverter names the conversion a write to a field goes through, or is
+// empty for whatever the field's type implies on its own.
+func fieldConverter(t types.Type, tag string) string {
+	if !tagHasOption(tag, tagBigInt) {
+		return ""
+	}
+
+	if isUnsignedWide(t) {
+		return "crystallineToBigUint"
+	}
+
+	return "crystallineToBigInt"
+}
+
 func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
@@ -52,14 +82,14 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
 		}
 
-		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
+		expr, err := e.fieldValue("v."+field.Name(), field.Type(), tag)
 		if err != nil {
 			e.skipAt(field.Pos(), identity+"."+field.Name(), err.Error())
 
 			continue
 		}
 
-		setter, err := e.fieldSetter("v."+field.Name(), field.Type())
+		setter, err := e.fieldSetter("v."+field.Name(), field.Type(), fieldConverter(field.Type(), tag))
 		if err != nil {
 			// A field that cannot be written back is still readable. Saying so
 			// on the way past beats accepting the write and dropping it.
@@ -163,7 +193,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 			return "", fmt.Errorf("%s.%s: %w", name, field.Name(), err)
 		}
 
-		expr, err := e.toJS("v."+field.Name(), field.Type(), tagHasOption(tag, tagNotNil))
+		expr, err := e.fieldValue("v."+field.Name(), field.Type(), tag)
 		if err != nil {
 			e.skipAt(field.Pos(), identity+"."+field.Name(), err.Error())
 

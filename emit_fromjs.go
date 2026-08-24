@@ -42,10 +42,13 @@ func (e *emitter) fromJS(expr string, t types.Type) (string, error) {
 //
 // returnsValue says which of the two shapes the enclosing function has: a
 // wrapper returns the failure, a field setter reports it and stops.
-func (e *emitter) checkedFromJS(name string, expr string, t types.Type, returnsValue bool) (string, error) {
+// converter names the conversion to use, or is empty to work it out from the
+// type. A field tagged bigint is the one case where the tag decides and the
+// type cannot.
+func (e *emitter) checkedFromJS(name string, expr string, t types.Type, returnsValue bool, converter string) (string, error) {
 	// A callback is built rather than converted, and building cannot fail. Its
 	// own conversions happen later, inside the callback.
-	if _, ok := t.Underlying().(*types.Signature); ok {
+	if _, ok := t.Underlying().(*types.Signature); ok && converter == "" {
 		built, err := e.fromJS(expr, t)
 		if err != nil {
 			return "", err
@@ -54,9 +57,13 @@ func (e *emitter) checkedFromJS(name string, expr string, t types.Type, returnsV
 		return "\t" + name + " := " + built + "\n\n", nil
 	}
 
-	converter, err := e.ensureValueConverter(t)
-	if err != nil {
-		return "", err
+	if converter == "" {
+		resolved, err := e.ensureValueConverter(t)
+		if err != nil {
+			return "", err
+		}
+
+		converter = resolved
 	}
 
 	var out strings.Builder
@@ -137,13 +144,20 @@ func (e *emitter) callbackFromJS(expr string, t types.Type, sig *types.Signature
 // handled only basic types, so a write to a slice, map, struct or pointer field
 // was discarded in silence: the Go value kept its old contents and nothing was
 // reported.
-func (e *emitter) fieldSetter(target string, t types.Type) (string, error) {
-	statements, err := e.checkedFromJS("converted", "value", t, false)
+func (e *emitter) fieldSetter(target string, t types.Type, converter string) (string, error) {
+	statements, err := e.checkedFromJS("converted", "value", t, false, converter)
 	if err != nil {
 		return "", err
 	}
 
-	return "func(value js.Value) {\n" + statements + "\t" + target + " = converted\n\t}", nil
+	// A named type still has to arrive as itself, and the bigint converters
+	// produce the plain width they parsed.
+	assigned := "converted"
+	if converter != "" {
+		assigned = types.TypeString(t, e.qualifier) + "(converted)"
+	}
+
+	return "func(value js.Value) {\n" + statements + "\t" + target + " = " + assigned + "\n\t}", nil
 }
 
 // emitConverter renders the JS to Go conversion for a struct: a wrapper handed

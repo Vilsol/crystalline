@@ -53,6 +53,8 @@ export const initializeCrystalline = () => {
     MayFail: wrap('sample.MayFail', globalThis['go']['app']['sample']['MayFail']),
     MaybeStamp: wrap('sample.MaybeStamp', globalThis['go']['app']['sample']['MaybeStamp']),
     Middle: wrap('sample.Middle', globalThis['go']['app']['sample']['Middle']),
+    NewExact: wrap('sample.NewExact', globalThis['go']['app']['sample']['NewExact']),
+    NewLedger: wrap('sample.NewLedger', globalThis['go']['app']['sample']['NewLedger']),
     NewTicker: wrap('sample.NewTicker', globalThis['go']['app']['sample']['NewTicker']),
     OnlyFails: wrap('sample.OnlyFails', globalThis['go']['app']['sample']['OnlyFails']),
     Phase: globalThis['go']['app']['sample']['Phase'],

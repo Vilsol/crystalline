@@ -60,6 +60,13 @@ export declare namespace sample {
     release(): void;
     [Symbol.dispose](): void;
   }
+  interface Exact {
+    Serial: bigint;
+    Count: bigint;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
   interface FnSample {
     FirstValue: string;
     SecondValue: number;
@@ -70,6 +77,15 @@ export declare namespace sample {
     One(): string;
     Three(): number;
     Two(): number;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
+  interface Ledger {
+    ID: bigint;
+    Balance: bigint;
+    Rounded: number;
+    Note: string;
     /** Releases the Go resources behind this wrapper. */
     release(): void;
     [Symbol.dispose](): void;
@@ -135,6 +151,8 @@ export declare namespace sample {
   function MayFail(ok: boolean): Result<string>;
   function MaybeStamp(ok: boolean): (Date | undefined);
   function Middle(first: sample.FnSample | undefined, label: string): string;
+  function NewExact(): (sample.Exact | undefined);
+  function NewLedger(): (sample.Ledger | undefined);
   function NewTicker(): sample.Ticker;
   function OnlyFails(ok: boolean): Result<void>;
   function Rates(): (Record<time.Duration, string> | undefined);

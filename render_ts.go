@@ -327,6 +327,12 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), field.Name(), err)
 		}
 
+		// The tag decides here, not the type: an int64 is a number unless the
+		// field asked to carry it exactly.
+		if tagHasOption(tag, tagBigInt) {
+			jsName = "bigint"
+		}
+
 		marker := ""
 		if optional && !tagHasOption(tag, tagNotNil) {
 			marker = "?"

@@ -13,9 +13,10 @@ import (
 const (
 	tagName   = "crystalline"
 	tagNotNil = "not_nil"
+	tagBigInt = "bigint"
 )
 
-var knownTagOptions = []string{tagNotNil}
+var knownTagOptions = []string{tagNotNil, tagBigInt}
 
 // tagHasOption reports whether a crystalline struct tag carries an option.
 func tagHasOption(tag string, want string) bool {
@@ -56,9 +57,34 @@ func validateTag(tag string, t types.Type) error {
 		if option == tagNotNil && !hasEmptyForm(t) {
 			return fmt.Errorf("%s applies to a slice or a map, and this is a %s", tagNotNil, t)
 		}
+
+		// Narrower integers already cross exactly, so a bigint there is a cost
+		// with nothing to buy: JSON.stringify throws on one, and mixing it with
+		// a number is a TypeError.
+		if option == tagBigInt && !isWideInteger(t) {
+			return fmt.Errorf("%s applies to an int64 or a uint64, and this is a %s", tagBigInt, t)
+		}
 	}
 
 	return nil
+}
+
+// isWideInteger reports whether a type is one a JavaScript number cannot hold
+// exactly. It is the same question the wide-integer warning asks.
+func isWideInteger(t types.Type) bool {
+	basic, ok := t.Underlying().(*types.Basic)
+	if !ok {
+		return false
+	}
+
+	return basic.Kind() == types.Int64 || basic.Kind() == types.Uint64
+}
+
+// isUnsignedWide distinguishes the two, since they parse and format differently.
+func isUnsignedWide(t types.Type) bool {
+	basic, ok := t.Underlying().(*types.Basic)
+
+	return ok && basic.Kind() == types.Uint64
 }
 
 // sortedKeys returns a map's keys in a stable order.

@@ -399,3 +399,34 @@ func UseLogger(l Logger) int {
 
 	return 1
 }
+
+// Ledger carries identifiers that have to survive the boundary exactly, which a
+// JavaScript number cannot do beyond 2^53.
+type Ledger struct {
+	ID      int64  `crystalline:"bigint"`
+	Balance uint64 `crystalline:"bigint"`
+	Rounded int64
+	Note    string
+}
+
+// NewLedger builds a ledger whose numbers are past what a double can hold.
+func NewLedger() *Ledger {
+	return &Ledger{
+		ID:      9007199254740993,
+		Balance: 18446744073709551615,
+		Rounded: 9007199254740993,
+		Note:    "exact",
+	}
+}
+
+// Exact carries only values that cross as a BigInt, so there is nothing about
+// it worth warning over.
+type Exact struct {
+	Serial int64  `crystalline:"bigint"`
+	Count  uint64 `crystalline:"bigint"`
+}
+
+// NewExact builds one whose serial is past what a double can hold.
+func NewExact() *Exact {
+	return &Exact{Serial: 9007199254740993, Count: 2}
+}

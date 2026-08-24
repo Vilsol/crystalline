@@ -30,6 +30,13 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `WithQuoteStyle` takes a `QuoteStyle` rather than a string, and `-quote`
   takes `single` or `double`. Any string was accepted before, and a typo
   produced a module that does not parse, found by whoever imported it.
+- `crystalline:"bigint"` on an `int64` or `uint64` field carries the value
+  across as a JavaScript `BigInt` rather than as a number, exactly and in both
+  directions. The field is declared `bigint`, a write that is not one is
+  refused, an out-of-range one names what did not fit, and the wide-integer
+  warning stops naming a field that is no longer a number. Opt-in per field:
+  `JSON.stringify` throws on a bigint and mixing one with a number is a
+  `TypeError`, so the choice reaches the caller's arithmetic.
 - Generated code reports a conversion failure rather than panicking to report
   it. A mistyped argument, an object literal with an unknown property, a field
   write that cannot convert and a channel that could not carry a value are all

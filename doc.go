@@ -279,7 +279,23 @@
 //	crystalline: warning api.Timestamps: int64 is bound as a JavaScript number,
 //	which cannot represent values beyond 2^53 exactly
 //
-// If the range matters, carry the value as a string across the boundary.
+// Where the range genuinely matters, tag the field and it crosses as a
+// JavaScript BigInt, which carries it exactly:
+//
+//	type Ledger struct {
+//		ID int64 `crystalline:"bigint"`
+//	}
+//
+// The field is declared bigint rather than number, both directions are exact,
+// a write that is not a BigInt is refused, and the wide-integer warning stops
+// naming it because it is no longer a number. It is opt-in per field because it
+// is not free on the other side: JSON.stringify throws on a bigint, and mixing
+// one with a number is a TypeError, so the choice reaches the caller's
+// arithmetic. The tag is refused on anything narrower than 64 bits.
+//
+// Reading one back cannot go through syscall/js at all. Value.Type panics with
+// "bad type flag" on a BigInt, and Get and Call check the type first, so the
+// conversion asks JavaScript for the digits and parses them.
 //
 // A variadic function takes its values as an array from JavaScript:
 //

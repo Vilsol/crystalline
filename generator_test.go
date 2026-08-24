@@ -3,6 +3,7 @@
 package crystalline
 
 import (
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -827,4 +828,20 @@ func TestUnknownQuoteStyleIsRefused(t *testing.T) {
 	testza.AssertNotNil(t, err, "a quote style that is not one of the two must be reported")
 	testza.AssertTrue(t, strings.Contains(errText(err), "quote style"),
 		"the error must say what was wrong, got: "+errText(err))
+}
+
+// bigint is opt-in per field, because it is not free on the JavaScript side:
+// JSON.stringify throws on one, and mixing it with a number is a TypeError. A
+// tag on something narrower than 64 bits asks for a cost with no benefit.
+func TestBigIntTagNeedsAWideInteger(t *testing.T) {
+	testza.AssertNoError(t, validateTag("bigint", types.Typ[types.Int64]))
+	testza.AssertNoError(t, validateTag("bigint", types.Typ[types.Uint64]))
+
+	err := validateTag("bigint", types.Typ[types.String])
+	testza.AssertNotNil(t, err)
+	testza.AssertTrue(t, strings.Contains(errText(err), "bigint applies to"),
+		"the error must say what it applies to, got: "+errText(err))
+
+	err = validateTag("bigint", types.Typ[types.Int32])
+	testza.AssertNotNil(t, err, "a narrower integer has nothing to gain and a cost to pay")
 }

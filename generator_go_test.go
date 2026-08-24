@@ -88,6 +88,13 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"PlainNested=noon",
 		"PlainNestedNoMethod=true",
 		"PlainJSON={\"At\":\"noon\",\"Value\":1}",
+		"BigType=bigint",
+		"BigRead=9007199254740993",
+		"BigUnsigned=18446744073709551615",
+		"BigRounded=9007199254740992",
+		"BigWrite=9007199254740995",
+		"BigBad=threw",
+		"BigRange=threw",
 		"StructIdentity=written",
 		"StructLiteral=literal",
 		"TypoRejected=yes",
@@ -425,6 +432,38 @@ func main() {
 		out.push("PlainNested=" + readings[0].Peak.At);
 		out.push("PlainNestedNoMethod=" + (readings[0].Peak.Describe === undefined));
 		out.push("PlainJSON=" + JSON.stringify(readings[1].Peak));
+
+		// A field tagged bigint carries its value exactly. syscall/js cannot
+		// look at a BigInt at all — Value.Type panics with "bad type flag" and
+		// Get checks the type first — so the conversion asks JavaScript for the
+		// digits and parses them.
+		const ledger = s.NewLedger();
+		out.push("BigType=" + typeof ledger.ID);
+		out.push("BigRead=" + ledger.ID);
+		out.push("BigUnsigned=" + ledger.Balance);
+
+		// The same number in an untagged field, which is the cost being opted
+		// out of: a double cannot hold it and rounds down.
+		out.push("BigRounded=" + ledger.Rounded);
+
+		ledger.ID = 9007199254740995n;
+		out.push("BigWrite=" + ledger.ID);
+
+		let bigBad = "accepted";
+		try {
+			ledger.ID = 5;
+		} catch (e) {
+			bigBad = e.message.includes("expected a bigint") ? "threw" : "wrong:" + e.message;
+		}
+		out.push("BigBad=" + bigBad);
+
+		let bigRange = "accepted";
+		try {
+			ledger.Balance = -1n;
+		} catch (e) {
+			bigRange = e.message.includes("does not fit in a uint64") ? "threw" : "wrong:" + e.message;
+		}
+		out.push("BigRange=" + bigRange);
 
 		// A wrapper handed back to Go must resolve to the same Go value.
 		out.push("StructIdentity=" + r.Configure(live));
@@ -854,7 +893,11 @@ func bodyOf(t *testing.T, source string, name string) string {
 	t.Helper()
 
 	start := strings.Index(source, "\nfunc "+name+"(")
-	testza.AssertNotEqual(t, -1, start, name+" is not in the generated source")
+	if start == -1 {
+		// Fatal rather than reported: carrying on slices from -1 and panics,
+		// which fails the whole binary and hides every test after it.
+		t.Fatal(name + " is not in the generated source")
+	}
 
 	end := strings.Index(source[start+1:], "\nfunc ")
 	if end == -1 {
@@ -929,4 +972,55 @@ func TestUnwritableFieldsDoNotPanic(t *testing.T) {
 		"the refusal must still name the field and the reason:\n"+body)
 	testza.AssertFalse(t, strings.Contains(body, "panic("),
 		"the refusal must be reported rather than panicked:\n"+body)
+}
+
+// A field tagged bigint crosses as a JavaScript BigInt, which carries the value
+// exactly. Reading one back cannot go through syscall/js: Value.Type() panics
+// with "bad type flag" on a BigInt, and so does Value.Get, so the conversion
+// asks JavaScript for the digits and parses them.
+func TestBigIntFieldsCrossAsBigInt(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	body := bodyOf(t, bindings.Source, "crystallineMarshalSampleLedger")
+
+	testza.AssertTrue(t, strings.Contains(body, "crystallineBigInt(int64(v.ID))"),
+		"an int64 tagged bigint must be handed over as a BigInt:\n"+body)
+	testza.AssertTrue(t, strings.Contains(body, "crystallineBigUint(uint64(v.Balance))"),
+		"and a uint64 likewise:\n"+body)
+	testza.AssertTrue(t, strings.Contains(body, "crystallineToBigInt(value)"),
+		"a write must read the digits rather than the js.Value:\n"+body)
+	testza.AssertTrue(t, strings.Contains(body, "float64(v.Rounded)"),
+		"an untagged int64 must still be a number:\n"+body)
+}
+
+// The warning names every member carrying a 64-bit integer as a JavaScript
+// number. A field that opted out of being one has nothing to warn about, and
+// warning anyway is the same defect as any other pair of paths that disagree.
+func TestBigIntFieldsAreNotWarnedAbout(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	var mentioned []string
+
+	for _, warning := range bindings.Warnings {
+		if strings.Contains(warning.Name, "Exact") {
+			mentioned = append(mentioned, warning.Name+": "+warning.Reason)
+		}
+	}
+
+	testza.AssertEqual(t, 0, len(mentioned),
+		"a struct whose wide integers all carry bigint has nothing to warn about: "+strings.Join(mentioned, ", "))
+
+	// And the warning still fires where a field did not opt out, or it would
+	// have been switched off rather than made accurate.
+	warned := false
+
+	for _, warning := range bindings.Warnings {
+		if strings.Contains(warning.Name, "Ledger") {
+			warned = true
+		}
+	}
+
+	testza.AssertTrue(t, warned, "Ledger.Rounded is an untagged int64 and must still be named")
 }

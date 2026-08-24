@@ -25,6 +25,8 @@ func Exports(r bind.Registry) {
 	r.Func(sample.NewTicker)
 	r.Func(sample.Readings)
 	r.Func(sample.Big)
+	r.Func(sample.NewLedger)
+	r.Func(sample.NewExact)
 	r.Func(sample.Streamable)
 	r.Func(sample.Total)
 	r.Func(sample.MakeEmbedder)
