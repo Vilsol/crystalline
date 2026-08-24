@@ -22,59 +22,49 @@ Revisit if someone shows a workload that genuinely has to originate in Go.
 
 ### TinyGo
 
-The generated runtime needs `js.FuncOf`, channels, two goroutines, `sync.Once`,
-`sync.Mutex` and generics. It needs no `reflect`, no `fmt` and no runtime
-finalizers, which is the usual obstacle, and it is absent because the reflect
-runtime was removed for binary size.
+All four examples build and pass under TinyGo 0.41.1 with
+`-scheduler=asyncify`, at roughly a fifth of the size:
 
-Spiked with `examples/tinygo.sh` on TinyGo 0.41.1.
+| example | tinygo | go   |
+| ------- | ------ | ---- |
+| 01-hello    | 430K | 2.3M |
+| 02-accounts | 574K | 2.4M |
+| 03-pipeline | 516K | 2.5M |
+| 04-catalogue| 661K | 2.5M |
 
-| example | tinygo | go   | result                            |
-| ------- | ------ | ---- | --------------------------------- |
-| 01-hello    | 420K | 2.2M | passes                        |
-| 02-accounts | 562K | -    | traps on every error path     |
-| 03-pipeline | 502K | 2.4M | passes                        |
+Run `./examples/tinygo.sh <example>`. TinyGo is not pinned in `mise.toml`, so
+either install it or run the script through `mise exec tinygo@0.41.1 --`.
 
-The async surface works. 03-pipeline exercises promises, streams in both
-directions, aborting mid-stream and an explicit `AsPromise`, all under
-`-scheduler=asyncify` at about a fifth of the size, so `crystallineAwait`
-blocking a goroutine on a JS callback is fine. `js.CopyBytesToGo` and
-`js.CopyBytesToJS` both copy correctly.
+Between them the examples cover promises, streams in both directions, aborting
+mid-stream, an explicit `AsPromise`, live wrappers, deterministic release,
+enums, a mapped type, a promoted embedded method, an interface supplied from
+JavaScript, and every error path the smoke tests can reach. `js.CopyBytesToGo`
+and `js.CopyBytesToJS` copy correctly.
 
-**`recover()` is not implemented on TinyGo's wasm target.** Every panic prints
-and then traps, and JavaScript sees `RuntimeError: unreachable` rather than the
-Error the panic was meant to become. `runtime.panicOrGoexit` consults
-`supportsRecover()`, which is false because unwinding needs `tinygo_longjmp`,
-and `asm_tinygowasm.S` is the only architecture stub that does not define it —
-a wasm stack is not addressable, so there is nothing to jump to.
+What made this work is that generated code no longer panics to report a
+conversion failure. **`recover()` is not implemented on TinyGo's wasm target**:
+`runtime.panicOrGoexit` consults `supportsRecover()`, which is false because
+unwinding needs `tinygo_longjmp`, and `asm_tinygowasm.S` is the only
+architecture stub that does not define it. Measured rather than reasoned — the
+same probe recovers under `tinygo build` for linux/amd64 and traps under
+`-target wasm`, in `main` itself, through a callee and inside a goroutine,
+written as a closure and as a named deferred function, from a plain callee and
+from a generic one.
 
-Measured rather than reasoned: the same probe recovers under `tinygo build` for
-linux/amd64 and traps under `-target wasm`, in `main` itself, through a callee
-and inside a goroutine, with the recovery written as a closure and as a named
-deferred function, from a plain callee and from a generic one. Six shapes, one
-outcome.
+Two panics remain, and cannot be removed: what a JavaScript callback returned
+and what a method of a JavaScript-supplied object returned are converted inside
+a Go function whose signature belongs to the consumer, so there is nowhere to
+report to and nothing to return but a guess. A consumer's own panic is the same
+problem one level up. Under the standard toolchain all three become a thrown or
+rejected `Error` carrying the Go stack; under TinyGo they abort the module.
 
-So this is not one bad path. Every error crystalline reports from generated code
-travels through `panic` and `crystallineRecover`: a mistyped argument, an object
-literal with an unknown property, a released handle. All of them abort the
-module under TinyGo. 01-hello and 03-pipeline pass because their smoke tests
-never take an error path, and 02-accounts hid the same trap behind an
-`assert.throws` with no pattern, which `RuntimeError: unreachable` satisfies as
-happily as the real message. That assertion now names what it expects.
+So TinyGo is not yet a claim worth making in the README. What is left:
 
-Supporting TinyGo therefore means not raising panics in generated code:
-`crystallineMust` would return its error to the wrapper, which already knows how
-to fail, and the recover would be left to catch only what it cannot prevent.
-That is a change to every emitted wrapper and worth measuring, since it trades
-one deferred call for a branch per argument.
-
-A panic in the consumer's own Go code still cannot be reported under TinyGo. It
-aborts, and nothing crystalline emits can change that. Under the standard
-toolchain it is caught and thrown with the Go stack, so that is a real
-difference in what the two toolchains can promise.
-
-Still unchecked: whether TinyGo's conservative collector disturbs the handle
-table.
+- The two conversions above, which need either a TinyGo with recover or a JS
+  contract that cannot supply the wrong type in the first place.
+- Whether TinyGo's conservative collector disturbs the handle table.
+- A consumer of real size. The examples are small, and `-scheduler=asyncify`
+  rewrites every function that can block.
 
 ### Opt-in bigint for 64-bit integers
 

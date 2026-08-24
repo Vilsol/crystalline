@@ -30,6 +30,17 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `WithQuoteStyle` takes a `QuoteStyle` rather than a string, and `-quote`
   takes `single` or `double`. Any string was accepted before, and a typo
   produced a module that does not parse, found by whoever imported it.
+- Generated code reports a conversion failure rather than panicking to report
+  it. A mistyped argument, an object literal with an unknown property, a field
+  write that cannot convert and a channel that could not carry a value are all
+  returned through the error slot the wrapper already used for its argument
+  count, and `crystallinePromise` reads that slot as well, so one mechanism
+  covers a synchronous call and a promise. JavaScript sees exactly what it saw
+  before. The panic and its recover stay for what they alone can catch: a
+  panic in the consumer's own Go code, and a value a JavaScript callback or
+  supplied object returned, where the Go signature leaves nowhere to report to.
+  Costs between 0.03% and 0.09% of binary size across the four examples, and
+  makes all four run under TinyGo, whose wasm target implements no `recover`.
 - Manifest functions marked `//crystalline:exports`, declaring the whole JS
   surface in one compiler-checked place, including symbols from packages you do
   not own.

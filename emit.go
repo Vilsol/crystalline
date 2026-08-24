@@ -754,7 +754,14 @@ func wrapPromise(returns string, promise bool, depth int) string {
 func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) string) (string, error) {
 	streaming := takesContext(sig) && returnsChannel(sig)
 
-	call, preamble, checks, err := e.emitArguments(sig, !streaming)
+	// Nothing takes the cancellation over if the call fails before handing back
+	// a stream, so every failing path undoes it here.
+	onFailure := ""
+	if streaming {
+		onFailure = "crystallineStop()\n\t\t\t"
+	}
+
+	call, preamble, checks, err := e.emitArguments(sig, !streaming, onFailure)
 	if err != nil {
 		return "", err
 	}
@@ -762,13 +769,6 @@ func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) stri
 	if streaming {
 		e.streamStop = "crystallineStop"
 		defer func() { e.streamStop = "" }()
-	}
-
-	// Nothing takes the cancellation over if the call fails before handing back
-	// a stream, so that path undoes it here.
-	onFailure := ""
-	if streaming {
-		onFailure = "crystallineStop()\n\t\t\t"
 	}
 
 	returns, err := e.emitReturn(invoke(call), sig.Results(), checks, onFailure)
@@ -795,7 +795,7 @@ func returnsChannel(sig *types.Signature) bool {
 
 // emitArguments renders the conversion of every parameter, plus any preamble
 // the conversions need.
-func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string, string, string, error) {
+func (e *emitter) emitArguments(sig *types.Signature, deferStop bool, onFailure string) ([]string, string, string, error) {
 	call := make([]string, 0, sig.Params().Len())
 
 	var preamble, checks strings.Builder
@@ -836,25 +836,29 @@ func (e *emitter) emitArguments(sig *types.Signature, deferStop bool) ([]string,
 			// Checked after the call rather than deferred, so a value the
 			// channel could not carry fails the call instead of arriving as an
 			// early end of input. Stopping twice is harmless.
-			// Panics rather than reporting through the error slot: the slot is
-			// read synchronously by the JS wrapper, and a channel parameter
-			// always makes the call a promise, so the failure would surface on
-			// an unrelated later call. A panic is recovered into a thrown error
-			// or a rejection, whichever the call is.
-			checks.WriteString("\tif err := " + name + "Stop(); err != nil {\n\t\tpanic(" +
-				strconv.Quote(param.Name()+": ") + " + err.Error())\n\t}\n\n")
+			//
+			// Reported through the error slot like every other failure. This
+			// used to panic, because a channel parameter always makes the call
+			// a promise and the slot was read only by the synchronous wrapper;
+			// crystallinePromise reads it too now, so the panic bought nothing
+			// and cost everything under a toolchain without recover.
+			checks.WriteString("\tif stopped := " + name + "Stop(); stopped != nil {\n\t\t" + onFailure +
+				"return crystallineFail(" + strconv.Quote(param.Name()+": ") + " + stopped.Error())\n\t}\n\n")
 
 			call = append(call, name)
 
 			continue
 		}
 
-		expr, err := e.fromJS("args["+strconv.Itoa(i)+"]", param.Type())
+		name := "a" + strconv.Itoa(i)
+
+		statements, err := e.checkedFromJS(name, "args["+strconv.Itoa(i)+"]", param.Type(), true)
 		if err != nil {
 			return nil, "", "", err
 		}
 
-		call = append(call, expr)
+		preamble.WriteString(statements)
+		call = append(call, name)
 	}
 
 	return call, preamble.String(), checks.String(), nil

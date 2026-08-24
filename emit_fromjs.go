@@ -29,6 +29,52 @@ func (e *emitter) fromJS(expr string, t types.Type) (string, error) {
 	return "crystallineMust(" + converter + "(" + expr + "))", nil
 }
 
+// checkedFromJS renders a conversion as statements rather than as an
+// expression: the value read out of JavaScript, and the branch reporting a
+// failure to whoever asked for it.
+//
+// The expression form panics through crystallineMust, and a panic is only the
+// answer where the Go signature belongs to the consumer — what a callback
+// returned, what a method of a supplied object returned. Everywhere else the
+// generated code can report the failure itself, which is both one step shorter
+// and the difference between working and aborting under a toolchain whose
+// recover does nothing.
+//
+// returnsValue says which of the two shapes the enclosing function has: a
+// wrapper returns the failure, a field setter reports it and stops.
+func (e *emitter) checkedFromJS(name string, expr string, t types.Type, returnsValue bool) (string, error) {
+	// A callback is built rather than converted, and building cannot fail. Its
+	// own conversions happen later, inside the callback.
+	if _, ok := t.Underlying().(*types.Signature); ok {
+		built, err := e.fromJS(expr, t)
+		if err != nil {
+			return "", err
+		}
+
+		return "\t" + name + " := " + built + "\n\n", nil
+	}
+
+	converter, err := e.ensureValueConverter(t)
+	if err != nil {
+		return "", err
+	}
+
+	var out strings.Builder
+
+	out.WriteString("\t" + name + ", err := " + converter + "(" + expr + ")\n")
+	out.WriteString("\tif err != nil {\n")
+
+	if returnsValue {
+		out.WriteString("\t\treturn crystallineFail(err.Error())\n")
+	} else {
+		out.WriteString("\t\tcrystallineFail(err.Error())\n\n\t\treturn\n")
+	}
+
+	out.WriteString("\t}\n\n")
+
+	return out.String(), nil
+}
+
 // callbackFromJS renders a Go func that calls back into JS, awaiting whatever
 // it returns so that an async callback behaves like a synchronous one.
 func (e *emitter) callbackFromJS(expr string, t types.Type, sig *types.Signature) (string, error) {
@@ -92,12 +138,12 @@ func (e *emitter) callbackFromJS(expr string, t types.Type, sig *types.Signature
 // was discarded in silence: the Go value kept its old contents and nothing was
 // reported.
 func (e *emitter) fieldSetter(target string, t types.Type) (string, error) {
-	converted, err := e.fromJS("value", t)
+	statements, err := e.checkedFromJS("converted", "value", t, false)
 	if err != nil {
 		return "", err
 	}
 
-	return "func(value js.Value) {\n\t\t" + target + " = " + converted + "\n\t}", nil
+	return "func(value js.Value) {\n" + statements + "\t" + target + " = converted\n\t}", nil
 }
 
 // emitConverter renders the JS to Go conversion for a struct: a wrapper handed

@@ -62,6 +62,8 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"CallbackBad=threw",
 		"TextBad=threw",
 		"TextGood=x!",
+		"BadPromiseArg=rejected",
+		"AfterBadPromise=420",
 		"NullStruct=threw",
 		"WrongBytes=threw",
 		// Assigning a field from JS must reach the Go value behind it.
@@ -336,6 +338,22 @@ func main() {
 		}
 		out.push("TextBad=" + textBad);
 		out.push("TextGood=" + await r.WithText((v) => v + "!"));
+
+		// A promise-returning call whose argument cannot be converted must
+		// reject. The failure travels through the same slot a synchronous call
+		// uses, and the promise has to read it: resolving with whatever the
+		// body returned would hand JavaScript undefined and call it success.
+		let badPromiseArg = "resolved";
+		try {
+			await s.Cancellable(undefined, 5);
+		} catch (e) {
+			badPromiseArg = e.message.includes("expected a string") ? "rejected" : "wrong:" + e.message;
+		}
+		out.push("BadPromiseArg=" + badPromiseArg);
+
+		// The slot must be clear afterwards, or the next synchronous call
+		// throws someone else's error.
+		out.push("AfterBadPromise=" + s.Basic());
 
 		// A struct parameter is not optional: null must not arrive in Go as a
 		// zero value nobody asked for.
@@ -814,4 +832,72 @@ func TestGoBindingsWriteFile(t *testing.T) {
 	written, err := os.ReadFile(target)
 	testza.AssertNoError(t, err)
 	testza.AssertEqual(t, bindings.Source, string(written))
+}
+
+// bodyOf slices out one generated function, so an assertion about a wrapper
+// cannot be satisfied by an unrelated part of the file.
+func bodyOf(t *testing.T, source string, name string) string {
+	t.Helper()
+
+	start := strings.Index(source, "\nfunc "+name+"(")
+	testza.AssertNotEqual(t, -1, start, name+" is not in the generated source")
+
+	end := strings.Index(source[start+1:], "\nfunc ")
+	if end == -1 {
+		return source[start:]
+	}
+
+	return source[start : start+1+end]
+}
+
+// A conversion failure was reported by panicking, and crystallineRecover turned
+// the panic back into the same thrown Error the wrapper could have returned
+// itself. The round trip is free under the standard toolchain and fatal under
+// TinyGo, whose wasm target has no recover: every one of these became
+// RuntimeError: unreachable, taking the module with it.
+//
+// Cancellable is here because its conversion happens inside a promise body,
+// which is the case a returned failure could get wrong by resolving.
+func TestArgumentConversionsDoNotPanic(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	for _, name := range []string{"crystallineFnSampleMayFail", "crystallineFnSampleCancellable"} {
+		body := bodyOf(t, bindings.Source, name)
+
+		testza.AssertTrue(t, strings.Contains(body, "return crystallineFail(err.Error())"),
+			name+" must report the failure rather than panic:\n"+body)
+		testza.AssertFalse(t, strings.Contains(body, "crystallineMust("),
+			name+" must convert its arguments without crystallineMust:\n"+body)
+	}
+}
+
+// A field write has nowhere to return a value to, but it can report and stop.
+func TestFieldWritesDoNotPanic(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	body := bodyOf(t, bindings.Source, "crystallineMarshalSampleRicher")
+
+	testza.AssertTrue(t, strings.Contains(body, "crystallineFail(err.Error())"),
+		"a field write must report the failure rather than panic:\n"+body)
+	testza.AssertFalse(t, strings.Contains(body, "= crystallineMust("),
+		"no field write may go through crystallineMust:\n"+body)
+}
+
+// Two places have to keep the panic, because the Go signature belongs to the
+// consumer: what a JS callback returned, and what a method of a JS-supplied
+// object returned. There is no error slot to return to, and inventing a zero
+// value is the guess this project refuses to make.
+func TestConsumerSignaturesStillPanic(t *testing.T) {
+	bindings, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	for _, expected := range []string{
+		"return crystallineMust(crystallineToInt(crystallineCallbackResult))",
+		"return crystallineMust(crystallineToInt(crystallineSupplied))",
+	} {
+		testza.AssertTrue(t, strings.Contains(bindings.Source, expected),
+			"missing "+expected+", which has nowhere else to report")
+	}
 }

@@ -95,7 +95,20 @@ func crystallinePromise(body func() any) any {
 				}
 			}()
 
-			resolve.Invoke(body())
+			value := body()
+
+			// A failure inside the body travels through the same slot a
+			// synchronous call uses, so generated code has one way to report
+			// one and needs no panic to do it. The JS wrapper cannot read the
+			// slot here: it handed back the promise before the body ran.
+			if failure := js.Global().Get("goInternalError"); !failure.IsUndefined() {
+				js.Global().Set("goInternalError", js.Undefined())
+				reject.Invoke(js.Global().Get("Error").New(failure.String()))
+
+				return
+			}
+
+			resolve.Invoke(value)
 		}()
 
 		return nil
@@ -603,7 +616,12 @@ func crystallineFnGreetingGreet(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("Greet: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := greeting.Greet(crystallineMust(crystallineToString(args[0])))
+	a0, err := crystallineToString(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := greeting.Greet(a0)
 
 	return string(r0)
 }
@@ -615,7 +633,17 @@ func crystallineFnGreetingAdd(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("Add: expected 2 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := greeting.Add(crystallineMust(crystallineToInt(args[0])), crystallineMust(crystallineToInt(args[1])))
+	a0, err := crystallineToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	a1, err := crystallineToInt(args[1])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := greeting.Add(a0, a1)
 
 	return float64(r0)
 }

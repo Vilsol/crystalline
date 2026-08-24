@@ -97,7 +97,20 @@ func crystallinePromise(body func() any) any {
 				}
 			}()
 
-			resolve.Invoke(body())
+			value := body()
+
+			// A failure inside the body travels through the same slot a
+			// synchronous call uses, so generated code has one way to report
+			// one and needs no panic to do it. The JS wrapper cannot read the
+			// slot here: it handed back the promise before the body ran.
+			if failure := js.Global().Get("goInternalError"); !failure.IsUndefined() {
+				js.Global().Set("goInternalError", js.Undefined())
+				reject.Invoke(js.Global().Get("Error").New(failure.String()))
+
+				return
+			}
+
+			resolve.Invoke(value)
 		}()
 
 		return nil
@@ -605,7 +618,17 @@ func crystallineFnAccountOpen(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("Open: expected 2 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := account.Open(crystallineMust(crystallineToString(args[0])), crystallineMust(crystallineToInt(args[1])))
+	a0, err := crystallineToString(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	a1, err := crystallineToInt(args[1])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := account.Open(a0, a1)
 
 	return crystallineMarshalAccountAccount(r0)
 }
@@ -617,7 +640,22 @@ func crystallineFnAccountTransfer(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("Transfer: expected 3 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := account.Transfer(crystallineMust(crystallineToPtrAccountAccount(args[0])), crystallineMust(crystallineToPtrAccountAccount(args[1])), crystallineMust(crystallineToInt(args[2])))
+	a0, err := crystallineToPtrAccountAccount(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	a1, err := crystallineToPtrAccountAccount(args[1])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	a2, err := crystallineToInt(args[2])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := account.Transfer(a0, a1, a2)
 
 	if r0 != nil {
 		return crystallineErr(r0)
@@ -633,7 +671,12 @@ func crystallineFnAccountSummarise(this js.Value, args []js.Value) (result any) 
 		return crystallineFail("Summarise: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := account.Summarise(crystallineMust(crystallineToAccountAccount(args[0])))
+	a0, err := crystallineToAccountAccount(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := account.Summarise(a0)
 
 	return string(r0)
 }
@@ -645,7 +688,12 @@ func crystallineFnAccountParseAmount(this js.Value, args []js.Value) (result any
 		return crystallineFail("ParseAmount: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0, r1 := account.ParseAmount(crystallineMust(crystallineToString(args[0])))
+	a0, err := crystallineToString(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0, r1 := account.ParseAmount(a0)
 
 	if r1 != nil {
 		return crystallineErr(r1)
@@ -665,12 +713,26 @@ func crystallineMarshalAccountAccount(v *account.Account) any {
 	crystallineDefine(scope, out, "Owner", func() any {
 		return string(v.Owner)
 	}, func(value js.Value) {
-		v.Owner = crystallineMust(crystallineToString(value))
+		converted, err := crystallineToString(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Owner = converted
 	})
 	crystallineDefine(scope, out, "Balance", func() any {
 		return float64(v.Balance)
 	}, func(value js.Value) {
-		v.Balance = crystallineMust(crystallineToInt(value))
+		converted, err := crystallineToInt(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Balance = converted
 	})
 	crystallineDefine(scope, out, "History", func() any {
 		return func() any {
@@ -686,7 +748,14 @@ func crystallineMarshalAccountAccount(v *account.Account) any {
 			return out
 		}()
 	}, func(value js.Value) {
-		v.History = crystallineMust(crystallineToSliceOfString(value))
+		converted, err := crystallineToSliceOfString(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.History = converted
 	})
 	out.Set("Deposit", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
@@ -695,7 +764,12 @@ func crystallineMarshalAccountAccount(v *account.Account) any {
 			return crystallineFail("Deposit: expected 1 arguments, got " + strconv.Itoa(len(args)))
 		}
 
-		r0 := v.Deposit(crystallineMust(crystallineToInt(args[0])))
+		a0, err := crystallineToInt(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		r0 := v.Deposit(a0)
 
 		if r0 != nil {
 			return crystallineErr(r0)
@@ -732,7 +806,12 @@ func crystallineMarshalAccountAccount(v *account.Account) any {
 			return crystallineFail("Withdraw: expected 1 arguments, got " + strconv.Itoa(len(args)))
 		}
 
-		r0 := v.Withdraw(crystallineMust(crystallineToInt(args[0])))
+		a0, err := crystallineToInt(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		r0 := v.Withdraw(a0)
 
 		if r0 != nil {
 			return crystallineErr(r0)

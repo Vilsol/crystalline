@@ -69,7 +69,20 @@ func crystallinePromise(body func() any) any {
 				}
 			}()
 
-			resolve.Invoke(body())
+			value := body()
+
+			// A failure inside the body travels through the same slot a
+			// synchronous call uses, so generated code has one way to report
+			// one and needs no panic to do it. The JS wrapper cannot read the
+			// slot here: it handed back the promise before the body ran.
+			if failure := js.Global().Get("goInternalError"); !failure.IsUndefined() {
+				js.Global().Set("goInternalError", js.Undefined())
+				reject.Invoke(js.Global().Get("Error").New(failure.String()))
+
+				return
+			}
+
+			resolve.Invoke(value)
 		}()
 
 		return nil

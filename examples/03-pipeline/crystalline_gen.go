@@ -97,7 +97,20 @@ func crystallinePromise(body func() any) any {
 				}
 			}()
 
-			resolve.Invoke(body())
+			value := body()
+
+			// A failure inside the body travels through the same slot a
+			// synchronous call uses, so generated code has one way to report
+			// one and needs no panic to do it. The JS wrapper cannot read the
+			// slot here: it handed back the promise before the body ran.
+			if failure := js.Global().Get("goInternalError"); !failure.IsUndefined() {
+				js.Global().Set("goInternalError", js.Undefined())
+				reject.Invoke(js.Global().Get("Error").New(failure.String()))
+
+				return
+			}
+
+			resolve.Invoke(value)
 		}()
 
 		return nil
@@ -607,7 +620,12 @@ func crystallineFnFeedPrimes(this js.Value, args []js.Value) (result any) {
 
 	crystallineCtx, crystallineStop := crystallineContext(args[0])
 
-	r0 := feed.Primes(crystallineCtx, crystallineMust(crystallineToInt(args[1])))
+	a1, err := crystallineToInt(args[1])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := feed.Primes(crystallineCtx, a1)
 
 	return crystallineIterator(func() (any, bool) {
 		item, ok := <-r0
@@ -632,8 +650,8 @@ func crystallineFnFeedAverage(this js.Value, args []js.Value) (result any) {
 
 		r0 := feed.Average(crystallineFeed0)
 
-		if err := crystallineFeed0Stop(); err != nil {
-			panic("values: " + err.Error())
+		if stopped := crystallineFeed0Stop(); stopped != nil {
+			return crystallineFail("values: " + stopped.Error())
 		}
 
 		return float64(r0)
@@ -651,7 +669,12 @@ func crystallineFnFeedCrunch(this js.Value, args []js.Value) (result any) {
 		crystallineCtx, crystallineStop := crystallineContext(args[0])
 		defer crystallineStop()
 
-		r0, r1 := feed.Crunch(crystallineCtx, crystallineMust(crystallineToInt(args[1])))
+		a1, err := crystallineToInt(args[1])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		r0, r1 := feed.Crunch(crystallineCtx, a1)
 
 		if r1 != nil {
 			return crystallineErr(r1)
@@ -669,7 +692,17 @@ func crystallineFnFeedDigest(this js.Value, args []js.Value) (result any) {
 	}
 
 	return crystallinePromise(func() any {
-		r0 := feed.Digest(crystallineMust(crystallineToString(args[0])), crystallineMust(crystallineToInt(args[1])))
+		a0, err := crystallineToString(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		a1, err := crystallineToInt(args[1])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		r0 := feed.Digest(a0, a1)
 
 		return string(r0)
 	})

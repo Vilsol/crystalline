@@ -102,7 +102,20 @@ func crystallinePromise(body func() any) any {
 				}
 			}()
 
-			resolve.Invoke(body())
+			value := body()
+
+			// A failure inside the body travels through the same slot a
+			// synchronous call uses, so generated code has one way to report
+			// one and needs no panic to do it. The JS wrapper cannot read the
+			// slot here: it handed back the promise before the body ran.
+			if failure := js.Global().Get("goInternalError"); !failure.IsUndefined() {
+				js.Global().Set("goInternalError", js.Undefined())
+				reject.Invoke(js.Global().Get("Error").New(failure.String()))
+
+				return
+			}
+
+			resolve.Invoke(value)
 		}()
 
 		return nil
@@ -633,7 +646,12 @@ func crystallineFnCatalogueDescribe(this js.Value, args []js.Value) (result any)
 		return crystallineFail("Describe: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := catalogue.Describe(crystallineMust(crystallineToPtrCatalogueItem(args[0])))
+	a0, err := crystallineToPtrCatalogueItem(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := catalogue.Describe(a0)
 
 	return string(r0)
 }
@@ -646,7 +664,17 @@ func crystallineFnCatalogueRestock(this js.Value, args []js.Value) (result any) 
 	}
 
 	return crystallinePromise(func() any {
-		r0 := catalogue.Restock(crystallineMust(crystallineToCatalogueNotifier(args[0])), crystallineMust(crystallineToSliceOfString(args[1])))
+		a0, err := crystallineToCatalogueNotifier(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		a1, err := crystallineToSliceOfString(args[1])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		r0 := catalogue.Restock(a0, a1)
 
 		return float64(r0)
 	})
@@ -671,7 +699,14 @@ func crystallineMarshalCatalogueAudited(v *catalogue.Audited) any {
 
 		return crystallineCacheCreatedAt
 	}, func(value js.Value) {
-		v.CreatedAt = crystallineMust(crystallineToTimeTime(value))
+		converted, err := crystallineToTimeTime(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.CreatedAt = converted
 	})
 	out.Set("Listed", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
@@ -709,12 +744,26 @@ func crystallineMarshalCatalogueItem(v *catalogue.Item) any {
 
 		return crystallineCacheAudited
 	}, func(value js.Value) {
-		v.Audited = crystallineMust(crystallineToCatalogueAudited(value))
+		converted, err := crystallineToCatalogueAudited(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Audited = converted
 	})
 	crystallineDefine(scope, out, "Name", func() any {
 		return string(v.Name)
 	}, func(value js.Value) {
-		v.Name = crystallineMust(crystallineToString(value))
+		converted, err := crystallineToString(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Name = converted
 	})
 	var crystallineCachePrice any
 	var crystallineCachedPrice bool
@@ -727,12 +776,26 @@ func crystallineMarshalCatalogueItem(v *catalogue.Item) any {
 
 		return crystallineCachePrice
 	}, func(value js.Value) {
-		v.Price = crystallineMust(crystallineToCatalogueMoney(value))
+		converted, err := crystallineToCatalogueMoney(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Price = converted
 	})
 	crystallineDefine(scope, out, "Status", func() any {
 		return float64(v.Status)
 	}, func(value js.Value) {
-		v.Status = crystallineMust(crystallineToCatalogueStatus(value))
+		converted, err := crystallineToCatalogueStatus(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Status = converted
 	})
 	out.Set("Listed", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
@@ -752,7 +815,12 @@ func crystallineMarshalCatalogueItem(v *catalogue.Item) any {
 			return crystallineFail("Reprice: expected 1 arguments, got " + strconv.Itoa(len(args)))
 		}
 
-		v.Reprice(crystallineMust(crystallineToCatalogueMoney(args[0])))
+		a0, err := crystallineToCatalogueMoney(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		v.Reprice(a0)
 
 		return nil
 	})))

@@ -15,6 +15,7 @@ cd "$(dirname "$0")"
 
 if ! command -v tinygo >/dev/null; then
 	echo "tinygo is not installed: https://tinygo.org/getting-started/install/" >&2
+	echo "or, if mise already has it: mise exec go@1.26.7 tinygo@0.41.1 -- $0 $*" >&2
 	exit 1
 fi
 
