@@ -363,7 +363,7 @@ func (g *Generator) renderEntity(namespace string, entry Entry) (string, error) 
 	}
 
 	if optional {
-		jsName += " | undefined"
+		jsName += orUndefined
 	}
 
 	return "  const " + entry.Name + ": " + jsName + ";\n", nil
@@ -611,7 +611,7 @@ func isContextType(t types.Type) bool {
 
 	obj := named.Obj()
 
-	return obj.Pkg() != nil && obj.Pkg().Path() == "context" && obj.Name() == "Context"
+	return obj.Pkg() != nil && obj.Pkg().Path() == contextPackage && obj.Name() == "Context"
 }
 
 // splitError separates a trailing error from the values a call produces.
@@ -765,7 +765,7 @@ func (g *Generator) sequenceToJS(elem types.Type) (string, bool, error) {
 	}
 
 	if optional {
-		jsName += " | undefined"
+		jsName += orUndefined
 	}
 
 	return "Array<" + jsName + ">", true, nil
@@ -778,7 +778,7 @@ func (g *Generator) mapToJS(typed *types.Map) (string, bool, error) {
 	}
 
 	if keyOptional {
-		keyName += " | undefined"
+		keyName += orUndefined
 	}
 
 	valueName, valueOptional, err := g.tsType(typed.Elem())
@@ -787,7 +787,7 @@ func (g *Generator) mapToJS(typed *types.Map) (string, bool, error) {
 	}
 
 	if valueOptional {
-		valueName += " | undefined"
+		valueName += orUndefined
 	}
 
 	return "Record<" + keyName + ", " + valueName + ">", true, nil

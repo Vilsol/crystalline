@@ -1,31 +1,56 @@
+version: "2"
 linters:
-  disable-all: true
+  default: none
   enable:
-    - deadcode
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - structcheck
-    - typecheck
-    - unused
-    - varcheck
     - bidichk
     - contextcheck
     - durationcheck
+    - errcheck
     - errorlint
     - goconst
-    - goimports
-    - revive
-    - ifshort
+    - govet
+    - ineffassign
     - misspell
     - prealloc
+    - revive
+    - staticcheck
+    - unused
     - whitespace
     - wrapcheck
-
-linters-settings:
-  revive:
+  settings:
+    revive:
+      rules:
+        - name: unused-parameter
+          disabled: true
+  exclusions:
+    generated: lax
     rules:
-      - name: unused-parameter
-        disabled: true
+      # The command hands its errors straight to main, which prints them with a
+      # prefix. They already carry their own context, so wrapping again would
+      # only repeat it.
+      - path: cmd/
+        linters:
+          - wrapcheck
+      # Fixtures exist to be generated from, not to be exemplary Go.
+      - path: testdata/
+        linters:
+          - revive
+          - unused
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

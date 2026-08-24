@@ -27,7 +27,7 @@ func newImports(selfPath string) *imports {
 		aliases: make(map[string]string),
 		taken: map[string]bool{
 			// Reserved by the generated prelude's own imports.
-			"context": true, "errors": true, "strconv": true, "sync": true, "js": true,
+			contextPackage: true, "errors": true, "strconv": true, "sync": true, "js": true,
 		},
 		self: selfPath,
 	}

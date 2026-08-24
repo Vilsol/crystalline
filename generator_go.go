@@ -12,11 +12,6 @@ import (
 	"strings"
 )
 
-// Generated bindings may only depend on packages that are free of reflect,
-// otherwise emitting them buys nothing: the linker keeps type metadata for
-// everything reachable. syscall/js and strconv qualify; fmt does not.
-const generatedImports = "\t\"context\"\n\t\"errors\"\n\t\"strconv\"\n\t\"sync\"\n\t\"syscall/js\"\n"
-
 // Skipped records something that could not be bound, so that a gap in the
 // generated surface is reported rather than silently omitted.
 type Skipped struct {
@@ -200,7 +195,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	body.WriteString(helpers.String())
 
 	// Imports are collected while rendering, so the block is written last.
-	out.WriteString(e.imports.block([]string{"context", "errors", "strconv", "sync", "syscall/js"}))
+	out.WriteString(e.imports.block([]string{contextPackage, "errors", "strconv", "sync", "syscall/js"}))
 	out.WriteString(body.String())
 
 	return out.String(), nil
@@ -735,14 +730,14 @@ func (e *emitter) fieldSetter(target string, t types.Type) (string, error) {
 // emitConverter renders the JS to Go conversion for a struct: a wrapper handed
 // back resolves to the value it came from, anything else is built field by
 // field and validated.
-func (e *emitter) emitStructConverter(fn string, goType string, named *types.Named) (string, error) {
+func (e *emitter) emitStructConverter(fn string, named *types.Named) (string, error) {
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
 	}
 
 	name := instantiatedName(named)
-	goType = e.declaredName(named)
+	goType := e.declaredName(named)
 
 	var known []string
 
@@ -882,7 +877,7 @@ func (e *emitter) emitValueConverter(name string, t types.Type) (string, error) 
 		return e.emitBasicConverter(name, goType, typed)
 	case *types.Named, *types.Alias:
 		if _, ok := t.Underlying().(*types.Struct); ok {
-			return e.emitStructConverter(name, goType, t.(*types.Named))
+			return e.emitStructConverter(name, t.(*types.Named))
 		}
 
 		return e.emitValueConverterFor(name, goType, t.Underlying())
@@ -1202,14 +1197,6 @@ func (e *emitter) queue(named *types.Named) {
 	}
 
 	e.pending = append(e.pending, named)
-}
-
-func typeName(t types.Type) string {
-	if obj := namedObject(t); obj != nil {
-		return obj.Name()
-	}
-
-	return t.String()
 }
 
 func isErrorType(t types.Type) bool {
@@ -1730,6 +1717,10 @@ func crystallineError(err error) any {
 }
 
 `
+
+// contextPackage is the import path of the only package whose type is given a
+// meaning of its own.
+const contextPackage = "context"
 
 func isStructType(named *types.Named) bool {
 	_, ok := named.Underlying().(*types.Struct)

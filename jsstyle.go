@@ -62,6 +62,9 @@ func (o Output) WriteFiles(jsPath string, tsPath string) error {
 	return nil
 }
 
+// orUndefined marks a value JavaScript may not have.
+const orUndefined = " | undefined"
+
 // Output is the pair of files a build produces.
 type Output struct {
 	// JavaScript is the ES module that binds the wasm exports into a

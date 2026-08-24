@@ -7,33 +7,31 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.26'
-
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # mise.toml pins both Go and golangci-lint, so CI and a developer's
+      # machine cannot drift apart.
+      - name: Set up tools
+        uses: jdx/mise-action@v4
 
       - name: Test
         run: ./run_tests.sh
 
       - name: Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v7
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.26'
-
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+      - name: Set up tools
+        uses: jdx/mise-action@v4
+
+      - name: Lint
+        run: golangci-lint run ./...
