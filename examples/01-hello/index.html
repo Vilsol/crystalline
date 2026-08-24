@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crystalline — hello</title>
+<link rel="stylesheet" href="../example.css">
+</head>
+<body>
+
+<h1>hello</h1>
+<p>Two Go functions, called from JavaScript as if they were local.</p>
+
+<section>
+	<h2>Greet(name string) string</h2>
+	<div class="row">
+		<input id="name" value="Vilsol" autocomplete="off">
+		<button id="greet">Greet</button>
+	</div>
+	<output id="greeting"></output>
+</section>
+
+<section>
+	<h2>Add(a int, b int) int</h2>
+	<div class="row">
+		<input id="a" type="number" value="2" size="4">
+		<input id="b" type="number" value="3" size="4">
+		<button id="add">Add</button>
+	</div>
+	<output id="sum"></output>
+</section>
+
+<script src="wasm_exec.js"></script>
+<script type="module">
+import { greeting, initializeCrystalline } from "./crystalline.js";
+
+// Two steps, always in this order: start the Go program, then bind.
+const runtime = new Go();
+const { instance } = await WebAssembly.instantiateStreaming(fetch("app.wasm"), runtime.importObject);
+
+// Not awaited: main parks, so this promise never settles.
+runtime.run(instance);
+
+initializeCrystalline();
+
+// From here on the Go functions are ordinary JavaScript functions.
+const $ = (id) => document.getElementById(id);
+
+$("greet").onclick = () => {
+	$("greeting").textContent = greeting.Greet($("name").value);
+};
+
+$("add").onclick = () => {
+	$("sum").textContent = greeting.Add(Number($("a").value), Number($("b").value));
+};
+
+$("greet").click();
+$("add").click();
+</script>
+
+</body>
+</html>

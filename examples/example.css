@@ -1,0 +1,85 @@
+:root {
+	color-scheme: light dark;
+	--edge: color-mix(in srgb, currentColor 20%, transparent);
+	--sunken: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+body {
+	margin: 0 auto;
+	padding: 2rem 1.25rem 4rem;
+	max-width: 44rem;
+	font: 16px/1.6 system-ui, sans-serif;
+}
+
+h1 {
+	margin: 0;
+	font-size: 1.5rem;
+}
+
+h1 + p {
+	margin-top: 0.25rem;
+	opacity: 0.7;
+}
+
+section {
+	margin-top: 2rem;
+	padding-top: 1.5rem;
+	border-top: 1px solid var(--edge);
+}
+
+h2 {
+	margin: 0 0 0.75rem;
+	font-size: 1rem;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	opacity: 0.6;
+}
+
+.row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+}
+
+input, button, select {
+	padding: 0.4rem 0.7rem;
+	border: 1px solid var(--edge);
+	border-radius: 0.4rem;
+	background: none;
+	color: inherit;
+	font: inherit;
+}
+
+button {
+	cursor: pointer;
+	background: var(--sunken);
+}
+
+button:disabled {
+	cursor: default;
+	opacity: 0.4;
+}
+
+output, pre {
+	display: block;
+	margin-top: 0.75rem;
+	padding: 0.6rem 0.8rem;
+	border-radius: 0.4rem;
+	background: var(--sunken);
+	font-family: ui-monospace, monospace;
+	font-size: 0.9rem;
+	white-space: pre-wrap;
+	min-height: 1.6em;
+}
+
+.failed {
+	color: #c0392b;
+}
+
+ul {
+	margin: 0.75rem 0 0;
+	padding-left: 1.25rem;
+	font-family: ui-monospace, monospace;
+	font-size: 0.9rem;
+}

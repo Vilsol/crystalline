@@ -35,3 +35,23 @@ jobs:
 
       - name: Lint
         run: golangci-lint run ./...
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v7
+
+      - name: Set up tools
+        uses: jdx/mise-action@v4
+
+      # Builds every example for wasm and runs it under node, so an example that
+      # has stopped working fails here rather than in someone's browser.
+      - name: Examples
+        run: ./examples/check.sh
+
+      # The generated files are committed so they can be read on their own. This
+      # catches the case where the generator changed and they were not updated.
+      - name: Generated output is current
+        run: git diff --exit-code examples

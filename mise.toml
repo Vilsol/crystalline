@@ -1,3 +1,15 @@
 [tools]
 go = "1.26.7"
 golangci-lint = "2.13.1"
+
+[tasks.test]
+description = "Run the test suite"
+run = "./run_tests.sh"
+
+[tasks.examples]
+description = "Generate, build and check every example under node"
+run = "./examples/check.sh"
+
+[tasks."examples:serve"]
+description = "Serve the examples on http://localhost:8000"
+run = "python3 -m http.server --directory examples 8000"

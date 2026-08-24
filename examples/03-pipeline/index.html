@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crystalline — pipeline</title>
+<link rel="stylesheet" href="../example.css">
+</head>
+<body>
+
+<h1>pipeline</h1>
+<p>Go concurrency, spelled the way JavaScript spells it.</p>
+
+<section>
+	<h2>Channel out — for await</h2>
+	<div class="row">
+		<input id="limit" type="number" value="120" size="6">
+		<button id="start">Stream primes</button>
+		<button id="stop" disabled>Abort</button>
+	</div>
+	<output id="primes"></output>
+</section>
+
+<section>
+	<h2>Channel in — anything iterable</h2>
+	<div class="row">
+		<input id="values" value="1, 2, 3, 4.5" autocomplete="off">
+		<button id="average">Average an array</button>
+		<button id="averageLive">Average a live generator</button>
+	</div>
+	<output id="mean"></output>
+</section>
+
+<section>
+	<h2>Context — an abort signal</h2>
+	<div class="row">
+		<input id="rounds" type="number" value="20" size="6">
+		<button id="crunch">Crunch</button>
+		<button id="cancel" disabled>Cancel</button>
+	</div>
+	<output id="crunched"></output>
+</section>
+
+<section>
+	<h2>Promise by request</h2>
+	<div class="row">
+		<input id="text" value="crystalline" autocomplete="off">
+		<button id="digest">Digest</button>
+	</div>
+	<output id="digested"></output>
+</section>
+
+<script src="wasm_exec.js"></script>
+<script type="module">
+import { feed, initializeCrystalline } from "./crystalline.js";
+
+const runtime = new Go();
+const { instance } = await WebAssembly.instantiateStreaming(fetch("app.wasm"), runtime.importObject);
+
+runtime.run(instance);
+
+initializeCrystalline();
+
+const $ = (id) => document.getElementById(id);
+
+// A receive-only channel is an async iterable. The call itself is a promise
+// because the abort signal has to be wired up before anything can be produced.
+let streaming = null;
+
+$("start").onclick = async () => {
+	streaming?.abort();
+	streaming = new AbortController();
+
+	$("primes").textContent = "";
+	$("stop").disabled = false;
+
+	// Aborting ends the stream, and so does breaking out of this loop.
+	for await (const prime of await feed.Primes(streaming.signal, Number($("limit").value))) {
+		$("primes").textContent += `${prime} `;
+	}
+
+	$("primes").textContent += "· done";
+	$("stop").disabled = true;
+};
+
+$("stop").onclick = () => streaming?.abort();
+
+// A channel parameter takes an array, a generator, or anything else iterable.
+$("average").onclick = async () => {
+	const values = $("values").value.split(",").map(Number);
+
+	$("mean").textContent = await feed.Average(values);
+};
+
+$("averageLive").onclick = async () => {
+	async function* trickle() {
+		for (const value of $("values").value.split(",").map(Number)) {
+			await new Promise((resolve) => setTimeout(resolve, 150));
+
+			yield value;
+		}
+	}
+
+	$("mean").textContent = "reading…";
+	$("mean").textContent = await feed.Average(trickle());
+};
+
+// A context arrives as an AbortSignal, which is the only way to interrupt Go
+// work that would otherwise hold the single JS thread.
+let crunching = null;
+
+$("crunch").onclick = async () => {
+	crunching = new AbortController();
+
+	$("crunched").textContent = "working…";
+	$("crunched").classList.remove("failed");
+	$("cancel").disabled = false;
+
+	const result = await feed.Crunch(crunching.signal, Number($("rounds").value));
+
+	$("crunched").textContent = result.ok ? result.value : result.error.message;
+	$("crunched").classList.toggle("failed", !result.ok);
+	$("cancel").disabled = true;
+};
+
+$("cancel").onclick = () => crunching?.abort();
+
+// Nothing about Digest is asynchronous in Go. The manifest asked for a promise,
+// so the call site hands control back instead of waiting for the result.
+$("digest").onclick = async () => {
+	$("digested").textContent = await feed.Digest($("text").value, 200000);
+};
+</script>
+
+</body>
+</html>

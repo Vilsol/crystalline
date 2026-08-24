@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crystalline — accounts</title>
+<link rel="stylesheet" href="../example.css">
+</head>
+<body>
+
+<h1>accounts</h1>
+<p>A Go struct, viewed live from JavaScript. The money never leaves Go.</p>
+
+<section>
+	<h2>Two accounts</h2>
+	<div class="row">
+		<select id="who">
+			<option value="0">Alice</option>
+			<option value="1">Bob</option>
+		</select>
+		<input id="amount" type="number" value="50" size="6">
+		<button id="deposit">Deposit</button>
+		<button id="withdraw">Withdraw</button>
+		<button id="transfer">Transfer to the other</button>
+	</div>
+	<output id="outcome"></output>
+	<pre id="state"></pre>
+</section>
+
+<section>
+	<h2>Fields write through</h2>
+	<div class="row">
+		<input id="owner" value="Alice" autocomplete="off">
+		<button id="rename">Rename the selected account</button>
+	</div>
+	<output id="statement"></output>
+</section>
+
+<section>
+	<h2>Result, without a union to narrow</h2>
+	<div class="row">
+		<input id="text" value="twelve" autocomplete="off">
+		<button id="parse">ParseAmount</button>
+	</div>
+	<output id="parsed"></output>
+</section>
+
+<section>
+	<h2>Deterministic release</h2>
+	<div class="row">
+		<button id="release">Release the selected account</button>
+	</div>
+	<output id="released"></output>
+</section>
+
+<script src="wasm_exec.js"></script>
+<script type="module">
+import { account, initializeCrystalline } from "./crystalline.js";
+
+const runtime = new Go();
+const { instance } = await WebAssembly.instantiateStreaming(fetch("app.wasm"), runtime.importObject);
+
+runtime.run(instance);
+
+initializeCrystalline();
+
+const $ = (id) => document.getElementById(id);
+
+// Each of these is a live view of a Go value, not a snapshot of one.
+const accounts = [account.Open("Alice", 100), account.Open("Bob", 0)];
+
+const selected = () => accounts[Number($("who").value)];
+const other = () => accounts[1 - Number($("who").value)];
+const amount = () => Number($("amount").value);
+
+// A Result is one object with ok, error and unwrap: no narrowing at the call
+// site, and no await for a call that is merely fallible.
+const report = (result) => {
+	$("outcome").textContent = result.ok ? "ok" : result.error.message;
+	$("outcome").classList.toggle("failed", !result.ok);
+
+	render();
+};
+
+const render = () => {
+	$("state").textContent = accounts
+		.map((a) => `${a.Owner}: ${a.Balance}\n  ${a.History.join("\n  ")}`)
+		.join("\n\n");
+};
+
+$("deposit").onclick = () => report(selected().Deposit(amount()));
+$("withdraw").onclick = () => report(selected().Withdraw(amount()));
+$("transfer").onclick = () => report(account.Transfer(selected(), other(), amount()));
+
+$("rename").onclick = () => {
+	// Assigning the property reaches the Go struct, so the Go method that
+	// reads the field sees the new name.
+	selected().Owner = $("owner").value;
+
+	$("statement").textContent = selected().Statement();
+
+	render();
+};
+
+$("parse").onclick = () => {
+	const result = account.ParseAmount($("text").value);
+
+	$("parsed").textContent = `unwrapOr(0) = ${result.unwrapOr(0)}` + (result.ok ? "" : `\nerror: ${result.error.message}`);
+	$("parsed").classList.toggle("failed", !result.ok);
+};
+
+$("release").onclick = () => {
+	// Go holds resources for every wrapper. release() frees them now instead
+	// of waiting for the collector; using-declarations do the same at scope
+	// exit. Anything that touches the wrapper afterwards throws.
+	selected().release();
+
+	try {
+		account.Summarise(selected());
+		$("released").textContent = "still usable";
+	} catch (error) {
+		$("released").textContent = error.message;
+	}
+};
+
+render();
+</script>
+
+</body>
+</html>

@@ -112,4 +112,13 @@ Anything that cannot be bound is named, with the reason:
 crystalline: skipped api.Watch: type chan Event cannot be read from JS
 ```
 
+## Examples
+
+Three worked examples, each a page backed by a real wasm binary:
+
+```sh
+mise run examples        # generate, build and check them under node
+mise run examples:serve  # then open http://localhost:8000/01-hello/
+```
+
 Requires Go 1.26 or newer.

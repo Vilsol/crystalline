@@ -40,6 +40,8 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   rejecting unknown properties and mistyped values.
 - `Skipped` reporting: anything that cannot be bound is named with its reason.
 - Golden-file tests for the emitted declarations and module.
+- Three worked examples under `examples`, each a page backed by a real wasm
+  binary, built and run under node by CI.
 
 #### Changed
 

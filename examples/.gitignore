@@ -1,0 +1,4 @@
+# Build output. Everything the generator writes is committed; everything the
+# toolchain copies or compiles is not.
+app.wasm
+wasm_exec.js

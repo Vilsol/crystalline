@@ -1,0 +1,17 @@
+export interface Result<T> {
+  /** Whether the call succeeded. */
+  readonly ok: boolean;
+  /** The value, when the call succeeded. */
+  readonly value?: T;
+  /** The error, when the call failed. */
+  readonly error?: Error;
+  /** Returns the value, throwing the error if the call failed. */
+  unwrap(): T;
+  /** Returns the value, or the fallback if the call failed. */
+  unwrapOr(fallback: T): T;
+}
+export declare namespace greeting {
+  function Add(a: number, b: number): number;
+  function Greet(name: string): string;
+}
+export const initializeCrystalline: () => void;
