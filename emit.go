@@ -82,6 +82,11 @@ func newEmitter(g *Generator, packageName string, selfPath string, declarations 
 type analysis struct {
 	skipped  []Skipped
 	readonly map[string]bool
+
+	// dropped names everything the bindings left out, so the declarations can
+	// leave out the same things. Describing a member the bindings never
+	// published gave a wrap(undefined) and a TypeError at the call.
+	dropped map[string]bool
 }
 
 func (g *Generator) analyse(declarations Declarations) (analysis, error) {
@@ -91,7 +96,12 @@ func (g *Generator) analyse(declarations Declarations) (analysis, error) {
 		return analysis{}, err
 	}
 
-	return analysis{skipped: e.skipped, readonly: e.readonly}, nil
+	dropped := make(map[string]bool, len(e.skipped))
+	for _, skipped := range e.skipped {
+		dropped[skipped.Name] = true
+	}
+
+	return analysis{skipped: e.skipped, readonly: e.readonly, dropped: dropped}, nil
 }
 
 type emitter struct {
@@ -341,7 +351,7 @@ func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
 	body.WriteString("\t}\n\n")
 
 	returns, err := e.emitCall(sig, func(call []string) string {
-		return e.qualifier(fn.Pkg()) + "." + fn.Name() + "(" + strings.Join(call, ", ") + ")"
+		return qualified(e.qualifier(fn.Pkg()), fn.Name()) + "(" + strings.Join(call, ", ") + ")"
 	})
 	if err != nil {
 		return "", err
@@ -357,6 +367,20 @@ func (e *emitter) emitDeclaredFunc(entry Entry) (string, error) {
 // asynchronous, matching what the declarations promise.
 // hasCallback reports whether the signature takes a function, which cannot be
 // serviced without yielding to the JS event loop.
+// qualified joins a package qualifier to a name.
+//
+// The qualifier is empty for the package the generated file itself belongs to,
+// which is the layout the export directive implies: bindings written next to
+// the code they bind. Joining with a dot regardless produced ".Owned()", so the
+// generated file did not compile.
+func qualified(qualifier string, name string) string {
+	if qualifier == "" {
+		return name
+	}
+
+	return qualifier + "." + name
+}
+
 // asyncSignature reports whether a call has to be a promise whatever the
 // manifest asked for.
 //

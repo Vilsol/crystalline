@@ -517,3 +517,26 @@ func wrapperBody(t *testing.T, source string, name string) string {
 
 	return body[:strings.Index(body, "\n}\n")]
 }
+
+// TestSelfPackageBindingsCompile pins the layout the export directive implies:
+// bindings generated into the same package as the code they bind.
+//
+// The qualifier is empty for the package the generated file belongs to, and it
+// was concatenated with a dot regardless, so the call came out as ".Owned()".
+// The shorthand documented for code you own had never worked in the layout it
+// describes; every test reached the directive fixture through Build alone.
+func TestSelfPackageBindingsCompile(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/directive"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	pkg, err := g.BuildGo(declarations, "directive", "github.com/Vilsol/crystalline/testdata/directive")
+	testza.AssertNoError(t, err, "bindings generated into their own package must be valid Go")
+
+	testza.AssertTrue(t, strings.Contains(pkg.Source, "r0 := Owned()"),
+		"a call in the same package must not be qualified:\n"+pkg.Source)
+	testza.AssertFalse(t, strings.Contains(pkg.Source, ":= .Owned()"),
+		"the empty qualifier must not leave a stray dot:\n"+pkg.Source)
+}

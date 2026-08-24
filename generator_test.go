@@ -185,6 +185,10 @@ func TestBidirectionalChannelReturnIsAccepted(t *testing.T) {
 // is refused rather than guessed at. Reading it as a source silently discards
 // anything the function sends, and a duplex over a single channel cannot work:
 // Go would receive its own values.
+//
+// Refused means left out of every artifact and named in the report, not the
+// whole build failing: one member nobody can bind should not stop the rest of a
+// package from being generated.
 func TestBidirectionalChannelParameterIsRejected(t *testing.T) {
 	g := NewGenerator("app")
 	testza.AssertNoError(t, g.Load(".", "./testdata/bidiparam"))
@@ -192,10 +196,23 @@ func TestBidirectionalChannelParameterIsRejected(t *testing.T) {
 	declarations, err := g.Declarations()
 	testza.AssertNoError(t, err)
 
-	_, err = g.Build(declarations)
-	testza.AssertNotNil(t, err, "an undirected channel parameter must not be guessed at")
-	testza.AssertTrue(t, strings.Contains(err.Error(), "<-chan"),
-		"the error must say how to fix it, got: "+errText(err))
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Both"),
+		"an undirected channel parameter must not be declared:\n"+out.TypeScript)
+
+	reported := make([]string, 0, len(out.Skipped))
+	for _, skipped := range out.Skipped {
+		reported = append(reported, skipped.String())
+	}
+
+	joined := strings.Join(reported, "\n")
+
+	testza.AssertTrue(t, strings.Contains(joined, "Both"),
+		"it must be named, got:\n"+joined)
+	testza.AssertTrue(t, strings.Contains(joined, "<-chan"),
+		"and the report must say how to fix it, got:\n"+joined)
 }
 
 // TestPointerParametersStayRequired pins that a pointer parameter renders as a
@@ -342,4 +359,38 @@ func TestResultIsDeclaredOnlyWhenUsed(t *testing.T) {
 
 	testza.AssertTrue(t, strings.Contains(used.TypeScript, "export interface Result<T> {"),
 		"a fallible surface must declare Result:\n"+used.TypeScript)
+}
+
+// TestUnbindableMembersAreSkippedNotFatal pins one policy for something that
+// cannot be bound: it is reported and left out of every artifact.
+//
+// The two builders disagreed. BuildGo skipped and reported; Build errored for a
+// channel and silently declared an interface{} as unknown. So the command could
+// not generate a package containing one unbindable member at all, and where it
+// did generate, the declarations described functions the bindings never
+// published, giving wrap(undefined) and a TypeError at the call.
+func TestUnbindableMembersAreSkippedNotFatal(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/nobind/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err, "one unbindable member must not stop the whole build")
+
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Send"),
+		"an unbindable member must not be declared:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.JavaScript, "Send"),
+		"an unbindable member must not be bound:\n"+out.JavaScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "Fine"),
+		"its bindable siblings must survive:\n"+out.TypeScript)
+
+	reported := make([]string, 0, len(out.Skipped))
+	for _, skipped := range out.Skipped {
+		reported = append(reported, skipped.String())
+	}
+
+	testza.AssertTrue(t, strings.Contains(strings.Join(reported, "\n"), "Send"),
+		"and it must be named, got:\n"+strings.Join(reported, "\n"))
 }

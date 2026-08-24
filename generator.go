@@ -44,6 +44,10 @@ type Generator struct {
 	// with nothing fallible does not carry a Result declaration.
 	usesResult bool
 
+	// dropped names what the bindings could not bind, so the declarations leave
+	// out exactly what the bindings did.
+	dropped map[string]bool
+
 	// promises records which declarations carry the promise directive, keyed by
 	// a stable name rather than by object identity: a package loaded twice
 	// yields different objects for the same declaration.

@@ -89,6 +89,17 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `Result` is declared only when something on the surface can fail. A surface
   with nothing fallible used to carry a type a consumer could name but never
   receive.
+- Bindings generated into the package they bind now compile. The qualifier is
+  empty for the generated file's own package and was joined with a dot
+  regardless, emitting `.Owned()`, so `//crystalline:export` had never worked
+  in the layout it documents.
+- Something that cannot be bound is now skipped and reported by both
+  builders. They disagreed: `BuildGo` skipped, while `Build` failed outright
+  for a channel and silently declared an `interface{}` as `unknown`. One
+  unbindable member therefore stopped the command generating anything at all,
+  and where it did generate, the declarations described functions the
+  bindings never published, giving `wrap(undefined)` and a `TypeError` at the
+  call site.
 - Reading a struct-typed field returns the same wrapper every time. It used to
   build a fresh one per read, which broke `===`, `Map` keys and every
   framework's memo comparison, and allocated a handle and a set of bridge

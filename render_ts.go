@@ -20,6 +20,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	}
 
 	g.readonly = analysed.readonly
+	g.dropped = analysed.dropped
 	g.usesResult = false
 
 	entities := make(map[string][]Entry)
@@ -31,6 +32,12 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	seen := make(map[*types.Named]bool)
 
 	for _, entry := range declarations.Entries {
+		// Left out of the bindings, so left out here too. One decision about
+		// what can be bound, read by both artifacts.
+		if g.dropped[entry.Namespace+"."+entry.Name] {
+			continue
+		}
+
 		switch entry.Kind {
 		case EntryFunc, EntryValue:
 			entities[entry.Namespace] = append(entities[entry.Namespace], entry)
@@ -240,6 +247,10 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), field.Name(), err)
 		}
 
+		if g.dropped[instantiatedName(named)+"."+field.Name()] {
+			continue
+		}
+
 		jsName, optional, err := g.tsType(field.Type())
 		if err != nil {
 			return "", fmt.Errorf("%s.%s: %w", named.Obj().Name(), field.Name(), err)
@@ -273,7 +284,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
 
 	for _, method := range methods {
-		if g.marks.ignored[markKey(named, method.Name())] {
+		if g.marks.ignored[markKey(named, method.Name())] || g.dropped[instantiatedName(named)+"."+method.Name()] {
 			continue
 		}
 
