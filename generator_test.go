@@ -568,3 +568,22 @@ func TestEnumsKeepTheirNames(t *testing.T) {
 	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Advance(p: sample.Phase): sample.Phase;"),
 		"and the type must be used where it appears:\n"+out.TypeScript)
 }
+
+// TestModuleExportsALoader pins that the module can start itself.
+//
+// Every project hand-wrote the same six lines — construct the runtime, fetch,
+// instantiate, run without awaiting, initialise — and the pending() proxy
+// exists only to explain what happens when that sequence is got wrong. A
+// loader that returns the namespaces removes the ordering hazard rather than
+// reporting it.
+func TestModuleExportsALoader(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.JavaScript, "export const boot"),
+		"the module must export a loader:\n"+out.JavaScript)
+	testza.AssertTrue(t, strings.Contains(out.JavaScript, "initializeCrystalline()"),
+		"which initialises for you:\n"+out.JavaScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "export function boot(wasm: string | URL | BufferSource): Promise<{"),
+		"and is declared with what it hands back:\n"+out.TypeScript)
+}

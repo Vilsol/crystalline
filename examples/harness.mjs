@@ -1,8 +1,8 @@
-// Boots an example's wasm binary under node, performing the same two steps
-// index.html does: start the Go module, then initialise the generated bindings.
+// Boots an example's wasm binary under node.
 //
-// It exists so each example can be checked by running it, rather than only by
-// looking at it in a browser.
+// The generated module knows how to start itself, so this only has to supply
+// the Go runtime shim, which is a classic script rather than a module and so
+// cannot be imported.
 
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -15,15 +15,8 @@ export async function boot(dir) {
 	// wasm_exec.js is a plain script that defines globalThis.Go.
 	require(join(dir, "wasm_exec.js"));
 
-	const go = new globalThis.Go();
-	const { instance } = await WebAssembly.instantiate(await readFile(join(dir, "app.wasm")), go.importObject);
-
-	// Not awaited: the example's main parks, so this promise never settles.
-	go.run(instance);
-
 	const module = await import(pathToFileURL(join(dir, "crystalline.js")));
 
-	module.initializeCrystalline();
-
-	return module;
+	// Bytes rather than a URL: fetch cannot read a file URL under node.
+	return module.boot(await readFile(join(dir, "app.wasm")));
 }

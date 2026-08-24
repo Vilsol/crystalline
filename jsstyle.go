@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // jsStyle holds the cosmetic choices for the emitted JavaScript. It lives on
@@ -69,6 +70,47 @@ func jsPendingHelper(style jsStyle) string {
 		style.quoted(" was read before initializeCrystalline() ran. Start the Go wasm module, then call initializeCrystalline().") + ");\n" +
 		"  }\n" +
 		"});"
+}
+
+// jsLoader renders the loader the module exports.
+//
+// Starting a Go wasm module is six lines that every project wrote the same way
+// and one of which is a trap: run() must not be awaited, because the program
+// parks so that JavaScript can drive it, and awaiting it hangs forever. The
+// namespaces are returned as well as exported, so a caller who destructures
+// gets the bound ones rather than a copy taken too early.
+func jsLoader(style jsStyle, namespaces []string) string {
+	var out strings.Builder
+
+	out.WriteString("export const boot = async (wasm) => {\n")
+	out.WriteString("  if (globalThis[" + style.quoted("Go") + "] === undefined) {\n")
+	out.WriteString("    throw new Error(" + style.quoted("crystalline: the Go runtime shim is missing. Load wasm_exec.js from your Go toolchain before calling boot().") + ");\n")
+	out.WriteString("  }\n\n")
+	out.WriteString("  const runtime = new globalThis[" + style.quoted("Go") + "]();\n\n")
+
+	// Bytes as well as a URL: a bundler may inline the binary, and fetch cannot
+	// read a file URL outside a browser.
+	out.WriteString("  const source = wasm instanceof ArrayBuffer || ArrayBuffer.isView(wasm)\n")
+	out.WriteString("    ? wasm\n")
+	out.WriteString("    : await (await fetch(wasm)).arrayBuffer();\n\n")
+	out.WriteString("  const { instance } = await WebAssembly.instantiate(source, runtime.importObject);\n\n")
+	out.WriteString("  // Not awaited: the Go program parks, so this never settles.\n")
+	out.WriteString("  runtime.run(instance);\n\n")
+	out.WriteString("  initializeCrystalline();\n\n")
+	out.WriteString("  return { " + strings.Join(namespaces, ", ") + " };\n")
+	out.WriteString("};")
+
+	return out.String()
+}
+
+// tsLoader declares the loader and what it hands back.
+func tsLoader(namespaces []string) string {
+	typed := make([]string, 0, len(namespaces))
+	for _, name := range namespaces {
+		typed = append(typed, name+": typeof "+name)
+	}
+
+	return "export function boot(wasm: string | URL | BufferSource): Promise<{ " + strings.Join(typed, "; ") + " }>;\n"
 }
 
 // initGuard fails loudly when the module has not started, instead of letting

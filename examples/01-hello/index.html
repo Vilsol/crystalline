@@ -32,16 +32,11 @@
 
 <script src="wasm_exec.js"></script>
 <script type="module">
-import { greeting, initializeCrystalline } from "./crystalline.js";
+import { boot } from "./crystalline.js";
 
-// Two steps, always in this order: start the Go program, then bind.
-const runtime = new Go();
-const { instance } = await WebAssembly.instantiateStreaming(fetch("app.wasm"), runtime.importObject);
-
-// Not awaited: main parks, so this promise never settles.
-runtime.run(instance);
-
-initializeCrystalline();
+// The module starts itself: it loads the binary, runs the Go program
+// without awaiting it, and hands back the bound namespaces.
+const { greeting } = await boot("app.wasm");
 
 // From here on the Go functions are ordinary JavaScript functions.
 const $ = (id) => document.getElementById(id);

@@ -56,10 +56,9 @@ func Exports(r bind.Registry) {
 Consume it, once the module is running:
 
 ```ts
-import { initializeCrystalline, api } from "./dist/crystalline.js";
+import { boot } from "./dist/crystalline.js";
 
-go.run(instance);
-initializeCrystalline();
+const { api } = await boot("main.wasm");
 
 const greeting = api.Greet("world").unwrap();
 ```

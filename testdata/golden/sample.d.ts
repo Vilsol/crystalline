@@ -132,4 +132,5 @@ export declare namespace sample {
   const Titles: Record<number, string> | undefined;
   function Total(nums: Array<number> | undefined): number;
 }
+export function boot(wasm: string | URL | BufferSource): Promise<{ generic: typeof generic; marshal: typeof marshal; sample: typeof sample }>;
 export const initializeCrystalline: () => void;

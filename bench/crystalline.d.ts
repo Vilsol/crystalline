@@ -49,4 +49,5 @@ export declare namespace payload {
   function SumFloats(values: Array<number> | undefined): number;
   function TakePoint(p: payload.Point): number;
 }
+export function boot(wasm: string | URL | BufferSource): Promise<{ payload: typeof payload }>;
 export const initializeCrystalline: () => void;

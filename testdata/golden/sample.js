@@ -68,3 +68,24 @@ export const initializeCrystalline = () => {
 
   initialized = true;
 };
+
+export const boot = async (wasm) => {
+  if (globalThis['Go'] === undefined) {
+    throw new Error('crystalline: the Go runtime shim is missing. Load wasm_exec.js from your Go toolchain before calling boot().');
+  }
+
+  const runtime = new globalThis['Go']();
+
+  const source = wasm instanceof ArrayBuffer || ArrayBuffer.isView(wasm)
+    ? wasm
+    : await (await fetch(wasm)).arrayBuffer();
+
+  const { instance } = await WebAssembly.instantiate(source, runtime.importObject);
+
+  // Not awaited: the Go program parks, so this never settles.
+  runtime.run(instance);
+
+  initializeCrystalline();
+
+  return { generic, marshal, sample };
+};

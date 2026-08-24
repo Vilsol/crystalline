@@ -16,4 +16,5 @@ export declare namespace feed {
   function Digest(text: string, rounds: number): Promise<string>;
   function Primes(signal: AbortSignal, limit: number): AsyncIterable<number>;
 }
+export function boot(wasm: string | URL | BufferSource): Promise<{ feed: typeof feed }>;
 export const initializeCrystalline: () => void;

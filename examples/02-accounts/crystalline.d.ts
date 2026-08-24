@@ -33,4 +33,5 @@ export declare namespace account {
   function Summarise(a: account.Account): string;
   function Transfer(from: account.Account | undefined, to: account.Account | undefined, amount: number): Result<void>;
 }
+export function boot(wasm: string | URL | BufferSource): Promise<{ account: typeof account }>;
 export const initializeCrystalline: () => void;

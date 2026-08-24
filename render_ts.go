@@ -111,6 +111,11 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	}
 
 	tsd.WriteString(rendered.String())
+
+	if len(names) > 0 {
+		tsd.WriteString(tsLoader(names))
+	}
+
 	tsd.WriteString("export const initializeCrystalline: () => void;")
 
 	var js strings.Builder
@@ -133,6 +138,11 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	// of the two mistakes it is.
 	js.WriteString("\n  initialized = true;\n")
 	js.WriteString("};")
+
+	if len(names) > 0 {
+		js.WriteString("\n\n")
+		js.WriteString(jsLoader(g.style, names))
+	}
 
 	return Output{TypeScript: tsd.String(), JavaScript: js.String(), Skipped: analysed.skipped, Warnings: analysed.warnings}, nil
 }

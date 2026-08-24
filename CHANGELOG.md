@@ -44,6 +44,11 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   binary, built and run under node by CI.
 - Boundary benchmarks under `bench`, measuring each kind of crossing against
   a hand-written `syscall/js` binding doing the same conversions.
+- The generated module exports `boot`, which loads the binary, runs the Go
+  program without awaiting it, initialises the bindings and returns the
+  namespaces. It takes a URL or the bytes, so a bundler that inlines the wasm
+  and a test that reads it from disk both work. Every project was writing
+  those steps by hand, one of which hangs forever if awaited.
 - A named integer or string type with constants is declared as the union of
   its values, and its constants are bound beside it, so a caller can name a
   value rather than write the number behind it. The whole enum used to

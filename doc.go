@@ -47,17 +47,22 @@
 //
 // # Using the bindings
 //
-// The generated module exports one initializer, which must run after the wasm
-// module has started:
+// The generated module starts itself, and hands back the namespaces it bound:
 //
-//	import { initializeCrystalline, api } from "./dist/crystalline.js";
+//	import { boot } from "./dist/crystalline.js";
 //
-//	const go = new Go();
-//	const { instance } = await WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject);
-//	go.run(instance);
-//	initializeCrystalline();
+//	const { api } = await boot("main.wasm");
 //
-// Calling it too early throws with an explanation rather than a TypeError.
+// boot takes a URL or the bytes of the binary, so a bundler that inlines the
+// wasm and a test that reads it from disk both work. It needs the Go runtime
+// shim, wasm_exec.js, to have been loaded already: that file is a plain script
+// rather than a module, and it belongs to the toolchain that built the binary.
+//
+// The steps are available separately for a project that needs to place them
+// itself. Each namespace is also a live export, and initializeCrystalline binds
+// them once the wasm module is running. Reading one before that happens throws
+// an explanation rather than a TypeError, and a namespace captured before
+// initialisation says that it is a stale copy.
 //
 // # How Go concepts arrive
 //
