@@ -152,6 +152,13 @@
 // so the first generated file in a project passes the check in silence, which
 // is exactly when you least want it to.
 //
+// # Embedding
+//
+// A promoted method is bound, so a call that compiles in Go works in
+// JavaScript. An embedded value keeps its own name rather than being flattened
+// into the outer object: reaching e.Base.Tag is one step further than Go's
+// e.Tag, and it needs no rule about which field wins when names collide.
+//
 // # Struct tags
 //
 // A nil slice or map maps to null, which JS code expecting a collection

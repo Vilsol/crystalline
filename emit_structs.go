@@ -74,14 +74,7 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 		body.WriteString("\tcrystallineDefine(scope, out, " + strconv.Quote(field.Name()) + ", " + getter + ", " + setter + ")\n")
 	}
 
-	methods := make([]*types.Func, 0, named.NumMethods())
-	for i := 0; i < named.NumMethods(); i++ {
-		if method := named.Method(i); method.Exported() {
-			methods = append(methods, method)
-		}
-	}
-
-	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
+	methods := exportedMethods(named)
 
 	for _, method := range methods {
 		if e.isIgnored(named, method.Name()) {
@@ -113,6 +106,33 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 //
 // The trade is stated rather than hidden: the result is a snapshot, it cannot
 // be written back, and it carries no methods.
+// exportedMethods returns everything callable on a value of the type, in a
+// stable order.
+//
+// Named.NumMethods reports only what the type declares, so a method promoted
+// from an embedded field was dropped without a word. Go's own promotion rules
+// are what a caller expects: if e.Promoted() compiles in Go, it should exist in
+// JavaScript. The method set of the pointer is used because it is the wider of
+// the two, and a wrapper is backed by an addressable value either way.
+func exportedMethods(named *types.Named) []*types.Func {
+	set := types.NewMethodSet(types.NewPointer(named))
+
+	methods := make([]*types.Func, 0, set.Len())
+
+	for i := range set.Len() {
+		fn, ok := set.At(i).Obj().(*types.Func)
+		if !ok || !fn.Exported() {
+			continue
+		}
+
+		methods = append(methods, fn)
+	}
+
+	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
+
+	return methods
+}
+
 func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
@@ -153,8 +173,8 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 
 	// Methods have nowhere to live on plain data. Saying which ones went is the
 	// difference between a documented trade and a silent one.
-	for i := range named.NumMethods() {
-		if method := named.Method(i); method.Exported() && !e.isIgnored(named, method.Name()) {
+	for _, method := range exportedMethods(named) {
+		if !e.isIgnored(named, method.Name()) {
 			e.skip(name+"."+method.Name(), "not bound: "+name+" is marshalled as plain data")
 		}
 	}

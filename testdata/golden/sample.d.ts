@@ -31,6 +31,22 @@ export declare namespace generic {
   function Strings(): generic.PairOfString;
 }
 export declare namespace sample {
+  interface Base {
+    Tag: string;
+    Promoted(): string;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
+  interface Embedder {
+    Base: sample.Base;
+    Own: string;
+    Direct(): string;
+    Promoted(): string;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
   interface FnSample {
     FirstValue: string;
     SecondValue: number;
@@ -83,6 +99,7 @@ export declare namespace sample {
   function First(values: AsyncIterable<number>): Promise<number>;
   function FooBar(): sample.FnSample;
   function Keys(ids: Array<number> | undefined, seed: number): number;
+  function MakeEmbedder(): sample.Embedder;
   function MayFail(ok: boolean): Result<string>;
   function Middle(first: sample.FnSample | undefined, label: string): string;
   function NewTicker(): sample.Ticker;

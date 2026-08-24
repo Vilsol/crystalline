@@ -101,6 +101,9 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		// Streams, in both directions.
 		"Stream=item,item,item",
 		"Total=15",
+		"Promoted=tagged",
+		"Direct=own",
+		"EmbeddedField=tagged",
 		"PairString=a",
 		"PairSwapped=b",
 		"PairNumber=2",
@@ -475,6 +478,12 @@ func main() {
 
 		// A channel parameter accepts anything iterable.
 		out.push("Total=" + s.Total([4, 5, 6]));
+
+		// A method promoted from an embedded field is callable, as it is in Go.
+		const embedder = s.MakeEmbedder();
+		out.push("Promoted=" + embedder.Promoted());
+		out.push("Direct=" + embedder.Direct());
+		out.push("EmbeddedField=" + embedder.Base.Tag);
 
 		// Distinct instantiations of one generic type, actually called.
 		out.push("PairString=" + g.Strings().First);

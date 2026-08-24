@@ -272,16 +272,12 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 		result.WriteString("    " + prefix + field.Name() + marker + ": " + jsName + ";\n")
 	}
 
-	methods := make([]*types.Func, 0, named.NumMethods())
-	for i := 0; i < named.NumMethods(); i++ {
-		// Plain data carries no methods, so declaring them would promise
-		// something that is not there.
-		if method := named.Method(i); method.Exported() && !plain {
-			methods = append(methods, method)
-		}
+	// Plain data carries no methods, so declaring them would promise something
+	// that is not there.
+	var methods []*types.Func
+	if !plain {
+		methods = exportedMethods(named)
 	}
-
-	sort.Slice(methods, func(i, j int) bool { return methods[i].Name() < methods[j].Name() })
 
 	for _, method := range methods {
 		if g.marks.ignored[markKey(named, method.Name())] || g.dropped[instantiatedName(named)+"."+method.Name()] {

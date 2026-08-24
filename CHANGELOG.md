@@ -144,6 +144,9 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - `bind.AsPromise()` on something that is not a function is refused. A
   promise is a way of returning and a value does not return, so the option
   was recorded and then never read.
+- A method promoted from an embedded field is bound. The method set was read
+  with `NumMethods`, which reports only what a type declares, so a struct
+  that embeds another lost part of its surface with nothing reported.
 
 #### Removed
 

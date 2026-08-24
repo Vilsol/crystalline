@@ -276,3 +276,28 @@ func Total(nums ...int) int {
 
 	return sum
 }
+
+// Base is embedded, and its method is promoted onto whatever embeds it.
+type Base struct {
+	Tag string
+}
+
+func (b Base) Promoted() string {
+	return b.Tag
+}
+
+// Embedder embeds Base, so Go's promotion rules put Tag and Promoted on it.
+// Reading only the declared method set loses both, silently.
+type Embedder struct {
+	Base
+
+	Own string
+}
+
+func (e Embedder) Direct() string {
+	return e.Own
+}
+
+func MakeEmbedder() Embedder {
+	return Embedder{Base: Base{Tag: "tagged"}, Own: "own"}
+}

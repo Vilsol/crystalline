@@ -458,3 +458,24 @@ func interfaceBlock(t *testing.T, source string, name string) string {
 
 	return body[:strings.Index(body, "\n  }")]
 }
+
+// TestEmbeddedMembersArePromoted pins Go's promotion rules reaching JavaScript.
+//
+// The method set was read with NumMethods, which is declared-only, and the
+// embedded field was dropped as well, so a struct that embeds another lost part
+// of its surface with nothing reported. Embedding is everywhere in Go.
+func TestEmbeddedMembersArePromoted(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	block := interfaceBlock(t, out.TypeScript, "Embedder")
+
+	// The embedded value stays addressable under its own name rather than being
+	// flattened: promotion would need shadowing rules, and this needs none.
+	testza.AssertTrue(t, strings.Contains(block, "Base: sample.Base;"),
+		"an embedded field must be reachable:\n"+block)
+	testza.AssertTrue(t, strings.Contains(block, "Promoted(): string;"),
+		"and so must its methods:\n"+block)
+	testza.AssertTrue(t, strings.Contains(block, "Direct(): string;"),
+		"the type's own members must survive too:\n"+block)
+}

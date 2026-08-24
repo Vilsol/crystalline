@@ -43,6 +43,7 @@ export const initializeCrystalline = () => {
     First: wrap(globalThis['go']['app']['sample']['First']),
     FooBar: wrap(globalThis['go']['app']['sample']['FooBar']),
     Keys: wrap(globalThis['go']['app']['sample']['Keys']),
+    MakeEmbedder: wrap(globalThis['go']['app']['sample']['MakeEmbedder']),
     MayFail: wrap(globalThis['go']['app']['sample']['MayFail']),
     Middle: wrap(globalThis['go']['app']['sample']['Middle']),
     NewTicker: wrap(globalThis['go']['app']['sample']['NewTicker']),
