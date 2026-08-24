@@ -43,25 +43,42 @@ const jsWrapHelper = `const wrap = (name, fn) => {
 // through it. The name is carried so a report can say which binding it was.
 const jsProfilingWrapHelper = `const crystallineStats = new Map();
 
+const crystallineRecord = (name, started) => {
+  const elapsed = performance.now() - started;
+  const seen = crystallineStats.get(name);
+
+  if (seen === undefined) {
+    crystallineStats.set(name, { name, calls: 1, ms: elapsed });
+  } else {
+    seen.calls += 1;
+    seen.ms += elapsed;
+  }
+};
+
 const wrap = (name, fn) => {
   return (...args) => {
     const started = performance.now();
     const result = fn.call(undefined, ...args);
-    const elapsed = performance.now() - started;
-
-    const seen = crystallineStats.get(name);
-    if (seen === undefined) {
-      crystallineStats.set(name, { name, calls: 1, ms: elapsed });
-    } else {
-      seen.calls += 1;
-      seen.ms += elapsed;
-    }
 
     if (globalThis.goInternalError) {
       const error = new Error(globalThis.goInternalError);
       globalThis.goInternalError = undefined;
+      crystallineRecord(name, started);
       throw error;
     }
+
+    // A promise is not finished when it is handed back. Timing it here would
+    // record what dispatch cost, which for every asynchronous binding is the
+    // one part that is not the work.
+    if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
+      return result.then(
+        (value) => { crystallineRecord(name, started); return value; },
+        (reason) => { crystallineRecord(name, started); throw reason; },
+      );
+    }
+
+    crystallineRecord(name, started);
+
     return result;
   }
 };

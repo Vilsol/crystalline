@@ -136,6 +136,8 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
 - The declarations name the TypeScript libraries they rely on, so a project
   whose tsconfig differs is told what to turn on rather than given a dozen
   errors about `Symbol.dispose`.
+  An asynchronous call is timed until it settles rather than until it is
+  handed back, so a promise reports the wait rather than the dispatch.
 
 #### Changed
 

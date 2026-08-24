@@ -154,6 +154,9 @@
 //
 //	greeting.Greet: 98 calls, 0.54ms
 //
+// An asynchronous call is timed until it settles rather than until it is handed
+// back, so what is reported is the wait rather than the dispatch.
+//
 // It is off by default, because a counter and a clock reading on a five
 // microsecond call are not free, and it counts calls on the module's own
 // namespaces. A field read or a method on a struct wrapper is bound on the Go
