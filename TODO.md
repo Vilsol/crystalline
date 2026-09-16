@@ -15,15 +15,36 @@ merged on 2026-09-16 and fixes it (closing
 through what asyncify already adds, and turns on by itself under
 `-scheduler=asyncify`, which crystalline requires anyway.
 
-It is not in 0.42.0. When a release carries it:
+It is not in 0.42.0. Verified on `dev` (fb9b49d) built from source against
+LLVM 22.1.8 on 2026-09-16: the fixture probe matches **94 of 94**, the same as
+the standard toolchain, including the two callback checks that abort under
+0.42.0. A panic in the consumer's own Go recovers too, though TinyGo words a
+nil-map write as `nil pointer dereference`.
 
-- Run the full probe under it, including the two checks that currently have to
-  be left out, and expect all 84 to match the standard toolchain.
-- If they do, remove the caveat from the README, `doc.go` and the TinyGo entry
-  under Declined, and name the minimum version.
-- Measure binary size and speed again. The PR reports about 5% on top of
-  asyncify, and asyncify is what made timeless-jewels slower in the first place,
-  so this is not expected to change the performance verdict.
+It is also much faster, which reopens the performance verdict. Per call, as a
+median of five under node, with the probe binary:
+
+| | call | field read | 32 plain structs | promise | binary |
+| --- | --- | --- | --- | --- | --- |
+| Go 1.26.7 | 5.2 µs | 8.4 µs | 299 µs | 25 µs | 2.83 MB |
+| TinyGo 0.42.0 | 175–212 µs | 338–409 µs | 9.5–12.2 ms | 1.0 ms | 1.03 MB |
+| `dev` before #5550 | 71 µs | 72 µs | 635 µs | 350 µs | 1.05 MB |
+| `dev` | 12.6 µs | 16.4 µs | 465 µs | 57 µs | 1.20 MB |
+
+The commits before #5550 (mostly precise GC scanning of globals) are what made
+the bulk data paths faster, and the #5550 series made each call about six times
+cheaper. binaryen is not a factor: `dev` measured the same with 0.42.0's
+`wasm-opt` 116 as with 131. The recover support costs about 14% of binary size
+here, more than the PR's 5% because this binary is small.
+
+When a release carries it:
+
+- Run the full probe under the release and confirm 94 of 94.
+- Remove the caveat from the README, `doc.go` and the TinyGo entry under
+  Declined, and name the minimum version.
+- Trial timeless-jewels again. Its verdict was measured on 0.41.1, and `dev` is
+  within about 2.5 times the standard toolchain per call, and within 1.6 times
+  on bulk data, rather than tens of times slower.
 
 
 ## Declined
