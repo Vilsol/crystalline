@@ -5,8 +5,26 @@ Declined items carry their reasoning so they are not re-argued from scratch.
 
 ## Planned
 
-Nothing. Everything decided has been built; what is below was considered and
-turned down, with the reasoning, so it is not re-argued from scratch.
+### Drop the TinyGo caveat once recover ships
+
+TinyGo's wasm target has had no `recover`, which is why a callback or supplied
+object returning the wrong type, and a panic in the consumer's own Go, abort the
+module there. [tinygo#5550](https://github.com/tinygo-org/tinygo/pull/5550)
+merged on 2026-09-16 and fixes it (closing
+[tinygo#2914](https://github.com/tinygo-org/tinygo/issues/2914)). It unwinds
+through what asyncify already adds, and turns on by itself under
+`-scheduler=asyncify`, which crystalline requires anyway.
+
+It is not in 0.42.0. When a release carries it:
+
+- Run the full probe under it, including the two checks that currently have to
+  be left out, and expect all 84 to match the standard toolchain.
+- If they do, remove the caveat from the README, `doc.go` and the TinyGo entry
+  under Declined, and name the minimum version.
+- Measure binary size and speed again. The PR reports about 5% on top of
+  asyncify, and asyncify is what made timeless-jewels slower in the first place,
+  so this is not expected to change the performance verdict.
+
 
 ## Declined
 
