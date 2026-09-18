@@ -5,13 +5,18 @@
     "target": "es2022",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": ["es2022", "dom", "esnext.disposable"],
+    "lib": [
+      "es2022",
+      "dom",
+      "esnext.disposable"
+    ],
     "types": []
   },
   "files": [
     "01-hello/crystalline.d.ts",
     "02-accounts/crystalline.d.ts",
     "03-pipeline/crystalline.d.ts",
-    "04-catalogue/crystalline.d.ts"
+    "04-catalogue/crystalline.d.ts",
+    "05-ledger/crystalline.d.ts"
   ]
 }

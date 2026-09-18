@@ -12,4 +12,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-npx --yes typescript@5 tsc --project tsconfig.json
+# The binary is tsc and the package is typescript, so the package has to be
+# named separately: npx otherwise looks for an executable called typescript and
+# reports only that it could not determine one.
+npx --yes --package typescript@5 -- tsc --project tsconfig.json
