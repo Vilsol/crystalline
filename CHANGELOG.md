@@ -5,9 +5,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### 0.1.0
+## [0.1.0] - 2026-09-19
 
 Crystalline is now a build-time generator rather than a reflection runtime. It
 reads packages with `go/packages` and emits the bindings, so mistakes surface
@@ -16,7 +14,7 @@ longer links `reflect`.
 
 This release replaces the entire public API. See [Migrating](#migrating-from-0015).
 
-#### Added
+### Added
 
 - `crystalline` command, installable as a module tool with `go get -tool` and
   runnable from `go:generate`.
@@ -201,7 +199,7 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   An asynchronous call is timed until it settles rather than until it is
   handed back, so a promise reports the wait rather than the dispatch.
 
-#### Changed
+### Changed
 
 - Generated bindings import only `syscall/js` and the standard library, keeping
   `reflect` out of the binary. Measured on a real project: 8.35 MB to 6.45 MB.
@@ -291,14 +289,14 @@ This release replaces the entire public API. See [Migrating](#migrating-from-001
   with `NumMethods`, which reports only what a type declares, so a struct
   that embeds another lost part of its surface with nothing reported.
 
-#### Removed
+### Removed
 
 - The whole reflection runtime: `Exposer`, `Map`, `MapPromise`, `MarkPromise`,
   `MarkIgnored` and the `js`-tagged conversion code.
 - Package-level `JSQuoteStyle` and `JSTrailingComma`, replaced by
   `WithQuoteStyle` and `WithTrailingComma` on the generator.
 
-#### Fixed
+### Fixed
 
 - `// crystalline:promise` on a method no longer depends on the Go source being
   readable at run time. The runtime parsed source files by absolute path, so the
