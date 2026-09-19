@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The reachability walk no longer descends through unexported struct fields and
+  methods. Every emitter filters to exported members, so a walk that did not
+  turned a private implementation detail into a refusal: an unexported method
+  taking a `reflect.Value` reached `reflect.Value.Complex` and failed generation
+  with "complex128 cannot be converted to wasm", with nothing exposed anywhere
+  near a complex number.
+- A type declared in the package the bindings are generated into no longer makes
+  the generated file import itself. The qualifier already guarded on the file's
+  own path; the function naming marshallers did not.
+- Naming a type no longer registers an import. Two callers use the name only as
+  a marshaller cache key, so asking "have I emitted this yet?" left an import
+  behind whether or not anything was then emitted, and the generated file failed
+  to build with "imported and not used".
+
 ## [0.1.0] - 2026-09-19
 
 Crystalline is now a build-time generator rather than a reflection runtime. It

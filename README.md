@@ -5,7 +5,9 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 ## Features
 
 * Generates JS bindings and TypeScript declarations from Go source at build time.
-* No `reflect` in the generated code — 23% smaller wasm on a real project.
+* No `reflect` in the generated code — 23% smaller wasm on a project that did
+  not otherwise link it. Where your own code already imports `reflect`, the
+  generated glue adds size rather than saving it.
 * One compiler-checked manifest declares the whole surface, including symbols
   from packages you do not own. `//crystalline:export` is the shorthand for ones
   you do.
