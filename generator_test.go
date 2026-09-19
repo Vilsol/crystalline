@@ -6,6 +6,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -869,4 +870,62 @@ func TestUnexportedMembersStayOutOfTheWalk(t *testing.T) {
 		"the exported method still has to be declared:\n"+out.TypeScript)
 	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Awkward"),
 		"a type only unexported members mention is not part of the surface:\n"+out.TypeScript)
+}
+
+// assertEveryReferenceIsDeclared pins the invariant behind a whole class of
+// defects: the walk that decides what to declare and the renderer that decides
+// what to name are written separately, so they drift. A declaration file that
+// names a type nothing declares is not valid TypeScript, and only tsc notices.
+func assertEveryReferenceIsDeclared(t *testing.T, ts string) {
+	t.Helper()
+
+	references := regexp.MustCompile(`\b[a-z][A-Za-z0-9_]*\.([A-Z][A-Za-z0-9_]*)\b`)
+
+	for _, match := range references.FindAllStringSubmatch(ts, -1) {
+		name := match[1]
+
+		declared := strings.Contains(ts, "interface "+name+" ") ||
+			strings.Contains(ts, "type "+name+" ") ||
+			strings.Contains(ts, "const "+name+":") ||
+			strings.Contains(ts, "namespace "+name+" ")
+
+		testza.AssertTrue(t, declared, match[0]+" is referenced but never declared:\n"+ts)
+	}
+}
+
+// TestDeclarationsNameNothingUndeclared covers two disagreements at once.
+//
+// time.Duration has constants of its own and a standard mapping. collectNamed
+// lets the mapping win, so it declares nothing; namedToJS asked "is it an enum?"
+// first, so it rendered the name time.Duration -- which no namespace declares,
+// and which is wrong anyway, since a duration crosses as a number.
+//
+// A channel's element was worse: tsType renders AsyncIterable<Elem>, and
+// collectNamed had no channel case at all, so a struct reachable only that way
+// was named and never declared.
+func TestDeclarationsNameNothingUndeclared(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/undeclared"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Wait(): number;"),
+		"a mapped type crosses as its counterpart:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "interface Shape {"),
+		"a channel's element still has to be declared:\n"+out.TypeScript)
+
+	assertEveryReferenceIsDeclared(t, out.TypeScript)
+}
+
+// TestGoldenDeclarationsAreSelfContained applies the same invariant to the
+// fixture the golden files pin, so a future disagreement is caught there too.
+func TestGoldenDeclarationsAreSelfContained(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	assertEveryReferenceIsDeclared(t, out.TypeScript)
 }

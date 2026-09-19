@@ -83,6 +83,19 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 		return "Error", false, nil
 	}
 
+	// A mapping wins over everything else the type might be, which is the order
+	// collectNamed decides what to declare in. Asking second meant time.Duration
+	// -- an enum with a mapping -- was named as an enum and declared as nothing.
+	// A mapped type crosses as its counterpart rather than as its structure. A
+	// declared mapping crosses as whatever its own functions carry.
+	if mapped, ok := g.marks.marshallerFor(t); ok {
+		if mapped.declaredByManifest() {
+			return g.tsType(mapped.intermediate)
+		}
+
+		return mapped.declared, false, nil
+	}
+
 	// An interface Go declares is supplied from JavaScript, so it is named
 	// rather than reduced to unknown.
 	if _, ok := t.Underlying().(*types.Interface); ok && !isErrorType(t) && !isContextType(t) {
@@ -94,16 +107,6 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 	// An enum keeps its own name, so a signature says which values are meant.
 	if named, ok := t.(*types.Named); ok && len(enumConstants(named)) > 0 {
 		return qualifiedName(named), false, nil
-	}
-
-	// A mapped type crosses as its counterpart rather than as its structure. A
-	// declared mapping crosses as whatever its own functions carry.
-	if mapped, ok := g.marks.marshallerFor(t); ok {
-		if mapped.declaredByManifest() {
-			return g.tsType(mapped.intermediate)
-		}
-
-		return mapped.declared, false, nil
 	}
 
 	if _, ok := t.Underlying().(*types.Struct); ok {
@@ -237,6 +240,10 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 		collectNamed(m, typed.Elem(), seen, order)
 	case *types.Map:
 		collectNamed(m, typed.Key(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order)
+	case *types.Chan:
+		// A receive-only channel renders as AsyncIterable<Elem>, so the element
+		// is named and has to be declared.
 		collectNamed(m, typed.Elem(), seen, order)
 	case *types.Signature:
 		for i := 0; i < typed.Params().Len(); i++ {

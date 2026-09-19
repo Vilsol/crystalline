@@ -155,7 +155,7 @@ export declare namespace sample {
   function NewLedger(): (sample.Ledger | undefined);
   function NewTicker(): sample.Ticker;
   function OnlyFails(ok: boolean): Result<void>;
-  function Rates(): (Record<time.Duration, string> | undefined);
+  function Rates(): (Record<number, string> | undefined);
   function Readings(count: number): (Array<sample.Reading> | undefined);
   function Replay(r: sample.Recorder, events: Array<string> | undefined): Promise<number>;
   function Rich(): sample.Richer;

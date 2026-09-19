@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A type declared in the package the bindings are generated into no longer makes
   the generated file import itself. The qualifier already guarded on the file's
   own path; the function naming marshallers did not.
+- Generated declarations no longer name a type nothing declares. `time.Duration`
+  has constants of its own and a standard mapping; the renderer asked "is it an
+  enum?" before "is it mapped?", while the walk that decides what to declare
+  asks the other way round, so it was rendered as `time.Duration` and declared
+  nowhere. It crosses as a `number`, which is what it now says.
+- A channel's element is declared. Declarations render a receive-only channel as
+  `AsyncIterable<Elem>`, but the walk had no channel case, so a struct reachable
+  only that way was named and never declared.
 - Naming a type no longer registers an import. Two callers use the name only as
   a marshaller cache key, so asking "have I emitted this yet?" left an import
   behind whether or not anything was then emitted, and the generated file failed
