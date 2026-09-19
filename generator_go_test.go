@@ -1651,3 +1651,51 @@ func TestNamingATypeDoesNotImportIt(t *testing.T) {
 
 	testza.AssertEqual(t, name, i.goTypeName(named), "and the name must not drift once asked for")
 }
+
+// TestAbandonedAttemptsDoNotLeaveImports pins the other half of "naming a
+// package is not importing it".
+//
+// The qualifier registers an import, and emitValueConverter renders the Go
+// spelling of the type at the top, before it is known whether the type can be
+// converted at all. When the attempt then failed, the converter reservation was
+// rolled back and the imports were not, so a package named only by work that
+// was thrown away stayed in the import block with nothing referring to it. In
+// go-pob that was "io" imported and not used across 37,660 generated lines with
+// no io. reference in any of them.
+//
+// It needs a package that is named by the failing attempt and by nothing else,
+// which is why extra.Thing is itself unconvertible.
+func TestAbandonedAttemptsDoNotLeaveImports(t *testing.T) {
+	const (
+		extra = "github.com/Vilsol/crystalline/testdata/abandoned/extra"
+		only  = "github.com/Vilsol/crystalline/testdata/abandoned/only"
+		sub   = "github.com/Vilsol/crystalline/testdata/abandoned/sub"
+	)
+
+	bindings, err := generateBindings(t, "./testdata/abandoned")
+	testza.AssertNoError(t, err)
+
+	testza.AssertEqual(t, 0, strings.Count(bindings.Source, "extra."),
+		"the fixture only reproduces the leak while nothing refers to the package:\n"+bindings.Source)
+	testza.AssertFalse(t, strings.Contains(bindings.Source, strconv.Quote(extra)),
+		"a package named only by an attempt that was thrown away must not be imported:\n"+bindings.Source)
+
+	// The failing attempt converts one field before it reaches the one it
+	// cannot, and that converter is kept. Rolling its import back along with
+	// the caller's would trade "imported and not used" for "undefined: sub",
+	// so the attempt must drop only what it registered itself.
+	testza.AssertTrue(t, strings.Contains(bindings.Source, "sub.Fine"),
+		"the nested success has to reach the output, or this proves nothing:\n"+bindings.Source)
+	testza.AssertTrue(t, strings.Contains(bindings.Source, strconv.Quote(sub)),
+		"a converter that survives keeps its import:\n"+bindings.Source)
+
+	// The same leak one level down: a method wrapper renders its parameters
+	// before it knows they convert, and the wrapper is dropped while the
+	// marshaller around it is kept.
+	testza.AssertEqual(t, 0, strings.Count(bindings.Source, "only."),
+		"nothing may refer to the package the dropped wrapper named:\n"+bindings.Source)
+	testza.AssertFalse(t, strings.Contains(bindings.Source, strconv.Quote(only)),
+		"a dropped method wrapper must not leave its parameter's package imported:\n"+bindings.Source)
+
+	compileGeneratedBindings(t, "./testdata/abandoned")
+}

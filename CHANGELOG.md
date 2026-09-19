@@ -5,6 +5,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- An emission attempt that is thrown away no longer leaves its imports behind.
+  The qualifier registers an import as it renders, and a converter renders the
+  Go spelling of its type before it knows whether the type converts at all, so
+  a package named only by work that was then discarded stayed in the import
+  block with nothing referring to it: in go-pob, `"io" imported and not used`
+  across 37,660 generated lines containing no `io.` reference. Registration is
+  now scoped to the attempt, and an attempt that succeeds keeps its imports
+  even when its caller goes on to fail, since the text it produced is kept too.
+  The same leak reached one level down: a method wrapper renders its parameters
+  before it knows they convert, and the wrapper is dropped while the marshaller
+  around it is kept.
+
 ## [0.1.1] - 2026-09-19
 
 ### Fixed

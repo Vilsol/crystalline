@@ -363,12 +363,17 @@ func (e *emitter) ensureValueConverter(t types.Type) (string, error) {
 	// Reserve the name first so a self-referential type terminates.
 	e.converters[key] = ""
 
+	e.imports.begin()
+
 	body, err := e.emitValueConverter(name, t)
 	if err != nil {
+		e.imports.rollback()
 		delete(e.converters, key)
 
 		return "", err
 	}
+
+	e.imports.commit()
 
 	e.converters[key] = body
 

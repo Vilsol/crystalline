@@ -390,23 +390,33 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	for _, entry := range declarations.entries {
 		switch entry.Kind {
 		case entryFunc:
+			e.imports.begin()
+
 			wrapper, err := e.emitDeclaredFunc(entry)
 			if err != nil {
+				e.imports.rollback()
 				e.skipAt(entryPos(entry), entry.Namespace+"."+entry.Name, err.Error())
 
 				continue
 			}
+
+			e.imports.commit()
 
 			registrations.WriteString("\tcrystallineNamespace(" + strconv.Quote(e.gen.appName) + ", " + strconv.Quote(entry.Namespace) + ").Set(" +
 				strconv.Quote(e.gen.jsMemberName(entry.Name, "")) + ", crystallineWrap(js.FuncOf(" + wrapperName(entry) + ")))\n")
 			wrappers.WriteString(wrapper)
 		case entryValue:
+			e.imports.begin()
+
 			branch, err := e.emitDeclaredValue(entry)
 			if err != nil {
+				e.imports.rollback()
 				e.skipAt(entryPos(entry), entry.Namespace+"."+entry.Name, err.Error())
 
 				continue
 			}
+
+			e.imports.commit()
 
 			values.WriteString(branch)
 		case entryType, entryPlain:
@@ -459,12 +469,17 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			marshal = e.emitPlainMarshaller
 		}
 
+		e.imports.begin()
+
 		body, err := marshal(named)
 		if err != nil {
+			e.imports.rollback()
 			e.skipAt(named.Obj().Pos(), named.Obj().Name(), err.Error())
 
 			continue
 		}
+
+		e.imports.commit()
 
 		e.marshallers[e.imports.goTypeName(named)] = body
 	}
