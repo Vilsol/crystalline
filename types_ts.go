@@ -10,6 +10,8 @@ import (
 
 // Mapping of Go types onto their TypeScript counterparts.
 func (g *Generator) tsType(t types.Type) (string, bool, error) {
+	t = unaliased(t)
+
 	switch typed := t.(type) {
 	case *types.Basic:
 		return basicToJS(typed)
@@ -73,6 +75,8 @@ func basicToJS(basic *types.Basic) (string, bool, error) {
 }
 
 func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
+	t = unaliased(t)
+
 	obj := namedObject(t)
 	if obj == nil {
 		return g.tsType(t.Underlying())
@@ -165,6 +169,17 @@ func (g *Generator) mapToJS(typed *types.Map) (string, bool, error) {
 	return "Record<" + keyName + ", " + valueName + ">", true, nil
 }
 
+// unaliased resolves a Go type alias to the type it denotes.
+//
+// An alias is transparent: `type Alias = Shape` makes Alias and Shape the same
+// type, not two types. Every type switch here normalises first, because several
+// of them list *types.Alias beside *types.Named and then assert .(*types.Named)
+// inside the branch, which panics the generator on a type a manifest is
+// perfectly entitled to name.
+func unaliased(t types.Type) types.Type {
+	return types.Unalias(t)
+}
+
 func namedObject(t types.Type) *types.TypeName {
 	switch typed := t.(type) {
 	case *types.Named:
@@ -179,6 +194,8 @@ func namedObject(t types.Type) *types.TypeName {
 // collectNamed walks a type for the named struct types reachable from it,
 // recording each one once in declaration-independent order.
 func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*types.Named) {
+	t = unaliased(t)
+
 	switch typed := t.(type) {
 	case *types.Named:
 		if seen[typed] {

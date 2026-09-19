@@ -244,6 +244,39 @@ func buildGeneratedModule(t *testing.T) string {
 	return dir
 }
 
+// compileGeneratedBindings builds the bindings for a manifest in a throwaway
+// module.
+//
+// BuildGo runs format.Source, which only parses: a file that names a type it
+// cannot name gets through it and fails in the consumer's own build instead.
+func compileGeneratedBindings(t *testing.T, manifest string) {
+	t.Helper()
+
+	if testing.Short() {
+		t.Skip("builds a wasm binary")
+	}
+
+	dir := t.TempDir()
+
+	repo, err := filepath.Abs(".")
+	testza.AssertNoError(t, err)
+
+	pkg, err := generateBindings(t, manifest)
+	testza.AssertNoError(t, err)
+	testza.AssertNoError(t, os.WriteFile(filepath.Join(dir, "crystalline_gen.go"), []byte(pkg.Source), 0o644))
+	testza.AssertNoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644))
+
+	gomod := "module bindtest\n\ngo 1.27\n\nrequire github.com/Vilsol/crystalline v0.0.0\n\nreplace github.com/Vilsol/crystalline => " + repo + "\n"
+	testza.AssertNoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644))
+
+	sum, err := os.ReadFile("go.sum")
+	testza.AssertNoError(t, err)
+	testza.AssertNoError(t, os.WriteFile(filepath.Join(dir, "go.sum"), sum, 0o644))
+
+	goCommand(t, dir, "mod", "tidy")
+	goCommand(t, dir, "build", "-o", "app.wasm", ".")
+}
+
 // generateBindings runs the generator over a manifest package and returns the
 // bindings for a module named bindtest.
 func generateBindings(t *testing.T, manifest string) (GoBindings, error) {

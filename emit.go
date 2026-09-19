@@ -67,6 +67,8 @@ func (w Warning) String() string {
 // Plain int is 64 bits on wasm too, but warning about every int would drown the
 // signal: someone who wrote int64 chose the range deliberately.
 func wideIntegers(m marks, t types.Type, seen map[types.Type]bool) []string {
+	t = unaliased(t)
+
 	if t == nil || seen[t] {
 		return nil
 	}

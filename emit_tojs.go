@@ -9,6 +9,8 @@ import (
 
 // Conversion of Go values into JavaScript, for returns and struct fields.
 func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
+	t = unaliased(t)
+
 	switch typed := t.(type) {
 	case *types.Basic:
 		return basicToJSExpr(expr, typed)
@@ -95,6 +97,8 @@ func basicToJSExpr(expr string, basic *types.Basic) (string, error) {
 }
 
 func (e *emitter) namedToJSExpr(expr string, t types.Type) (string, error) {
+	t = unaliased(t)
+
 	if isErrorType(t) {
 		return "crystallineError(" + expr + ")", nil
 	}

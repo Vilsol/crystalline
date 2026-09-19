@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A type declared in the package the bindings are generated into no longer makes
   the generated file import itself. The qualifier already guarded on the file's
   own path; the function naming marshallers did not.
+- A Go type alias no longer panics the generator. An alias is transparent --
+  `type Alias = Shape` makes Alias and Shape the same type -- but several type
+  switches listed `*types.Alias` beside `*types.Named` and then asserted
+  `.(*types.Named)` inside the branch. As a parameter that crashed with
+  "interface conversion: types.Type is *types.Alias, not *types.Named"; as a
+  result it fell through to the bare struct and dropped the function.
 - Generated declarations no longer name a type nothing declares. `time.Duration`
   has constants of its own and a standard mapping; the renderer asked "is it an
   enum?" before "is it mapped?", while the walk that decides what to declare

@@ -929,3 +929,49 @@ func TestGoldenDeclarationsAreSelfContained(t *testing.T) {
 
 	assertEveryReferenceIsDeclared(t, out.TypeScript)
 }
+
+// TestAliasesAreTransparent pins that a Go type alias is not a type of its own.
+//
+// Several type switches list *types.Alias beside *types.Named and then assert
+// .(*types.Named) inside the branch. As a parameter that panicked the generator
+// outright -- "interface conversion: types.Type is *types.Alias, not
+// *types.Named" -- and as a result it fell through to the bare struct and
+// dropped the function with "un-convertable type: struct{Side int}". Neither is
+// a failure a manifest can do anything about, since the alias is transparent
+// and the type behind it converts fine.
+func TestAliasesAreTransparent(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/aliased"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+	testza.AssertEqual(t, 0, len(out.Skipped), "an alias is not a reason to drop anything: "+skipText(out.Skipped))
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "interface Shape {"),
+		"the type the alias denotes is what gets declared:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Take(a: aliased.Shape): number;"),
+		"an aliased parameter is the type it denotes:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "function Make(): aliased.Shape;"),
+		"and so is an aliased result:\n"+out.TypeScript)
+
+	assertEveryReferenceIsDeclared(t, out.TypeScript)
+
+	bindings, err := g.BuildGo(declarations, WithPackageName("main"), WithImportPath("bindtest"))
+	testza.AssertNoError(t, err, "the Go side has to compile too")
+	testza.AssertTrue(t, strings.Contains(bindings.Source, "aliased.Shape"),
+		"the generated Go names the type the alias denotes:\n"+bindings.Source)
+
+	compileGeneratedBindings(t, "./testdata/aliased")
+}
+
+func skipText(skipped []Skipped) string {
+	out := make([]string, 0, len(skipped))
+	for _, one := range skipped {
+		out = append(out, one.String())
+	}
+
+	return strings.Join(out, "; ")
+}

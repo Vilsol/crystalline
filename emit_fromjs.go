@@ -270,6 +270,8 @@ func (e *emitter) fieldFromJS(target string, label string, t types.Type) (string
 // typeKey renders a type as a Go identifier fragment, so each one gets exactly
 // one generated converter.
 func (e *emitter) typeKey(t types.Type) (string, error) {
+	t = unaliased(t)
+
 	switch typed := t.(type) {
 	case *types.Basic:
 		return strings.Title(typed.Name()), nil //nolint:staticcheck
@@ -374,6 +376,8 @@ func (e *emitter) ensureValueConverter(t types.Type) (string, error) {
 }
 
 func (e *emitter) emitValueConverter(name string, t types.Type) (string, error) {
+	t = unaliased(t)
+
 	goType := types.TypeString(t, e.qualifier)
 
 	if mapped, ok := e.marks.marshallerFor(t); ok {

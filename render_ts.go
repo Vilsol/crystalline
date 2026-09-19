@@ -577,6 +577,8 @@ func checkChannelParameter(channel *types.Chan, name string) error {
 
 // isContextType reports whether a type is context.Context.
 func isContextType(t types.Type) bool {
+	t = unaliased(t)
+
 	named, ok := t.(*types.Named)
 	if !ok {
 		return false

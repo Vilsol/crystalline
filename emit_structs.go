@@ -228,6 +228,8 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 // Slices and maps are deliberately not cached: converting one produces a
 // snapshot rather than a view, so a cached copy would hide a later change.
 func (e *emitter) fieldGetter(name string, target string, t types.Type, expr string) (string, string) {
+	t = unaliased(t)
+
 	plain := "func() any {\n\t\treturn " + expr + "\n\t}"
 
 	cache := "crystallineCache" + name

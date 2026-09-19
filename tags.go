@@ -209,6 +209,8 @@ func instantiatedName(named *types.Named) string {
 }
 
 func typeArgumentName(t types.Type) string {
+	t = unaliased(t)
+
 	switch typed := t.(type) {
 	case *types.Basic:
 		return capitalise(typed.Name())

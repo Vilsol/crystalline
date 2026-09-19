@@ -225,6 +225,8 @@ func plainReachable(named *types.Named) []*types.Named {
 // marshallerFor reports how a type crosses, preferring what the manifest
 // declared over the standard library defaults.
 func (m marks) marshallerFor(t types.Type) (marshaller, bool) {
+	t = unaliased(t)
+
 	if named, ok := t.(*types.Named); ok {
 		if found, ok := m.custom[markKey(named, "")]; ok {
 			return found, true
