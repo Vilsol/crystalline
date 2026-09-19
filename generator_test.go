@@ -845,3 +845,28 @@ func TestBigIntTagNeedsAWideInteger(t *testing.T) {
 	err = validateTag("bigint", types.Typ[types.Int32])
 	testza.AssertNotNil(t, err, "a narrower integer has nothing to gain and a cost to pay")
 }
+
+// TestUnexportedMembersStayOutOfTheWalk keeps the reachability walk no wider
+// than the emitters.
+//
+// collectNamed recursed through every struct field and every method, while
+// every emitter filters to exported members. The walk decides what must be
+// convertible, so reaching something nobody emits turns a private
+// implementation detail into a hard refusal: in go-pob an unexported method
+// taking a reflect.Value led to reflect.Value.Complex and "complex128 cannot be
+// converted to wasm", with nothing exposed anywhere near a complex number.
+func TestUnexportedMembersStayOutOfTheWalk(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/unexported"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err, "an unexported member must not decide what is convertible")
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "Visible()"),
+		"the exported method still has to be declared:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "Awkward"),
+		"a type only unexported members mention is not part of the surface:\n"+out.TypeScript)
+}

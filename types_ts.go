@@ -214,13 +214,20 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 		seen[typed] = true
 		*order = append(*order, typed)
 
+		// Only exported members are ever emitted, so only exported members
+		// get to decide what has to be convertible. A walk wider than the
+		// emitters turns a private implementation detail into a refusal.
 		structType := typed.Underlying().(*types.Struct)
 		for i := 0; i < structType.NumFields(); i++ {
-			collectNamed(m, structType.Field(i).Type(), seen, order)
+			if field := structType.Field(i); field.Exported() {
+				collectNamed(m, field.Type(), seen, order)
+			}
 		}
 
 		for i := 0; i < typed.NumMethods(); i++ {
-			collectNamed(m, typed.Method(i).Type(), seen, order)
+			if method := typed.Method(i); method.Exported() {
+				collectNamed(m, method.Type(), seen, order)
+			}
 		}
 	case *types.Pointer:
 		collectNamed(m, typed.Elem(), seen, order)
