@@ -19,12 +19,14 @@ import (
 type imports struct {
 	aliases map[string]string
 	taken   map[string]bool
+	needed  map[string]bool
 	self    string
 }
 
 func newImports(selfPath string) *imports {
 	return &imports{
 		aliases: make(map[string]string),
+		needed:  make(map[string]bool),
 		taken: map[string]bool{
 			// Reserved by the generated prelude's own imports.
 			contextPackage: true, "errors": true, "strconv": true, "sync": true, "js": true,
@@ -42,7 +44,19 @@ func (i *imports) qualifier(pkg *types.Package) string {
 	return i.add(pkg.Path(), pkg.Name())
 }
 
+// add registers a package the generated code refers to, so the import block
+// declares it.
 func (i *imports) add(path string, name string) string {
+	i.needed[path] = true
+
+	return i.alias(path, name)
+}
+
+// alias hands out the unique name a package is rendered under without claiming
+// the generated code refers to it. Naming and importing are separate: an alias
+// spells a marshaller's identifier, and a file that only names a type never
+// mentions its package.
+func (i *imports) alias(path string, name string) string {
 	if alias, ok := i.aliases[path]; ok {
 		return alias
 	}
@@ -76,8 +90,8 @@ func (i *imports) block(fixed []string) string {
 		out.WriteString("\t" + strconv.Quote(path) + "\n")
 	}
 
-	paths := make([]string, 0, len(i.aliases))
-	for path := range i.aliases {
+	paths := make([]string, 0, len(i.needed))
+	for path := range i.needed {
 		paths = append(paths, path)
 	}
 
@@ -122,12 +136,13 @@ func sanitiseAlias(name string) string {
 // It carries the package, because two packages may each declare a Config and
 // one function cannot marshal both. The import alias is used rather than the
 // package name, since the alias is already unique across every path this file
-// refers to.
+// refers to -- including the file's own package, which needs a distinct name
+// but no import.
 func (i *imports) goTypeName(named *types.Named) string {
 	pkg := named.Obj().Pkg()
 	if pkg == nil {
 		return instantiatedName(named)
 	}
 
-	return capitalise(i.add(pkg.Path(), pkg.Name())) + instantiatedName(named)
+	return capitalise(i.alias(pkg.Path(), pkg.Name())) + instantiatedName(named)
 }

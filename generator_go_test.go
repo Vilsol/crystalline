@@ -3,11 +3,14 @@
 package crystalline
 
 import (
+	"go/token"
+	"go/types"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1565,4 +1568,53 @@ func TestPanickingConversionsNameTheirSubject(t *testing.T) {
 	// has no callers left.
 	testza.AssertFalse(t, strings.Contains(bindings.Source, "crystallineMust"),
 		"crystallineMust should be gone")
+}
+
+// TestSelfPackageTypesDoNotImportTheirOwnPackage pins the other half of the
+// self-package layout.
+//
+// The qualifier guards on the file's own path, but goTypeName -- which builds
+// the identifier fragment for a marshaller -- did not, so a type declared in
+// the target package registered an import of that package and the generated
+// file imported itself. format.Source parses that happily; the consumer's build
+// reports an import cycle.
+func TestSelfPackageTypesDoNotImportTheirOwnPackage(t *testing.T) {
+	const self = "github.com/Vilsol/crystalline/testdata/selfpkg"
+
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/selfpkg"))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	pkg, err := g.BuildGo(declarations, WithPackageName("selfpkg"), WithImportPath(self))
+	testza.AssertNoError(t, err)
+
+	testza.AssertFalse(t, strings.Contains(pkg.Source, strconv.Quote(self)),
+		"the generated file must not import the package it lives in:\n"+pkg.Source)
+	testza.AssertTrue(t, strings.Contains(pkg.Source, "(v *Settings)"),
+		"a type in the file's own package is unqualified:\n"+pkg.Source)
+}
+
+// TestNamingATypeDoesNotImportIt separates naming from registration.
+//
+// goTypeName registered an import as a side effect, and two callers use it only
+// to build a map key -- asking "have I emitted this marshaller yet?" left an
+// import behind whether or not anything was then emitted, so the generated file
+// failed to build with "imported and not used".
+func TestNamingATypeDoesNotImportIt(t *testing.T) {
+	const dep = "example.com/dep"
+
+	i := newImports("example.com/main")
+	named := types.NewNamed(
+		types.NewTypeName(token.NoPos, types.NewPackage(dep, "dep"), "Config", nil),
+		types.NewStruct(nil, nil), nil)
+
+	name := i.goTypeName(named)
+	testza.AssertEqual(t, "DepConfig", name, "the name still has to carry the package")
+
+	testza.AssertFalse(t, strings.Contains(i.block(nil), dep),
+		"naming a type for a cache key must not import its package:\n"+i.block(nil))
+
+	testza.AssertEqual(t, name, i.goTypeName(named), "and the name must not drift once asked for")
 }
