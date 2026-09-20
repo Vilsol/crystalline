@@ -112,9 +112,13 @@ export declare namespace sample {
     NeverNil: Array<string>;
     Pointed?: sample.FnSample;
     Inner: sample.FnSample;
+    Rows?: Array<sample.FnSample>;
+    Fixed?: Array<sample.FnSample>;
     Apply(other: sample.Richer): number;
     Configure(s: sample.FnSample): string;
     Fails(): Result<void>;
+    FixedLabel(): string;
+    RowLabel(): string;
     WithCallback(cb: (v: string) => number | PromiseLike<number>): Promise<boolean>;
     WithText(cb: (v: string) => string | PromiseLike<string>): Promise<string>;
     /** Releases the Go resources behind this wrapper. */

@@ -134,7 +134,14 @@ func (e *emitter) sliceToJSExpr(expr string, elem types.Type, nonNil bool) (stri
 		return "crystallineBytes(" + expr + ")", nil
 	}
 
-	inner, err := e.toJS("v", elem, false)
+	// The element is indexed rather than ranged over by value, because a struct
+	// element crosses as a pointer to itself: addressing the loop copy accepts
+	// a write from JavaScript and discards it at the next iteration.
+	//
+	// items is a copy of the slice header, which shares the backing array, so
+	// &items[i] is the caller's element. A nested slice shadows the name, and
+	// `items := items[i]` reads the outer one, exactly as the loop variable did.
+	inner, err := e.toJS("items[i]", elem, false)
 	if err != nil {
 		return "", err
 	}
@@ -145,7 +152,7 @@ func (e *emitter) sliceToJSExpr(expr string, elem types.Type, nonNil bool) (stri
 	}
 
 	// Rendered inline so the generated code stays free of generics helpers.
-	return "func() any {\n\t\tif " + expr + " == nil {\n\t\t\treturn " + empty + "\n\t\t}\n\n\t\tout := make([]any, 0, len(" + expr + "))\n\t\tfor _, v := range " + expr + " {\n\t\t\tout = append(out, " + inner + ")\n\t\t}\n\n\t\treturn out\n\t}()", nil
+	return "func() any {\n\t\titems := " + expr + "\n\t\tif items == nil {\n\t\t\treturn " + empty + "\n\t\t}\n\n\t\tout := make([]any, 0, len(items))\n\t\tfor i := range items {\n\t\t\tout = append(out, " + inner + ")\n\t\t}\n\n\t\treturn out\n\t}()", nil
 }
 
 // arrayToJSExpr renders a fixed size array. Unlike a slice it is never nil, so
@@ -155,12 +162,15 @@ func (e *emitter) arrayToJSExpr(expr string, typed *types.Array, nonNil bool) (s
 		return "crystallineBytes(" + expr + "[:])", nil
 	}
 
-	inner, err := e.toJS("v", typed.Elem(), false)
+	// An array is a value, so binding it by value would copy it and put the
+	// write back into the same hole the loop variable did. A pointer to the
+	// array indexes the caller's elements, and ranges and lens like one.
+	inner, err := e.toJS("items[i]", typed.Elem(), false)
 	if err != nil {
 		return "", err
 	}
 
-	return "func() any {\n\t\tout := make([]any, 0, len(" + expr + "))\n\t\tfor _, v := range " + expr + " {\n\t\t\tout = append(out, " + inner + ")\n\t\t}\n\n\t\treturn out\n\t}()", nil
+	return "func() any {\n\t\titems := &" + expr + "\n\t\tout := make([]any, 0, len(items))\n\t\tfor i := range items {\n\t\t\tout = append(out, " + inner + ")\n\t\t}\n\n\t\treturn out\n\t}()", nil
 }
 
 func (e *emitter) mapToJSExpr(expr string, typed *types.Map, nonNil bool) (string, error) {

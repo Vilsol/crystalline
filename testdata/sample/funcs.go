@@ -56,7 +56,15 @@ type Richer struct {
 	NeverNil   []string `crystalline:"not_nil"`
 	Pointed    *FnSample
 	Inner      FnSample
+	Rows       []FnSample
+	Fixed      [2]FnSample
 }
+
+// RowLabel and FixedLabel read the element back in Go, so a write that only
+// reached a JavaScript wrapper cannot pass for one that landed.
+func (r Richer) RowLabel() string { return r.Rows[0].FirstValue }
+
+func (r Richer) FixedLabel() string { return r.Fixed[0].FirstValue }
 
 func (r Richer) Fails() error {
 	return nil
@@ -74,7 +82,11 @@ func (r Richer) WithText(cb func(v string) string) string {
 }
 
 func Rich() Richer {
-	return Richer{Pointed: &FnSample{FirstValue: "pointed"}}
+	return Richer{
+		Pointed: &FnSample{FirstValue: "pointed"},
+		Rows:    []FnSample{{FirstValue: "row"}},
+		Fixed:   [2]FnSample{{FirstValue: "fixed"}},
+	}
 }
 
 // Configure takes a struct by value, and echoes a field back so a caller can

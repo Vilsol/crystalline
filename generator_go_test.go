@@ -79,6 +79,10 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"MapWrite={\"a\":1}",
 		"BytesWrite=7",
 		"StructWrite=nested",
+		// A write through a slice element used to reach a per-iteration copy:
+		// it succeeded, and Go never saw it.
+		"ElementWrite=via-element",
+		"FixedWrite=via-fixed",
 		"ReadOnlyWrite=threw",
 		"NestedIdentity=true",
 		"PointerIdentity=true",
@@ -436,6 +440,14 @@ func main() {
 		out.push("BytesWrite=" + (r.Blob ? r.Blob[0] : "null"));
 		r.Inner = {FirstValue: "nested"};
 		out.push("StructWrite=" + r.Inner.FirstValue);
+
+		// A slice element is marshalled by address. Addressing the range copy
+		// instead accepts the write and discards it, so the read-back has to
+		// come from Go rather than from another wrapper.
+		r.Rows[0].FirstValue = "via-element";
+		out.push("ElementWrite=" + r.RowLabel());
+		r.Fixed[0].FirstValue = "via-fixed";
+		out.push("FixedWrite=" + r.FixedLabel());
 
 		// A field that genuinely cannot be written must say so, not accept the
 		// write and drop it.

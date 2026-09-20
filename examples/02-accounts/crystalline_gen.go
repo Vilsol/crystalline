@@ -895,13 +895,14 @@ func crystallineMarshalAccountAccount(v *account.Account) any {
 	})
 	crystallineDefine(scope, out, "History", func() any {
 		return func() any {
-			if v.History == nil {
+			items := v.History
+			if items == nil {
 				return []any{}
 			}
 
-			out := make([]any, 0, len(v.History))
-			for _, v := range v.History {
-				out = append(out, string(v))
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, string(items[i]))
 			}
 
 			return out
@@ -994,13 +995,14 @@ func crystallineMarshalAccountStatement(v *account.Statement) any {
 	out.Set("Owner", string(v.Owner))
 	out.Set("Balance", float64(v.Balance))
 	out.Set("Entries", func() any {
-		if v.Entries == nil {
+		items := v.Entries
+		if items == nil {
 			return nil
 		}
 
-		out := make([]any, 0, len(v.Entries))
-		for _, v := range v.Entries {
-			out = append(out, string(v))
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, string(items[i]))
 		}
 
 		return out

@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A write through a slice or array element reaches the Go value. A struct
+  crosses as a pointer to itself, and the element was ranged over by value, so
+  the pointer addressed the per-iteration copy: JavaScript's write succeeded,
+  Go never saw it, and nothing failed. The element is now indexed, which is
+  what makes it the caller's. An array is bound through a pointer rather than
+  by value, since binding it by value would copy it and put the write back into
+  the same hole.
+
 ## [0.1.2] - 2026-09-19
 
 ### Fixed

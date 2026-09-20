@@ -785,13 +785,14 @@ func crystallineFnCatalogueAll(this js.Value, args []js.Value) (result any) {
 	r0 := catalogue.All()
 
 	return func() any {
-		if r0 == nil {
+		items := r0
+		if items == nil {
 			return nil
 		}
 
-		out := make([]any, 0, len(r0))
-		for _, v := range r0 {
-			out = append(out, crystallineMarshalCatalogueItem(v))
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, crystallineMarshalCatalogueItem(items[i]))
 		}
 
 		return out
