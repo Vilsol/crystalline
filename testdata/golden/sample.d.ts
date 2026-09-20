@@ -114,10 +114,14 @@ export declare namespace sample {
     Inner: sample.FnSample;
     Rows?: Array<sample.FnSample>;
     Fixed?: Array<sample.FnSample>;
+    Keyed?: Record<string, Readonly<sample.FnSample>>;
+    Pointers?: Record<string, sample.FnSample | undefined>;
     Apply(other: sample.Richer): number;
     Configure(s: sample.FnSample): string;
     Fails(): Result<void>;
     FixedLabel(): string;
+    KeyedLabel(): string;
+    PointerLabel(): string;
     RowLabel(): string;
     WithCallback(cb: (v: string) => number | PromiseLike<number>): Promise<boolean>;
     WithText(cb: (v: string) => string | PromiseLike<string>): Promise<string>;

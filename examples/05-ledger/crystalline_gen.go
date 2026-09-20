@@ -568,9 +568,59 @@ func crystallineErrorText(value js.Value) string {
 
 // crystallineDefine installs accessors so that reads and writes from JS reach
 // the Go value, rather than operating on a detached copy.
+// crystallineFrozenSetter refuses a write that could not have landed.
+//
+// It is created once and never released: there is nothing per-field to say, and
+// a scope would have to reach inside a wrapper that is already built.
+var crystallineFrozenSetter js.Value
+
+// crystallineFrozen makes an already-built wrapper reject writes.
+//
+// A Go map element has no address, so the wrapper stands over a copy of it. A
+// write would reach the copy and be discarded, which is worse than refusing it:
+// the caller has no way to tell. Reads and methods are left alone, because they
+// read the copy correctly.
+func crystallineFrozen(value any) any {
+	object, ok := value.(js.Value)
+	if !ok {
+		return value
+	}
+
+	if crystallineFrozenSetter.IsUndefined() {
+		crystallineFrozenSetter = crystallineWrap(js.FuncOf(func(this js.Value, args []js.Value) any {
+			return crystallineFail("cannot be written: a map element is a copy in Go, so the write would be discarded")
+		}))
+	}
+
+	objects := js.Global().Get("Object")
+	names := objects.Call("keys", object)
+
+	for i := 0; i < names.Length(); i++ {
+		name := names.Index(i).String()
+
+		descriptor := objects.Call("getOwnPropertyDescriptor", object, name)
+		if descriptor.Get("set").IsUndefined() {
+			// A method is a plain property: there is no write to refuse.
+			continue
+		}
+
+		objects.Call("defineProperty", object, name, map[string]any{
+			"enumerable":   true,
+			"configurable": true,
+			"get":          descriptor.Get("get"),
+			"set":          crystallineFrozenSetter,
+		})
+	}
+
+	return value
+}
+
 func crystallineDefine(scope *crystallineScope, target js.Value, name string, get func() any, set func(js.Value)) {
 	js.Global().Get("Object").Call("defineProperty", target, name, map[string]any{
 		"enumerable": true,
+		// Configurable so a wrapper that cannot accept writes can replace the
+		// setter after the fact. See crystallineFrozen.
+		"configurable": true,
 		"get": scope.fn(func(this js.Value, args []js.Value) any {
 			return get()
 		}),

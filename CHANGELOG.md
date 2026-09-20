@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what makes it the caller's. An array is bound through a pointer rather than
   by value, since binding it by value would copy it and put the write back into
   the same hole.
+- A struct behind a map key refuses writes instead of losing them. Go cannot
+  address a map element at all, so the wrapper stands over a copy and no
+  indexing fixes it. The fields are declared `Readonly`, which makes the write
+  a TypeScript error, and the setter throws, which catches it where the
+  declarations are not consulted. Reads and methods are unaffected, and a
+  `map[K]*Struct` stays writable because that element really is shared.
 
 ## [0.1.2] - 2026-09-19
 

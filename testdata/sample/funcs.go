@@ -58,6 +58,8 @@ type Richer struct {
 	Inner      FnSample
 	Rows       []FnSample
 	Fixed      [2]FnSample
+	Keyed      map[string]FnSample
+	Pointers   map[string]*FnSample
 }
 
 // RowLabel and FixedLabel read the element back in Go, so a write that only
@@ -65,6 +67,10 @@ type Richer struct {
 func (r Richer) RowLabel() string { return r.Rows[0].FirstValue }
 
 func (r Richer) FixedLabel() string { return r.Fixed[0].FirstValue }
+
+func (r Richer) KeyedLabel() string { return r.Keyed["a"].FirstValue }
+
+func (r Richer) PointerLabel() string { return r.Pointers["a"].FirstValue }
 
 func (r Richer) Fails() error {
 	return nil
@@ -83,9 +89,11 @@ func (r Richer) WithText(cb func(v string) string) string {
 
 func Rich() Richer {
 	return Richer{
-		Pointed: &FnSample{FirstValue: "pointed"},
-		Rows:    []FnSample{{FirstValue: "row"}},
-		Fixed:   [2]FnSample{{FirstValue: "fixed"}},
+		Pointed:  &FnSample{FirstValue: "pointed"},
+		Rows:     []FnSample{{FirstValue: "row"}},
+		Fixed:    [2]FnSample{{FirstValue: "fixed"}},
+		Keyed:    map[string]FnSample{"a": {FirstValue: "keyed"}},
+		Pointers: map[string]*FnSample{"a": {FirstValue: "pointed-at"}},
 	}
 }
 

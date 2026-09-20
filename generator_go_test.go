@@ -83,6 +83,11 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		// it succeeded, and Go never saw it.
 		"ElementWrite=via-element",
 		"FixedWrite=via-fixed",
+		// A map element is a copy in Go: the write cannot land, so it throws.
+		"KeyedWrite=threw",
+		"KeyedInGo=keyed",
+		"KeyedRead=keyed",
+		"PointerWrite=via-pointer",
 		"ReadOnlyWrite=threw",
 		"NestedIdentity=true",
 		"PointerIdentity=true",
@@ -448,6 +453,25 @@ func main() {
 		out.push("ElementWrite=" + r.RowLabel());
 		r.Fixed[0].FirstValue = "via-fixed";
 		out.push("FixedWrite=" + r.FixedLabel());
+
+		// A Go map element has no address, so the wrapper stands over a copy.
+		// Refusing the write is the only honest answer; accepting it and
+		// dropping it leaves the caller no way to tell.
+		let keyedWrite = "accepted";
+		try {
+			r.Keyed["a"].FirstValue = "via-keyed";
+		} catch (e) {
+			keyedWrite = e.message.includes("map element") ? "threw" : "wrong:" + e.message;
+		}
+		out.push("KeyedWrite=" + keyedWrite);
+		out.push("KeyedInGo=" + r.KeyedLabel());
+		// Refusing a write must not cost the read or the method.
+		out.push("KeyedRead=" + r.Keyed["a"].One());
+
+		// A map of pointers is a different matter: the element is shared, so
+		// the write lands and must keep landing.
+		r.Pointers["a"].FirstValue = "via-pointer";
+		out.push("PointerWrite=" + r.PointerLabel());
 
 		// A field that genuinely cannot be written must say so, not accept the
 		// write and drop it.

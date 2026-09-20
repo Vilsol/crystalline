@@ -130,6 +130,29 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 	return g.tsType(t.Underlying())
 }
 
+// crossesAsWrapper reports whether a type reaches JavaScript as a live wrapper
+// over the Go value rather than as data.
+//
+// It is the one owner of that question: the Go emitter freezes a map element
+// only when it is a wrapper, and the declarations mark the same ones readonly.
+// Asking it twice is how the two come to disagree.
+func crossesAsWrapper(m marks, t types.Type) bool {
+	t = unaliased(t)
+
+	if _, mapped := m.marshallerFor(t); mapped {
+		return false
+	}
+
+	named, ok := t.(*types.Named)
+	if !ok {
+		return false
+	}
+
+	_, isStruct := named.Underlying().(*types.Struct)
+
+	return isStruct
+}
+
 func (g *Generator) sequenceToJS(elem types.Type) (string, bool, error) {
 	if basic, ok := elem.Underlying().(*types.Basic); ok && basic.Kind() == types.Uint8 {
 		return "Uint8Array", true, nil
@@ -160,6 +183,12 @@ func (g *Generator) mapToJS(typed *types.Map) (string, bool, error) {
 	valueName, valueOptional, err := g.tsType(typed.Elem())
 	if err != nil {
 		return "", false, err
+	}
+
+	if crossesAsWrapper(g.marks, typed.Elem()) {
+		// Go cannot address a map element, so the wrapper stands over a copy
+		// and its fields refuse writes. Readonly says so before the attempt.
+		valueName = "Readonly<" + valueName + ">"
 	}
 
 	if valueOptional {

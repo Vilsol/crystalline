@@ -184,6 +184,13 @@ func (e *emitter) mapToJSExpr(expr string, typed *types.Map, nonNil bool) (strin
 		return "", err
 	}
 
+	if crossesAsWrapper(e.marks, typed.Elem()) {
+		// The element is ranged over by value because Go cannot address a map
+		// element at all. The wrapper therefore stands over a copy, and a write
+		// to it has to be refused rather than discarded.
+		value = "crystallineFrozen(" + value + ")"
+	}
+
 	empty := "nil"
 	if nonNil {
 		empty = "map[string]any{}"
