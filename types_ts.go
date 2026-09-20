@@ -287,10 +287,20 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 			}
 		}
 
-		for i := 0; i < typed.NumMethods(); i++ {
-			if method := typed.Method(i); method.Exported() {
-				collectNamed(m, method.Type(), seen, order)
+		// The manifest decides which methods exist, so the walk has to read it
+		// too: plain data carries none, and Without removes the ones it names.
+		// exportedMethods is what the emitters and the declarations both use,
+		// and it carries promoted methods, which NumMethods does not.
+		if m.isPlain(typed) {
+			return
+		}
+
+		for _, method := range exportedMethods(typed) {
+			if m.ignored[markKey(typed, method.Name())] {
+				continue
 			}
+
+			collectNamed(m, method.Type(), seen, order)
 		}
 	case *types.Pointer:
 		collectNamed(m, typed.Elem(), seen, order)

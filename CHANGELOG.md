@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nowhere, with nothing reported. The methods have to come from the underlying
   interface: `Named.NumMethods` is zero for one, which is why the existing
   method loop never saw them.
+- The walk reads the manifest. `bind.Without` removes a method and `bind.Plain`
+  removes all of them, and the declarations honour both, but the walk did not:
+  a type reachable only through an excluded method was declared with nothing
+  able to refer to it. In go-pob that was 202 declarations from 22
+  registrations, most of them a serialisation library's internals. The walk now
+  takes its methods from the same helper the emitters and the declarations use,
+  which also carries promoted methods that `Named.NumMethods` leaves out.
 
 ## [0.1.3] - 2026-09-20
 

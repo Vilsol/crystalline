@@ -1004,3 +1004,34 @@ func TestSuppliedInterfacesDeclareWhatTheyName(t *testing.T) {
 
 	assertEveryReferenceIsDeclared(t, out.TypeScript)
 }
+
+// TestTheWalkReadsTheManifest keeps the walk from declaring types the surface
+// cannot name.
+//
+// bind.Without removes a method and bind.Plain removes all of them, and the
+// declarations honour both. The walk did not, so a type reachable only through
+// an excluded method was declared with nothing able to refer to it: in go-pob,
+// 202 declarations from 22 registrations, most of them a serialisation
+// library's internals.
+func TestTheWalkReadsTheManifest(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/pruned/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "interface Doc {"),
+		"the exposed type is still declared:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "interface Plainish {"),
+		"and so is the plain one:\n"+out.TypeScript)
+
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "interface Writer"),
+		"a method the manifest excluded takes its types with it:\n"+out.TypeScript)
+	testza.AssertFalse(t, strings.Contains(out.TypeScript, "interface Helper"),
+		"plain data carries no methods, so it names no types:\n"+out.TypeScript)
+
+	assertEveryReferenceIsDeclared(t, out.TypeScript)
+}
