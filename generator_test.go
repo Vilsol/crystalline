@@ -975,3 +975,32 @@ func skipText(skipped []Skipped) string {
 
 	return strings.Join(out, "; ")
 }
+
+// TestSuppliedInterfacesDeclareWhatTheyName closes the third instance of one
+// defect: the walk that decides what to declare and the renderer that decides
+// what to name are written separately, so they drift.
+//
+// collectNamed treated a supplied interface as a leaf -- it recorded the
+// interface and returned -- while renderSupplied walks the whole method set and
+// names every type in those signatures. A struct reachable only that way was
+// named twice and declared nowhere, with no skip reported and no error.
+//
+// The method set has to come from the underlying interface: Named.NumMethods is
+// zero for one, which is why the existing method loop never saw these.
+func TestSuppliedInterfacesDeclareWhatTheyName(t *testing.T) {
+	g := NewGenerator("app")
+	testza.AssertNoError(t, g.Load(".", "./testdata/supplied/..."))
+
+	declarations, err := g.Declarations()
+	testza.AssertNoError(t, err)
+
+	out, err := g.Build(declarations)
+	testza.AssertNoError(t, err)
+
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "Take(p: store.Payload)"),
+		"the fixture only reproduces the gap while the method names the type:\n"+out.TypeScript)
+	testza.AssertTrue(t, strings.Contains(out.TypeScript, "interface Payload {"),
+		"a type a supplied interface names has to be declared:\n"+out.TypeScript)
+
+	assertEveryReferenceIsDeclared(t, out.TypeScript)
+}

@@ -251,6 +251,20 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 				*order = append(*order, typed)
 			}
 
+			if supplied {
+				// The declarations render the whole method set, so everything
+				// those signatures name has to be declared too. The methods
+				// come from the underlying interface: Named.NumMethods is zero
+				// for one, which is why the struct loop below never saw them.
+				// seen is already marked, so a self-referential one terminates.
+				declared := typed.Underlying().(*types.Interface)
+				for i := 0; i < declared.NumMethods(); i++ {
+					if method := declared.Method(i); method.Exported() {
+						collectNamed(m, method.Type(), seen, order)
+					}
+				}
+			}
+
 			return
 		}
 
