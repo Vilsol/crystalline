@@ -37,6 +37,26 @@ func TestGeneratedBindingsAreReflectFree(t *testing.T) {
 	}
 }
 
+// TestConversionsBuildJavaScriptDirectly pins that a map or struct handed to
+// JavaScript is built there as it is converted. Collecting a map into a Go
+// map[string]any first, for js.ValueOf to walk again, allocated it twice; and
+// looking Object up on the global object for every struct was a crossing each.
+//
+// A slice is left alone on purpose: measured, js.ValueOf over a []any is
+// cheaper for the few elements a slice usually has.
+func TestConversionsBuildJavaScriptDirectly(t *testing.T) {
+	pkg, err := generateBindings(t, "./testdata/bindings")
+	testza.AssertNoError(t, err)
+
+	for _, intermediate := range []string{
+		"make(map[string]any, len(",
+		`js.Global().Get("Object").New()`,
+	} {
+		testza.AssertFalse(t, strings.Contains(pkg.Source, intermediate),
+			"a conversion still builds through "+intermediate)
+	}
+}
+
 // TestGeneratedBindingsWork exercises the whole emitted surface end to end:
 // values, fields, methods, results, streams, cancellation and disposal.
 func TestGeneratedBindingsWork(t *testing.T) {

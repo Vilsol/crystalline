@@ -71,6 +71,10 @@ func crystallineFail(message string) any {
 	return nil
 }
 
+// crystallineObjects is what every map and struct conversion builds with,
+// looked up once rather than off the global object per value.
+var crystallineObjects = js.Global().Get("Object")
+
 func crystallineBytes(data []byte) any {
 	if data == nil {
 		return nil
@@ -173,11 +177,11 @@ func crystallineIterator(next func() (any, bool), stop func()) any {
 		once.Do(stop)
 	}
 
-	iterator := js.Global().Get("Object").New()
+	iterator := crystallineObjects.New()
 
 	iterator.Set("next", js.FuncOf(func(this js.Value, args []js.Value) any {
 		return crystallinePromise(func() any {
-			result := js.Global().Get("Object").New()
+			result := crystallineObjects.New()
 
 			value, ok := next()
 			if !ok {
@@ -202,14 +206,14 @@ func crystallineIterator(next func() (any, bool), stop func()) any {
 	iterator.Set("return", js.FuncOf(func(this js.Value, args []js.Value) any {
 		finish()
 
-		result := js.Global().Get("Object").New()
+		result := crystallineObjects.New()
 		result.Set("done", true)
 		result.Set("value", nil)
 
 		return result
 	}))
 
-	iterable := js.Global().Get("Object").New()
+	iterable := crystallineObjects.New()
 
 	// Symbol.asyncIterator cannot be reached through Value.Set, which only
 	// takes string keys, so the wiring is done in JS.

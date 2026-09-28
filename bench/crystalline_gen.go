@@ -87,6 +87,10 @@ func crystallineFail(message string) any {
 	return nil
 }
 
+// crystallineObjects is what every map and struct conversion builds with,
+// looked up once rather than off the global object per value.
+var crystallineObjects = js.Global().Get("Object")
+
 func crystallineBytes(data []byte) any {
 	if data == nil {
 		return nil
@@ -189,11 +193,11 @@ func crystallineIterator(next func() (any, bool), stop func()) any {
 		once.Do(stop)
 	}
 
-	iterator := js.Global().Get("Object").New()
+	iterator := crystallineObjects.New()
 
 	iterator.Set("next", js.FuncOf(func(this js.Value, args []js.Value) any {
 		return crystallinePromise(func() any {
-			result := js.Global().Get("Object").New()
+			result := crystallineObjects.New()
 
 			value, ok := next()
 			if !ok {
@@ -218,14 +222,14 @@ func crystallineIterator(next func() (any, bool), stop func()) any {
 	iterator.Set("return", js.FuncOf(func(this js.Value, args []js.Value) any {
 		finish()
 
-		result := js.Global().Get("Object").New()
+		result := crystallineObjects.New()
 		result.Set("done", true)
 		result.Set("value", nil)
 
 		return result
 	}))
 
-	iterable := js.Global().Get("Object").New()
+	iterable := crystallineObjects.New()
 
 	// Symbol.asyncIterator cannot be reached through Value.Set, which only
 	// takes string keys, so the wiring is done in JS.
@@ -1073,9 +1077,9 @@ func crystallineFnPayloadMakeMap(this js.Value, args []js.Value) (result any) {
 			return nil
 		}
 
-		out := make(map[string]any, len(r0))
+		out := crystallineObjects.New()
 		for k, v := range r0 {
-			out[string(k)] = float64(v)
+			out.Set(string(k), float64(v))
 		}
 
 		return out
@@ -1288,7 +1292,7 @@ func crystallineMarshalPayloadAnchor(v *payload.Anchor) any {
 		return nil
 	}
 
-	out := js.Global().Get("Object").New()
+	out := crystallineObjects.New()
 
 	out.Set("X", float64(v.X))
 	out.Set("Y", float64(v.Y))
@@ -1493,7 +1497,7 @@ func crystallineMarshalPayloadReading(v *payload.Reading) any {
 		return nil
 	}
 
-	out := js.Global().Get("Object").New()
+	out := crystallineObjects.New()
 
 	out.Set("X", float64(v.X))
 	out.Set("Y", float64(v.Y))
@@ -1583,9 +1587,9 @@ func crystallineMarshalPayloadRecord(v *payload.Record) any {
 							return nil
 						}
 
-						out := make(map[string]any, len(v.Totals))
+						out := crystallineObjects.New()
 						for k, v := range v.Totals {
-							out[string(k)] = float64(v)
+							out.Set(string(k), float64(v))
 						}
 
 						return out
@@ -1750,7 +1754,7 @@ func crystallinePlainPayloadLine(v *payload.Line) any {
 		return nil
 	}
 
-	out := js.Global().Get("Object").New()
+	out := crystallineObjects.New()
 
 	out.Set("Label", string(v.Label))
 	out.Set("Values", func() any {
@@ -1775,7 +1779,7 @@ func crystallinePlainPayloadRecord(v *payload.Record) any {
 		return nil
 	}
 
-	out := js.Global().Get("Object").New()
+	out := crystallineObjects.New()
 
 	out.Set("ID", float64(v.ID))
 	out.Set("Name", string(v.Name))
@@ -1837,9 +1841,9 @@ func crystallinePlainPayloadRecord(v *payload.Record) any {
 			return nil
 		}
 
-		out := make(map[string]any, len(v.Totals))
+		out := crystallineObjects.New()
 		for k, v := range v.Totals {
-			out[string(k)] = float64(v)
+			out.Set(string(k), float64(v))
 		}
 
 		return out

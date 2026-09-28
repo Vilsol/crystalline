@@ -216,7 +216,7 @@ func (e *emitter) plainMarshaller(named *types.Named, fn string, reportMethods b
 
 	// Built field by field rather than from a Go map, so that the property
 	// order is the declaration order rather than whatever the map iterated.
-	body.WriteString("\tout := js.Global().Get(\"Object\").New()\n\n")
+	body.WriteString("\tout := crystallineObjects.New()\n\n")
 
 	for i := range structType.NumFields() {
 		field := structType.Field(i)

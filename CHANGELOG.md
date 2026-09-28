@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call into a bridge slot that had been released, which logs to the console
   and answers `undefined`.
 - `crystallineFrozen` is one call rather than two per field.
+- A map or struct crossing as data is built in JavaScript as it is converted,
+  rather than collected into a Go `map[string]any` for `js.ValueOf` to walk a
+  second time, and `Object` is looked up once rather than per struct. A map of
+  256 keys went from about 110 µs to 84, and 32 plain structs from 328 µs to
+  226. A slice is left as it was: measured, `js.ValueOf` over a `[]any` is 1-2
+  µs cheaper for the few elements a slice usually has, and only overtakes past
+  about fifty.
 
 ### Fixed
 
