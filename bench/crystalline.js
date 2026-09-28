@@ -31,6 +31,11 @@ export const initializeCrystalline = () => {
     throw new Error('crystalline: globalThis.go.bench is not set. Start the Go wasm module before calling initializeCrystalline().');
   }
 
+  const failedImports = globalThis['go']['bench']['__crystalline']?.['importFailures'];
+  if (failedImports?.length) {
+    throw new Error('crystalline: Go could not reach what it imported: ' + failedImports.join('; '));
+  }
+
   payload = {
     AddInts: wrap('payload.AddInts', globalThis['go']['bench']['payload']['AddInts']),
     CountKeys: wrap('payload.CountKeys', globalThis['go']['bench']['payload']['CountKeys']),
@@ -41,6 +46,7 @@ export const initializeCrystalline = () => {
     MakeMap: wrap('payload.MakeMap', globalThis['go']['bench']['payload']['MakeMap']),
     MakePoints: wrap('payload.MakePoints', globalThis['go']['bench']['payload']['MakePoints']),
     MakeReadings: wrap('payload.MakeReadings', globalThis['go']['bench']['payload']['MakeReadings']),
+    MakeRecord: wrap('payload.MakeRecord', globalThis['go']['bench']['payload']['MakeRecord']),
     MayFail: wrap('payload.MayFail', globalThis['go']['bench']['payload']['MayFail']),
     NewPoint: wrap('payload.NewPoint', globalThis['go']['bench']['payload']['NewPoint']),
     Noop: wrap('payload.Noop', globalThis['go']['bench']['payload']['Noop']),

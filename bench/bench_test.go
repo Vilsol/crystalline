@@ -369,6 +369,67 @@ func BenchmarkFeed(b *testing.B) {
 	})
 }
 
+// BenchmarkRecord hands over a struct of about ten fields with nested slices
+// and structs, the shape of a real result, and reports what the bridge did for
+// it: js.FuncOf calls, wasm to JS crossings, JS to wasm calls and evals, per
+// op.
+//
+// wrap builds the wrapper and releases it. dump is what a consumer that wants
+// the data does with one: read every property recursively into plain objects,
+// releasing each wrapper it met, as go-pob's dump() does. raw is a hand-written
+// plain object of the same data, the floor for dump.
+func BenchmarkRecord(b *testing.B) {
+	makeRecord := api().Get("MakeRecord")
+
+	for _, run := range []struct {
+		name   string
+		fn     js.Value
+		driver func() js.Value
+	}{
+		{"wrap", makeRecord, func() js.Value { return drivers().produced }},
+		{"dump", makeRecord, func() js.Value { return drivers().dumped }},
+		{"raw", rawAPI().Get("MakeRecord"), func() js.Value { return drivers().produced }},
+	} {
+		b.Run(run.name, func(b *testing.B) {
+			counted(b, recordBatch, func() js.Value {
+				return run.driver().Invoke(run.fn, nil, recordBatch)
+			})
+		})
+	}
+}
+
+// recordBatch is smaller than batch: a dumped record costs milliseconds.
+const recordBatch = 50
+
+// counted is perCall for a driver wrapped in countedDriver, adding what the
+// bridge counted to the time.
+func counted(b *testing.B, batch int, run func() js.Value) {
+	b.Helper()
+
+	var funcOf, crossings, entered, evals float64
+
+	batches := 0
+
+	for b.Loop() {
+		deltas := run()
+
+		funcOf += deltas.Get("funcOf").Float()
+		crossings += deltas.Get("crossings").Float()
+		entered += deltas.Get("entered").Float()
+		evals += deltas.Get("evals").Float()
+
+		batches++
+	}
+
+	ops := float64(batches * batch)
+
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/ops, "ns/op")
+	b.ReportMetric(funcOf/ops, "funcOf/op")
+	b.ReportMetric(crossings/ops, "crossings/op")
+	b.ReportMetric(entered/ops, "entered/op")
+	b.ReportMetric(evals/ops, "evals/op")
+}
+
 // driver holds the JavaScript loops the benchmarks hand their work to.
 type driver struct {
 	call0     js.Value
@@ -381,12 +442,43 @@ type driver struct {
 	points    js.Value
 	awaited   js.Value
 	streamed  js.Value
+	dumped    js.Value
+	produced  js.Value
 }
 
 var loadDrivers = sync.OnceValue(func() *driver {
 	compile := func(source string) js.Value {
 		return js.Global().Call("eval", source)
 	}
+
+	// countedDriver runs a loop and hands back what the bridge counted while
+	// it ran, so that the reads of the counters are not themselves counted.
+	countedDriver := func(loop string) js.Value {
+		return compile(`((loop) => (fn, a, n) => {
+			const c = globalThis.crystallineCounters ?? { funcOf: 0, crossings: 0, entered: 0, evals: 0 };
+			const before = { ...c };
+			loop(fn, a, n);
+			return { funcOf: c.funcOf - before.funcOf, crossings: c.crossings - before.crossings, entered: c.entered - before.entered, evals: c.evals - before.evals };
+		})(` + loop + `)`)
+	}
+
+	// dump is go-pob's, with release: copy every own property recursively and
+	// release each wrapper on the way out.
+	const dump = `(obj) => {
+		const dump = (obj) => {
+			if (typeof obj !== "object" || obj === null) { return obj; }
+			const out = Array.isArray(obj) ? [] : {};
+			for (const prop of Object.getOwnPropertyNames(obj)) {
+				let val = obj[prop];
+				if (typeof val === "object") { val = dump(val); }
+				else if (typeof val === "function" || typeof val === "symbol") { continue; }
+				out[prop] = val;
+			}
+			if (typeof obj.release === "function") { obj.release(); }
+			return out;
+		};
+		return dump(obj);
+	}`
 
 	return &driver{
 		call0:     compile(`(fn, n) => { for (let i = 0; i < n; i++) { fn(); } }`),
@@ -398,6 +490,8 @@ var loadDrivers = sync.OnceValue(func() *driver {
 		released:  compile(`(fn, a, n) => { for (let i = 0; i < n; i++) { fn(a).release?.(); } }`),
 		points:    compile(`(fn, count, n) => { for (let i = 0; i < n; i++) { const out = fn(count); for (let j = 0; j < out.length; j++) { out[j].release?.(); } } }`),
 		awaited:   compile(`async (fn, a, n) => { for (let i = 0; i < n; i++) { await fn(a); } }`),
+		dumped:    countedDriver(`(fn, a, n) => { const dump = ` + dump + `; for (let i = 0; i < n; i++) { dump(fn()); } }`),
+		produced:  countedDriver(`(fn, a, n) => { for (let i = 0; i < n; i++) { const out = fn(); out?.release?.(); } }`),
 		streamed:  compile(`async (fn, count, n) => { for (let i = 0; i < n; i++) { for await (const item of fn(count)) { /* drain */ } } }`),
 	}
 })

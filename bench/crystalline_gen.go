@@ -31,6 +31,7 @@ func init() {
 	crystallineNamespace("bench", "payload").Set("MayFail", crystallineWrap(js.FuncOf(crystallineFnPayloadMayFail)))
 	crystallineNamespace("bench", "payload").Set("Stream", crystallineWrap(js.FuncOf(crystallineFnPayloadStream)))
 	crystallineNamespace("bench", "payload").Set("Drain", crystallineWrap(js.FuncOf(crystallineFnPayloadDrain)))
+	crystallineNamespace("bench", "payload").Set("MakeRecord", crystallineWrap(js.FuncOf(crystallineFnPayloadMakeRecord)))
 	crystallineNamespace("bench", "payload").Set("Rounds", crystallineWrap(js.FuncOf(crystallineFnPayloadRounds)))
 
 	Exports(crystallineRegistry{})
@@ -46,6 +47,8 @@ type crystallineRegistry struct{ bind.Registry }
 func (crystallineRegistry) Func(fn any, opts ...bind.Option) {}
 
 func (crystallineRegistry) Type(zero any, opts ...bind.Option) {}
+
+func (crystallineRegistry) Import(target any, opts ...bind.Option) {}
 
 func (crystallineRegistry) Value(name string, value any, opts ...bind.Option) {
 }
@@ -109,7 +112,20 @@ func crystallinePromise(body func() any) any {
 				}
 			}()
 
-			resolve.Invoke(body())
+			value := body()
+
+			// A failure inside the body travels through the same slot a
+			// synchronous call uses, so generated code has one way to report
+			// one and needs no panic to do it. The JS wrapper cannot read the
+			// slot here: it handed back the promise before the body ran.
+			if failure := js.Global().Get("goInternalError"); !failure.IsUndefined() {
+				js.Global().Set("goInternalError", js.Undefined())
+				reject.Invoke(js.Global().Get("Error").New(failure.String()))
+
+				return
+			}
+
+			resolve.Invoke(value)
 		}()
 
 		return nil
@@ -267,7 +283,15 @@ func crystallineFeed[T any](source js.Value, convert func(js.Value) (T, error)) 
 		defer close(out)
 
 		for {
-			step := crystallineAwait(iterator.Call("next"))
+			step, err := crystallineAwaited(iterator.Call("next"))
+			if err != nil {
+				// A rejecting source used to panic here, in a goroutine with
+				// no recover, which ends the program rather than the call.
+				failure = err
+
+				return
+			}
+
 			if step.Get("done").Truthy() {
 				return
 			}
@@ -480,9 +504,22 @@ func crystallineUnknownProperty(value js.Value, typeName string, known map[strin
 	return nil
 }
 
+// crystallineAwait resolves a thenable and panics if it rejects, which is the
+// only answer in a function whose Go signature belongs to the consumer.
 func crystallineAwait(value js.Value) js.Value {
-	if value.Type() != js.TypeObject || value.Get("then").Type() != js.TypeFunction {
-		return value
+	resolved, err := crystallineAwaited(value)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return resolved
+}
+
+// crystallineAwaited is the same wait for a caller that has somewhere to report
+// a rejection to. A feed does: it already carries whatever ended it.
+func crystallineAwaited(value js.Value) (js.Value, error) {
+	if !crystallineIsThenable(value) {
+		return value, nil
 	}
 
 	settled := make(chan js.Value, 1)
@@ -503,7 +540,7 @@ func crystallineAwait(value js.Value) js.Value {
 		if len(args) == 0 {
 			failed <- "promise rejected"
 		} else {
-			failed <- args[0].String()
+			failed <- crystallineErrorText(args[0])
 		}
 
 		return nil
@@ -514,17 +551,80 @@ func crystallineAwait(value js.Value) js.Value {
 
 	select {
 	case result := <-settled:
-		return result
+		return result, nil
 	case message := <-failed:
-		panic(message)
+		return js.Undefined(), errors.New(message)
 	}
+}
+
+// crystallineErrorText renders whatever a promise rejected with. Value.String()
+// on an Error object gives the literal "<object>", which names nothing, and
+// that is what a rejection almost always carries.
+func crystallineErrorText(value js.Value) string {
+	if value.Type() == js.TypeObject {
+		if message := value.Get("message"); message.Type() == js.TypeString {
+			return message.String()
+		}
+	}
+
+	return value.String()
 }
 
 // crystallineDefine installs accessors so that reads and writes from JS reach
 // the Go value, rather than operating on a detached copy.
+// crystallineFrozenSetter refuses a write that could not have landed.
+//
+// It is created once and never released: there is nothing per-field to say, and
+// a scope would have to reach inside a wrapper that is already built.
+var crystallineFrozenSetter js.Value
+
+// crystallineFrozen makes an already-built wrapper reject writes.
+//
+// A Go map element has no address, so the wrapper stands over a copy of it. A
+// write would reach the copy and be discarded, which is worse than refusing it:
+// the caller has no way to tell. Reads and methods are left alone, because they
+// read the copy correctly.
+func crystallineFrozen(value any) any {
+	object, ok := value.(js.Value)
+	if !ok {
+		return value
+	}
+
+	if crystallineFrozenSetter.IsUndefined() {
+		crystallineFrozenSetter = crystallineWrap(js.FuncOf(func(this js.Value, args []js.Value) any {
+			return crystallineFail("cannot be written: a map element is a copy in Go, so the write would be discarded")
+		}))
+	}
+
+	objects := js.Global().Get("Object")
+	names := objects.Call("keys", object)
+
+	for i := 0; i < names.Length(); i++ {
+		name := names.Index(i).String()
+
+		descriptor := objects.Call("getOwnPropertyDescriptor", object, name)
+		if descriptor.Get("set").IsUndefined() {
+			// A method is a plain property: there is no write to refuse.
+			continue
+		}
+
+		objects.Call("defineProperty", object, name, map[string]any{
+			"enumerable":   true,
+			"configurable": true,
+			"get":          descriptor.Get("get"),
+			"set":          crystallineFrozenSetter,
+		})
+	}
+
+	return value
+}
+
 func crystallineDefine(scope *crystallineScope, target js.Value, name string, get func() any, set func(js.Value)) {
 	js.Global().Get("Object").Call("defineProperty", target, name, map[string]any{
 		"enumerable": true,
+		// Configurable so a wrapper that cannot accept writes can replace the
+		// setter after the fact. See crystallineFrozen.
+		"configurable": true,
 		"get": scope.fn(func(this js.Value, args []js.Value) any {
 			return get()
 		}),
@@ -551,14 +651,137 @@ func crystallineRecover(result *any) {
 	}
 }
 
-// crystallineMust unwraps a conversion, turning a failure into a panic that the
-// wrapper's recover reports back to JS as a thrown Error.
-func crystallineMust[T any](value T, err error) T {
-	if err != nil {
-		panic(err.Error())
+// crystallineIsThenable reports whether a value is something to await.
+//
+// It asks for the tag before touching the value, because Value.Type panics with
+// "bad type flag" on a BigInt and Get checks the type first. A method returning
+// a bigint used to crash here rather than being awaited or not.
+func crystallineIsThenable(value js.Value) bool {
+	tag := js.Global().Get("Object").Get("prototype").Get("toString").Call("call", value).String()
+	if tag != "[object Promise]" && tag != "[object Object]" {
+		return false
+	}
+
+	return value.Get("then").Type() == js.TypeFunction
+}
+
+// crystallineDirect is the result of an imported method that was not declared
+// to return a promise.
+//
+// Awaiting one anyway would block this goroutine, and a goroutine blocked
+// inside a synchronous js.FuncOf hands JavaScript undefined and finishes the
+// work afterwards: a wrong answer rather than a slow one. There is nowhere to
+// report to — the Go signature belongs to the consumer — so this is one of the
+// few places left that panics.
+func crystallineDirect(value js.Value, subject string) js.Value {
+	if crystallineIsThenable(value) {
+		panic(subject + " returned a promise, and it was not declared with bind.AsPromise")
 	}
 
 	return value
+}
+
+// crystallineResolvePath walks a dotted path from the JavaScript global object,
+// so an import says where it lives rather than being handed in.
+func crystallineResolvePath(path string) (js.Value, error) {
+	at := js.Global()
+
+	start := 0
+	for i := 0; i <= len(path); i++ {
+		if i < len(path) && path[i] != '.' {
+			continue
+		}
+
+		segment := path[start:i]
+		start = i + 1
+
+		at = at.Get(segment)
+		if at.IsUndefined() || at.IsNull() {
+			return js.Undefined(), errors.New(path + " is not there: " + segment + " is missing")
+		}
+	}
+
+	return at, nil
+}
+
+// crystallineImportFailed records an import that could not be filled.
+//
+// It cannot report the way a call does, because nothing is calling: this runs
+// while the program starts. The failures are published instead, and the
+// generated module refuses to hand over a surface that is missing part of
+// itself, which turns a null pointer at the first use into a message at the
+// boot that caused it.
+var crystallineImportFailures []string
+
+func crystallineImportFailed(subject string, err error) {
+	crystallineImportFailures = append(crystallineImportFailures, subject+": "+err.Error())
+}
+
+func crystallinePublishImportFailures(app string) {
+	if len(crystallineImportFailures) == 0 {
+		return
+	}
+
+	reported := make([]any, 0, len(crystallineImportFailures))
+	for _, failure := range crystallineImportFailures {
+		reported = append(reported, failure)
+	}
+
+	crystallineNamespace(app, "__crystalline").Set("importFailures", reported)
+}
+
+// crystallineBigInt and crystallineBigUint hand a 64-bit integer over as a
+// JavaScript BigInt, which carries it exactly where a number cannot.
+func crystallineBigInt(value int64) any {
+	return js.Global().Get("BigInt").Invoke(strconv.FormatInt(value, 10))
+}
+
+func crystallineBigUint(value uint64) any {
+	return js.Global().Get("BigInt").Invoke(strconv.FormatUint(value, 10))
+}
+
+// crystallineBigIntText reads the digits of a JavaScript BigInt, and reports
+// whether it was one.
+//
+// Nothing here may look at the value through syscall/js. Value.Type panics with
+// "bad type flag" on a BigInt — there is no type constant for one — and Get and
+// Call check the type first, so even asking what it is crashes. JavaScript is
+// asked instead, through calls that only pass the reference along.
+func crystallineBigIntText(value js.Value) (string, bool) {
+	tag := js.Global().Get("Object").Get("prototype").Get("toString").Call("call", value)
+	if tag.String() != "[object BigInt]" {
+		return "", false
+	}
+
+	return js.Global().Get("String").Invoke(value).String(), true
+}
+
+func crystallineToBigInt(value js.Value) (int64, error) {
+	text, ok := crystallineBigIntText(value)
+	if !ok {
+		return 0, errors.New("expected a bigint")
+	}
+
+	parsed, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return 0, errors.New(text + " does not fit in an int64")
+	}
+
+	return parsed, nil
+}
+
+func crystallineToBigUint(value js.Value) (uint64, error) {
+	text, ok := crystallineBigIntText(value)
+	if !ok {
+		return 0, errors.New("expected a bigint")
+	}
+
+	parsed, err := strconv.ParseUint(text, 10, 64)
+	if err != nil {
+		return 0, errors.New(text + " does not fit in a uint64")
+	}
+
+	return parsed, nil
 }
 
 // crystallineOk and crystallineErr build the Result a fallible call returns.
@@ -629,7 +852,17 @@ func crystallineFnPayloadAddInts(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("AddInts: expected 2 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.AddInts(crystallineMust(crystallineToInt(args[0])), crystallineMust(crystallineToInt(args[1])))
+	a0, err := crystallineToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	a1, err := crystallineToInt(args[1])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.AddInts(a0, a1)
 
 	return float64(r0)
 }
@@ -641,7 +874,12 @@ func crystallineFnPayloadEchoString(this js.Value, args []js.Value) (result any)
 		return crystallineFail("EchoString: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.EchoString(crystallineMust(crystallineToString(args[0])))
+	a0, err := crystallineToString(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.EchoString(a0)
 
 	return string(r0)
 }
@@ -653,7 +891,12 @@ func crystallineFnPayloadEchoBytes(this js.Value, args []js.Value) (result any) 
 		return crystallineFail("EchoBytes: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.EchoBytes(crystallineMust(crystallineToBytes(args[0])))
+	a0, err := crystallineToBytes(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.EchoBytes(a0)
 
 	return crystallineBytes(r0)
 }
@@ -665,7 +908,12 @@ func crystallineFnPayloadSumFloats(this js.Value, args []js.Value) (result any) 
 		return crystallineFail("SumFloats: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.SumFloats(crystallineMust(crystallineToSliceOfFloat64(args[0])))
+	a0, err := crystallineToSliceOfFloat64(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.SumFloats(a0)
 
 	return float64(r0)
 }
@@ -677,16 +925,22 @@ func crystallineFnPayloadMakeInts(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("MakeInts: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.MakeInts(crystallineMust(crystallineToInt(args[0])))
+	a0, err := crystallineToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.MakeInts(a0)
 
 	return func() any {
-		if r0 == nil {
+		items := r0
+		if items == nil {
 			return nil
 		}
 
-		out := make([]any, 0, len(r0))
-		for _, v := range r0 {
-			out = append(out, float64(v))
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, float64(items[i]))
 		}
 
 		return out
@@ -700,7 +954,12 @@ func crystallineFnPayloadCountKeys(this js.Value, args []js.Value) (result any) 
 		return crystallineFail("CountKeys: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.CountKeys(crystallineMust(crystallineToMapOfStringToInt(args[0])))
+	a0, err := crystallineToMapOfStringToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.CountKeys(a0)
 
 	return float64(r0)
 }
@@ -712,7 +971,12 @@ func crystallineFnPayloadMakeMap(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("MakeMap: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.MakeMap(crystallineMust(crystallineToInt(args[0])))
+	a0, err := crystallineToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.MakeMap(a0)
 
 	return func() any {
 		if r0 == nil {
@@ -735,16 +999,22 @@ func crystallineFnPayloadMakePoints(this js.Value, args []js.Value) (result any)
 		return crystallineFail("MakePoints: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.MakePoints(crystallineMust(crystallineToInt(args[0])))
+	a0, err := crystallineToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.MakePoints(a0)
 
 	return func() any {
-		if r0 == nil {
+		items := r0
+		if items == nil {
 			return nil
 		}
 
-		out := make([]any, 0, len(r0))
-		for _, v := range r0 {
-			out = append(out, crystallineMarshalPayloadPoint(&v))
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, crystallineMarshalPayloadPoint(&items[i]))
 		}
 
 		return out
@@ -758,16 +1028,22 @@ func crystallineFnPayloadMakeReadings(this js.Value, args []js.Value) (result an
 		return crystallineFail("MakeReadings: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.MakeReadings(crystallineMust(crystallineToInt(args[0])))
+	a0, err := crystallineToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.MakeReadings(a0)
 
 	return func() any {
-		if r0 == nil {
+		items := r0
+		if items == nil {
 			return nil
 		}
 
-		out := make([]any, 0, len(r0))
-		for _, v := range r0 {
-			out = append(out, crystallineMarshalPayloadReading(&v))
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, crystallineMarshalPayloadReading(&items[i]))
 		}
 
 		return out
@@ -781,7 +1057,12 @@ func crystallineFnPayloadNewPoint(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("NewPoint: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.NewPoint(crystallineMust(crystallineToString(args[0])))
+	a0, err := crystallineToString(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.NewPoint(a0)
 
 	return crystallineMarshalPayloadPoint(r0)
 }
@@ -793,7 +1074,12 @@ func crystallineFnPayloadTakePoint(this js.Value, args []js.Value) (result any) 
 		return crystallineFail("TakePoint: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.TakePoint(crystallineMust(crystallineToPayloadPoint(args[0])))
+	a0, err := crystallineToPayloadPoint(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.TakePoint(a0)
 
 	return float64(r0)
 }
@@ -805,7 +1091,12 @@ func crystallineFnPayloadMayFail(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("MayFail: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0, r1 := payload.MayFail(crystallineMust(crystallineToBool(args[0])))
+	a0, err := crystallineToBool(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0, r1 := payload.MayFail(a0)
 
 	if r1 != nil {
 		return crystallineErr(r1)
@@ -821,7 +1112,12 @@ func crystallineFnPayloadStream(this js.Value, args []js.Value) (result any) {
 		return crystallineFail("Stream: expected 1 arguments, got " + strconv.Itoa(len(args)))
 	}
 
-	r0 := payload.Stream(crystallineMust(crystallineToInt(args[0])))
+	a0, err := crystallineToInt(args[0])
+	if err != nil {
+		return crystallineFail(err.Error())
+	}
+
+	r0 := payload.Stream(a0)
 
 	return crystallineIterator(func() (any, bool) {
 		item, ok := <-r0
@@ -846,12 +1142,24 @@ func crystallineFnPayloadDrain(this js.Value, args []js.Value) (result any) {
 
 		r0 := payload.Drain(crystallineFeed0)
 
-		if err := crystallineFeed0Stop(); err != nil {
-			panic("values: " + err.Error())
+		if stopped := crystallineFeed0Stop(); stopped != nil {
+			return crystallineFail("values: " + stopped.Error())
 		}
 
 		return float64(r0)
 	})
+}
+
+func crystallineFnPayloadMakeRecord(this js.Value, args []js.Value) (result any) {
+	defer crystallineRecover(&result)
+
+	if len(args) != 0 {
+		return crystallineFail("MakeRecord: expected 0 arguments, got " + strconv.Itoa(len(args)))
+	}
+
+	r0 := payload.MakeRecord()
+
+	return crystallineMarshalPayloadRecord(r0)
 }
 
 func crystallineFnPayloadRounds(this js.Value, args []js.Value) (result any) {
@@ -862,7 +1170,12 @@ func crystallineFnPayloadRounds(this js.Value, args []js.Value) (result any) {
 	}
 
 	return crystallinePromise(func() any {
-		r0 := payload.Rounds(crystallineMust(crystallineToInt(args[0])))
+		a0, err := crystallineToInt(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		r0 := payload.Rounds(a0)
 
 		return float64(r0)
 	})
@@ -881,6 +1194,67 @@ func crystallineMarshalPayloadAnchor(v *payload.Anchor) any {
 	return out
 }
 
+func crystallineMarshalPayloadLine(v *payload.Line) any {
+	if v == nil {
+		return nil
+	}
+
+	out := js.Global().Get("Object").New()
+	scope := &crystallineScope{}
+
+	crystallineDefine(scope, out, "Label", func() any {
+		return string(v.Label)
+	}, func(value js.Value) {
+		converted, err := crystallineToString(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Label = converted
+	})
+	crystallineDefine(scope, out, "Values", func() any {
+		return func() any {
+			items := v.Values
+			if items == nil {
+				return nil
+			}
+
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, float64(items[i]))
+			}
+
+			return out
+		}()
+	}, func(value js.Value) {
+		converted, err := crystallineToSliceOfFloat64(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Values = converted
+	})
+	out.Set("Sum", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
+		defer crystallineRecover(&result)
+
+		if len(args) != 0 {
+			return crystallineFail("Sum: expected 0 arguments, got " + strconv.Itoa(len(args)))
+		}
+
+		r0 := v.Sum()
+
+		return float64(r0)
+	})))
+
+	crystallineAttach(out, crystallineRetain(v, scope), scope)
+
+	return out
+}
+
 func crystallineMarshalPayloadPoint(v *payload.Point) any {
 	if v == nil {
 		return nil
@@ -892,17 +1266,38 @@ func crystallineMarshalPayloadPoint(v *payload.Point) any {
 	crystallineDefine(scope, out, "X", func() any {
 		return float64(v.X)
 	}, func(value js.Value) {
-		v.X = crystallineMust(crystallineToFloat64(value))
+		converted, err := crystallineToFloat64(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.X = converted
 	})
 	crystallineDefine(scope, out, "Y", func() any {
 		return float64(v.Y)
 	}, func(value js.Value) {
-		v.Y = crystallineMust(crystallineToFloat64(value))
+		converted, err := crystallineToFloat64(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Y = converted
 	})
 	crystallineDefine(scope, out, "Label", func() any {
 		return string(v.Label)
 	}, func(value js.Value) {
-		v.Label = crystallineMust(crystallineToString(value))
+		converted, err := crystallineToString(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Label = converted
 	})
 	var crystallineCacheOrigin any
 	var crystallineCachedOrigin bool
@@ -915,7 +1310,14 @@ func crystallineMarshalPayloadPoint(v *payload.Point) any {
 
 		return crystallineCacheOrigin
 	}, func(value js.Value) {
-		v.Origin = crystallineMust(crystallineToPayloadAnchor(value))
+		converted, err := crystallineToPayloadAnchor(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Origin = converted
 	})
 	out.Set("Norm", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
 		defer crystallineRecover(&result)
@@ -935,7 +1337,17 @@ func crystallineMarshalPayloadPoint(v *payload.Point) any {
 			return crystallineFail("Shift: expected 2 arguments, got " + strconv.Itoa(len(args)))
 		}
 
-		v.Shift(crystallineMust(crystallineToFloat64(args[0])), crystallineMust(crystallineToFloat64(args[1])))
+		a0, err := crystallineToFloat64(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		a1, err := crystallineToFloat64(args[1])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		v.Shift(a0, a1)
 
 		return nil
 	})))
@@ -956,6 +1368,239 @@ func crystallineMarshalPayloadReading(v *payload.Reading) any {
 	out.Set("Y", float64(v.Y))
 	out.Set("Label", string(v.Label))
 	out.Set("Origin", crystallineMarshalPayloadAnchor(&v.Origin))
+
+	return out
+}
+
+func crystallineMarshalPayloadRecord(v *payload.Record) any {
+	if v == nil {
+		return nil
+	}
+
+	out := js.Global().Get("Object").New()
+	scope := &crystallineScope{}
+
+	crystallineDefine(scope, out, "ID", func() any {
+		return float64(v.ID)
+	}, func(value js.Value) {
+		converted, err := crystallineToInt(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.ID = converted
+	})
+	crystallineDefine(scope, out, "Name", func() any {
+		return string(v.Name)
+	}, func(value js.Value) {
+		converted, err := crystallineToString(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Name = converted
+	})
+	crystallineDefine(scope, out, "Score", func() any {
+		return float64(v.Score)
+	}, func(value js.Value) {
+		converted, err := crystallineToFloat64(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Score = converted
+	})
+	crystallineDefine(scope, out, "Active", func() any {
+		return bool(v.Active)
+	}, func(value js.Value) {
+		converted, err := crystallineToBool(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Active = converted
+	})
+	crystallineDefine(scope, out, "Tags", func() any {
+		return func() any {
+			items := v.Tags
+			if items == nil {
+				return nil
+			}
+
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, string(items[i]))
+			}
+
+			return out
+		}()
+	}, func(value js.Value) {
+		converted, err := crystallineToSliceOfString(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Tags = converted
+	})
+	crystallineDefine(scope, out, "Lines", func() any {
+		return func() any {
+			items := v.Lines
+			if items == nil {
+				return nil
+			}
+
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, crystallineMarshalPayloadLine(&items[i]))
+			}
+
+			return out
+		}()
+	}, func(value js.Value) {
+		converted, err := crystallineToSliceOfPayloadLine(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Lines = converted
+	})
+	crystallineDefine(scope, out, "Grid", func() any {
+		return func() any {
+			items := v.Grid
+			if items == nil {
+				return nil
+			}
+
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, func() any {
+					items := items[i]
+					if items == nil {
+						return nil
+					}
+
+					out := make([]any, 0, len(items))
+					for i := range items {
+						out = append(out, float64(items[i]))
+					}
+
+					return out
+				}())
+			}
+
+			return out
+		}()
+	}, func(value js.Value) {
+		converted, err := crystallineToSliceOfSliceOfFloat64(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Grid = converted
+	})
+	crystallineDefine(scope, out, "Totals", func() any {
+		return func() any {
+			if v.Totals == nil {
+				return nil
+			}
+
+			out := make(map[string]any, len(v.Totals))
+			for k, v := range v.Totals {
+				out[string(k)] = float64(v)
+			}
+
+			return out
+		}()
+	}, func(value js.Value) {
+		converted, err := crystallineToMapOfStringToFloat64(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Totals = converted
+	})
+	var crystallineCacheMain any
+	var crystallineCachedMain bool
+
+	crystallineDefine(scope, out, "Main", func() any {
+		if !crystallineCachedMain {
+			crystallineCachedMain = true
+			crystallineCacheMain = crystallineMarshalPayloadLine(&v.Main)
+		}
+
+		return crystallineCacheMain
+	}, func(value js.Value) {
+		converted, err := crystallineToPayloadLine(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Main = converted
+	})
+	var crystallineCacheParent any
+	var crystallineCachedParent bool
+	var crystallineCacheForParent *payload.Line
+
+	crystallineDefine(scope, out, "Parent", func() any {
+		if !crystallineCachedParent || crystallineCacheForParent != v.Parent {
+			crystallineCachedParent = true
+			crystallineCacheForParent = v.Parent
+			crystallineCacheParent = crystallineMarshalPayloadLine(v.Parent)
+		}
+
+		return crystallineCacheParent
+	}, func(value js.Value) {
+		converted, err := crystallineToPtrPayloadLine(value)
+		if err != nil {
+			crystallineFail(err.Error())
+
+			return
+		}
+
+		v.Parent = converted
+	})
+	out.Set("Describe", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
+		defer crystallineRecover(&result)
+
+		if len(args) != 0 {
+			return crystallineFail("Describe: expected 0 arguments, got " + strconv.Itoa(len(args)))
+		}
+
+		r0 := v.Describe()
+
+		return string(r0)
+	})))
+	out.Set("Total", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
+		defer crystallineRecover(&result)
+
+		if len(args) != 0 {
+			return crystallineFail("Total: expected 0 arguments, got " + strconv.Itoa(len(args)))
+		}
+
+		r0 := v.Total()
+
+		return float64(r0)
+	})))
+
+	crystallineAttach(out, crystallineRetain(v, scope), scope)
 
 	return out
 }
@@ -1007,6 +1652,34 @@ func crystallineToInt(value js.Value) (int, error) {
 	return int(value.Float()), nil
 }
 
+func crystallineToMapOfStringToFloat64(value js.Value) (map[string]float64, error) {
+	if value.IsUndefined() || value.IsNull() {
+		return nil, nil
+	}
+
+	if value.Type() != js.TypeObject {
+		return nil, errors.New("expected an object")
+	}
+
+	keys := js.Global().Get("Object").Call("keys", value)
+	out := make(map[string]float64, keys.Length())
+
+	for i := 0; i < keys.Length(); i++ {
+		key := keys.Index(i).String()
+
+		converted := string(key)
+
+		item, err := crystallineToFloat64(value.Get(key))
+		if err != nil {
+			return nil, errors.New("[" + key + "]: " + err.Error())
+		}
+
+		out[converted] = item
+	}
+
+	return out, nil
+}
+
 func crystallineToMapOfStringToInt(value js.Value) (map[string]int, error) {
 	if value.IsUndefined() || value.IsNull() {
 		return nil, nil
@@ -1041,35 +1714,35 @@ func crystallineToPayloadAnchor(value js.Value) (payload.Anchor, error) {
 	var out payload.Anchor
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("PayloadAnchor: expected an object, got null")
+		return out, errors.New("payload.Anchor: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
 		resolved, found := crystallineResolve(handle)
 		if !found {
-			return out, errors.New("PayloadAnchor: the value behind this handle has been released")
+			return out, errors.New("payload.Anchor: the value behind this handle has been released")
 		}
 
 		typed, ok := resolved.(*payload.Anchor)
 		if !ok {
-			return out, errors.New("PayloadAnchor: handle refers to a different type")
+			return out, errors.New("payload.Anchor: handle refers to a different type")
 		}
 
 		return *typed, nil
 	}
 
 	if value.Type() != js.TypeObject {
-		return out, errors.New("PayloadAnchor: expected an object")
+		return out, errors.New("payload.Anchor: expected an object")
 	}
 
-	if err := crystallineUnknownProperty(value, "PayloadAnchor", crystallineKnownPayloadAnchor); err != nil {
+	if err := crystallineUnknownProperty(value, "payload.Anchor", crystallineKnownPayloadAnchor); err != nil {
 		return out, err
 	}
 
 	if property := value.Get("X"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToFloat64(property)
 		if err != nil {
-			return out, errors.New("PayloadAnchor.X: " + err.Error())
+			return out, errors.New("payload.Anchor.X: " + err.Error())
 		}
 
 		out.X = converted
@@ -1078,10 +1751,62 @@ func crystallineToPayloadAnchor(value js.Value) (payload.Anchor, error) {
 	if property := value.Get("Y"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToFloat64(property)
 		if err != nil {
-			return out, errors.New("PayloadAnchor.Y: " + err.Error())
+			return out, errors.New("payload.Anchor.Y: " + err.Error())
 		}
 
 		out.Y = converted
+	}
+
+	return out, nil
+}
+
+var crystallineKnownPayloadLine = map[string]bool{"Label": true, "Values": true}
+
+func crystallineToPayloadLine(value js.Value) (payload.Line, error) {
+	var out payload.Line
+
+	if value.IsUndefined() || value.IsNull() {
+		return out, errors.New("payload.Line: expected an object, got null")
+	}
+
+	if handle, ok := crystallineHandleOf(value); ok {
+		resolved, found := crystallineResolve(handle)
+		if !found {
+			return out, errors.New("payload.Line: the value behind this handle has been released")
+		}
+
+		typed, ok := resolved.(*payload.Line)
+		if !ok {
+			return out, errors.New("payload.Line: handle refers to a different type")
+		}
+
+		return *typed, nil
+	}
+
+	if value.Type() != js.TypeObject {
+		return out, errors.New("payload.Line: expected an object")
+	}
+
+	if err := crystallineUnknownProperty(value, "payload.Line", crystallineKnownPayloadLine); err != nil {
+		return out, err
+	}
+
+	if property := value.Get("Label"); !property.IsUndefined() && !property.IsNull() {
+		converted, err := crystallineToString(property)
+		if err != nil {
+			return out, errors.New("payload.Line.Label: " + err.Error())
+		}
+
+		out.Label = converted
+	}
+
+	if property := value.Get("Values"); !property.IsUndefined() && !property.IsNull() {
+		converted, err := crystallineToSliceOfFloat64(property)
+		if err != nil {
+			return out, errors.New("payload.Line.Values: " + err.Error())
+		}
+
+		out.Values = converted
 	}
 
 	return out, nil
@@ -1093,35 +1818,35 @@ func crystallineToPayloadPoint(value js.Value) (payload.Point, error) {
 	var out payload.Point
 
 	if value.IsUndefined() || value.IsNull() {
-		return out, errors.New("PayloadPoint: expected an object, got null")
+		return out, errors.New("payload.Point: expected an object, got null")
 	}
 
 	if handle, ok := crystallineHandleOf(value); ok {
 		resolved, found := crystallineResolve(handle)
 		if !found {
-			return out, errors.New("PayloadPoint: the value behind this handle has been released")
+			return out, errors.New("payload.Point: the value behind this handle has been released")
 		}
 
 		typed, ok := resolved.(*payload.Point)
 		if !ok {
-			return out, errors.New("PayloadPoint: handle refers to a different type")
+			return out, errors.New("payload.Point: handle refers to a different type")
 		}
 
 		return *typed, nil
 	}
 
 	if value.Type() != js.TypeObject {
-		return out, errors.New("PayloadPoint: expected an object")
+		return out, errors.New("payload.Point: expected an object")
 	}
 
-	if err := crystallineUnknownProperty(value, "PayloadPoint", crystallineKnownPayloadPoint); err != nil {
+	if err := crystallineUnknownProperty(value, "payload.Point", crystallineKnownPayloadPoint); err != nil {
 		return out, err
 	}
 
 	if property := value.Get("X"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToFloat64(property)
 		if err != nil {
-			return out, errors.New("PayloadPoint.X: " + err.Error())
+			return out, errors.New("payload.Point.X: " + err.Error())
 		}
 
 		out.X = converted
@@ -1130,7 +1855,7 @@ func crystallineToPayloadPoint(value js.Value) (payload.Point, error) {
 	if property := value.Get("Y"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToFloat64(property)
 		if err != nil {
-			return out, errors.New("PayloadPoint.Y: " + err.Error())
+			return out, errors.New("payload.Point.Y: " + err.Error())
 		}
 
 		out.Y = converted
@@ -1139,7 +1864,7 @@ func crystallineToPayloadPoint(value js.Value) (payload.Point, error) {
 	if property := value.Get("Label"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToString(property)
 		if err != nil {
-			return out, errors.New("PayloadPoint.Label: " + err.Error())
+			return out, errors.New("payload.Point.Label: " + err.Error())
 		}
 
 		out.Label = converted
@@ -1148,13 +1873,40 @@ func crystallineToPayloadPoint(value js.Value) (payload.Point, error) {
 	if property := value.Get("Origin"); !property.IsUndefined() && !property.IsNull() {
 		converted, err := crystallineToPayloadAnchor(property)
 		if err != nil {
-			return out, errors.New("PayloadPoint.Origin: " + err.Error())
+			return out, errors.New("payload.Point.Origin: " + err.Error())
 		}
 
 		out.Origin = converted
 	}
 
 	return out, nil
+}
+
+func crystallineToPtrPayloadLine(value js.Value) (*payload.Line, error) {
+	if value.IsUndefined() || value.IsNull() {
+		return nil, nil
+	}
+
+	if handle, ok := crystallineHandleOf(value); ok {
+		resolved, found := crystallineResolve(handle)
+		if !found {
+			return nil, errors.New("the value behind this handle has been released")
+		}
+
+		typed, ok := resolved.(*payload.Line)
+		if !ok {
+			return nil, errors.New("handle refers to a different type")
+		}
+
+		return typed, nil
+	}
+
+	built, err := crystallineToPayloadLine(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &built, nil
 }
 
 func crystallineToSliceOfFloat64(value js.Value) ([]float64, error) {
@@ -1170,6 +1922,75 @@ func crystallineToSliceOfFloat64(value js.Value) ([]float64, error) {
 
 	for i := 0; i < value.Length(); i++ {
 		item, err := crystallineToFloat64(value.Index(i))
+		if err != nil {
+			return nil, errors.New("[" + strconv.Itoa(i) + "]: " + err.Error())
+		}
+
+		out = append(out, item)
+	}
+
+	return out, nil
+}
+
+func crystallineToSliceOfPayloadLine(value js.Value) ([]payload.Line, error) {
+	if value.IsUndefined() || value.IsNull() {
+		return nil, nil
+	}
+
+	if !js.Global().Get("Array").Call("isArray", value).Bool() {
+		return nil, errors.New("expected an array")
+	}
+
+	out := make([]payload.Line, 0, value.Length())
+
+	for i := 0; i < value.Length(); i++ {
+		item, err := crystallineToPayloadLine(value.Index(i))
+		if err != nil {
+			return nil, errors.New("[" + strconv.Itoa(i) + "]: " + err.Error())
+		}
+
+		out = append(out, item)
+	}
+
+	return out, nil
+}
+
+func crystallineToSliceOfSliceOfFloat64(value js.Value) ([][]float64, error) {
+	if value.IsUndefined() || value.IsNull() {
+		return nil, nil
+	}
+
+	if !js.Global().Get("Array").Call("isArray", value).Bool() {
+		return nil, errors.New("expected an array")
+	}
+
+	out := make([][]float64, 0, value.Length())
+
+	for i := 0; i < value.Length(); i++ {
+		item, err := crystallineToSliceOfFloat64(value.Index(i))
+		if err != nil {
+			return nil, errors.New("[" + strconv.Itoa(i) + "]: " + err.Error())
+		}
+
+		out = append(out, item)
+	}
+
+	return out, nil
+}
+
+func crystallineToSliceOfString(value js.Value) ([]string, error) {
+	if value.IsUndefined() || value.IsNull() {
+		return nil, nil
+	}
+
+	if !js.Global().Get("Array").Call("isArray", value).Bool() {
+		return nil, errors.New("expected an array")
+	}
+
+	out := make([]string, 0, value.Length())
+
+	for i := 0; i < value.Length(); i++ {
+		item, err := crystallineToString(value.Index(i))
 		if err != nil {
 			return nil, errors.New("[" + strconv.Itoa(i) + "]: " + err.Error())
 		}

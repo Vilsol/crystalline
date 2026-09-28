@@ -25,6 +25,14 @@ export declare namespace payload {
     readonly X: number;
     readonly Y: number;
   }
+  interface Line {
+    Label: string;
+    Values?: Array<number>;
+    Sum(): number;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
   interface Point {
     X: number;
     Y: number;
@@ -42,6 +50,23 @@ export declare namespace payload {
     readonly Label: string;
     readonly Origin: payload.Anchor;
   }
+  interface Record {
+    ID: number;
+    Name: string;
+    Score: number;
+    Active: boolean;
+    Tags?: Array<string>;
+    Lines?: Array<payload.Line>;
+    Grid?: Array<Array<number> | undefined>;
+    Totals?: Record<string, number>;
+    Main: payload.Line;
+    Parent?: payload.Line;
+    Describe(): string;
+    Total(): number;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
   function AddInts(a: number, b: number): number;
   function CountKeys(index: Record<string, number> | undefined): number;
   function Drain(values: AsyncIterable<number>): Promise<number>;
@@ -51,6 +76,7 @@ export declare namespace payload {
   function MakeMap(n: number): (Record<string, number> | undefined);
   function MakePoints(n: number): (Array<payload.Point> | undefined);
   function MakeReadings(n: number): (Array<payload.Reading> | undefined);
+  function MakeRecord(): (payload.Record | undefined);
   function MayFail(ok: boolean): Result<number>;
   function NewPoint(label: string): (payload.Point | undefined);
   function Noop(): void;

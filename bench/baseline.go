@@ -119,6 +119,56 @@ func init() {
 		return map[string]any{"ok": true, "value": value}
 	}))
 
+	raw.Set("MakeRecord", js.FuncOf(func(this js.Value, args []js.Value) any {
+		made := payload.MakeRecord()
+
+		floats := func(values []float64) []any {
+			out := make([]any, 0, len(values))
+			for _, value := range values {
+				out = append(out, value)
+			}
+
+			return out
+		}
+
+		line := func(l payload.Line) map[string]any {
+			return map[string]any{"Label": l.Label, "Values": floats(l.Values)}
+		}
+
+		tags := make([]any, 0, len(made.Tags))
+		for _, tag := range made.Tags {
+			tags = append(tags, tag)
+		}
+
+		lines := make([]any, 0, len(made.Lines))
+		for _, l := range made.Lines {
+			lines = append(lines, line(l))
+		}
+
+		grid := make([]any, 0, len(made.Grid))
+		for _, row := range made.Grid {
+			grid = append(grid, floats(row))
+		}
+
+		totals := make(map[string]any, len(made.Totals))
+		for key, value := range made.Totals {
+			totals[key] = value
+		}
+
+		return map[string]any{
+			"ID":     made.ID,
+			"Name":   made.Name,
+			"Score":  made.Score,
+			"Active": made.Active,
+			"Tags":   tags,
+			"Lines":  lines,
+			"Grid":   grid,
+			"Totals": totals,
+			"Main":   line(made.Main),
+			"Parent": line(*made.Parent),
+		}
+	}))
+
 	// Named so the benchmark can say what it is comparing against.
 	raw.Set("name", strconv.Quote("hand-written syscall/js"))
 }

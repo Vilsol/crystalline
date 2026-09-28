@@ -160,3 +160,73 @@ func Drain(values <-chan int) int {
 
 	return count
 }
+
+// Record is the shape a real result has: about ten fields, some of them nested
+// slices and structs, and a couple of methods. What it costs to hand one over,
+// and to copy it out as data, is what BenchmarkRecord measures.
+type Record struct {
+	ID     int
+	Name   string
+	Score  float64
+	Active bool
+	Tags   []string
+	Lines  []Line
+	Grid   [][]float64
+	Totals map[string]float64
+	Main   Line
+	Parent *Line
+}
+
+// Line is the struct a Record nests, by value, by pointer and in a slice.
+type Line struct {
+	Label  string
+	Values []float64
+}
+
+func (r *Record) Total() float64 {
+	sum := r.Score
+
+	for _, line := range r.Lines {
+		for _, value := range line.Values {
+			sum += value
+		}
+	}
+
+	return sum
+}
+
+func (r *Record) Describe() string {
+	return r.Name + " #" + strconv.Itoa(r.ID)
+}
+
+func (l *Line) Sum() float64 {
+	var sum float64
+
+	for _, value := range l.Values {
+		sum += value
+	}
+
+	return sum
+}
+
+// MakeRecord returns a filled Record with four of everything.
+func MakeRecord() *Record {
+	line := func(label string) Line {
+		return Line{Label: label, Values: []float64{1, 2, 3, 4}}
+	}
+
+	parent := line("parent")
+
+	return &Record{
+		ID:     7,
+		Name:   "record",
+		Score:  1.5,
+		Active: true,
+		Tags:   []string{"a", "b", "c", "d"},
+		Lines:  []Line{line("l0"), line("l1"), line("l2"), line("l3")},
+		Grid:   [][]float64{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}},
+		Totals: map[string]float64{"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7, "h": 8},
+		Main:   line("main"),
+		Parent: &parent,
+	}
+}
