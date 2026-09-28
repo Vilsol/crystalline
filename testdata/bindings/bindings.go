@@ -48,6 +48,8 @@ func Exports(r bind.Registry) {
 	r.Func(marshal.Brighten)
 
 	r.Type(sample.Reading{}, bind.Plain())
+	r.Type(sample.Awkward{}, bind.Plain())
+	r.Func(sample.AwkwardValues)
 
 	// Tree and FnSample are live, except where a result is asked for as data.
 	r.Func(sample.MakeTree)

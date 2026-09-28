@@ -82,6 +82,84 @@ func crystallineFail(message string) any {
 // looked up once rather than off the global object per value.
 var crystallineObjects = js.Global().Get("Object")
 
+// crystallineParse and crystallineJSONBuffer carry plain data across as one
+// JSON string. The buffer is reused between calls: encoding never yields.
+var (
+	crystallineParse      = js.Global().Get("JSON").Get("parse")
+	crystallineJSONBuffer []byte
+)
+
+// crystallineJSON hands a value over as JSON, or the ordinary way when it holds
+// something JSON cannot spell: a NaN or an infinity.
+func crystallineJSON(encode func(b []byte, ok *bool) []byte, fallback func() any) any {
+	ok := true
+	b := encode(crystallineJSONBuffer[:0], &ok)
+
+	// A buffer that grew for one large value is not kept for every small one.
+	if cap(b) <= 1<<20 {
+		crystallineJSONBuffer = b[:0]
+	}
+
+	if !ok {
+		return fallback()
+	}
+
+	return crystallineParse.Invoke(string(b))
+}
+
+// crystallineAppendString writes a JSON string. Bytes that are not valid UTF-8
+// are passed through: TextDecoder replaces them on the way in exactly as it
+// does for a string crossing on its own.
+func crystallineAppendString(b []byte, s string) []byte {
+	const hex = "0123456789abcdef"
+
+	b = append(b, '"')
+	start := 0
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 0x20 && c != '"' && c != '\\' {
+			continue
+		}
+
+		b = append(b, s[start:i]...)
+
+		if c == '"' || c == '\\' {
+			b = append(b, '\\', c)
+		} else {
+			b = append(b, '\\', 'u', '0', '0', hex[c>>4], hex[c&15])
+		}
+
+		start = i + 1
+	}
+
+	b = append(b, s[start:]...)
+
+	return append(b, '"')
+}
+
+// crystallineAppendNumber writes a JSON number, the value js.ValueOf would
+// hand over. -0 crosses as 0 there, so it does here. NaN and the infinities
+// have no JSON spelling, so they fail the encoding instead.
+func crystallineAppendNumber(b []byte, f float64, ok *bool) []byte {
+	if f-f != 0 {
+		*ok = false
+
+		return b
+	}
+
+	if f == 0 {
+		return append(b, '0')
+	}
+
+	// An integer formats far faster than a float, and most numbers are one.
+	if i := int64(f); float64(i) == f && i > -1e15 && i < 1e15 {
+		return strconv.AppendInt(b, i, 10)
+	}
+
+	return strconv.AppendFloat(b, f, 'g', -1, 64)
+}
+
 func crystallineBytes(data []byte) any {
 	if data == nil {
 		return nil

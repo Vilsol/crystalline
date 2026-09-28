@@ -91,6 +91,84 @@ func crystallineFail(message string) any {
 // looked up once rather than off the global object per value.
 var crystallineObjects = js.Global().Get("Object")
 
+// crystallineParse and crystallineJSONBuffer carry plain data across as one
+// JSON string. The buffer is reused between calls: encoding never yields.
+var (
+	crystallineParse      = js.Global().Get("JSON").Get("parse")
+	crystallineJSONBuffer []byte
+)
+
+// crystallineJSON hands a value over as JSON, or the ordinary way when it holds
+// something JSON cannot spell: a NaN or an infinity.
+func crystallineJSON(encode func(b []byte, ok *bool) []byte, fallback func() any) any {
+	ok := true
+	b := encode(crystallineJSONBuffer[:0], &ok)
+
+	// A buffer that grew for one large value is not kept for every small one.
+	if cap(b) <= 1<<20 {
+		crystallineJSONBuffer = b[:0]
+	}
+
+	if !ok {
+		return fallback()
+	}
+
+	return crystallineParse.Invoke(string(b))
+}
+
+// crystallineAppendString writes a JSON string. Bytes that are not valid UTF-8
+// are passed through: TextDecoder replaces them on the way in exactly as it
+// does for a string crossing on its own.
+func crystallineAppendString(b []byte, s string) []byte {
+	const hex = "0123456789abcdef"
+
+	b = append(b, '"')
+	start := 0
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 0x20 && c != '"' && c != '\\' {
+			continue
+		}
+
+		b = append(b, s[start:i]...)
+
+		if c == '"' || c == '\\' {
+			b = append(b, '\\', c)
+		} else {
+			b = append(b, '\\', 'u', '0', '0', hex[c>>4], hex[c&15])
+		}
+
+		start = i + 1
+	}
+
+	b = append(b, s[start:]...)
+
+	return append(b, '"')
+}
+
+// crystallineAppendNumber writes a JSON number, the value js.ValueOf would
+// hand over. -0 crosses as 0 there, so it does here. NaN and the infinities
+// have no JSON spelling, so they fail the encoding instead.
+func crystallineAppendNumber(b []byte, f float64, ok *bool) []byte {
+	if f-f != 0 {
+		*ok = false
+
+		return b
+	}
+
+	if f == 0 {
+		return append(b, '0')
+	}
+
+	// An integer formats far faster than a float, and most numbers are one.
+	if i := int64(f); float64(i) == f && i > -1e15 && i < 1e15 {
+		return strconv.AppendInt(b, i, 10)
+	}
+
+	return strconv.AppendFloat(b, f, 'g', -1, 64)
+}
+
 func crystallineBytes(data []byte) any {
 	if data == nil {
 		return nil
@@ -1072,18 +1150,40 @@ func crystallineFnPayloadMakeMap(this js.Value, args []js.Value) (result any) {
 
 	r0 := payload.MakeMap(a0)
 
-	return func() any {
-		if r0 == nil {
-			return nil
-		}
+	return crystallineJSON(func(b []byte, ok *bool) []byte {
+		if entries0 := r0; entries0 == nil {
+			b = append(b, "null"...)
+		} else {
+			b = append(b, '{')
+			first0 := true
+			for k0, v0 := range entries0 {
+				if !first0 {
+					b = append(b, ',')
+				}
 
-		out := crystallineObjects.New()
-		for k, v := range r0 {
-			out.Set(string(k), float64(v))
-		}
+				first0 = false
+				b = crystallineAppendString(b, string(k0))
+				b = append(b, ':')
+				b = crystallineAppendNumber(b, float64(v0), ok)
+			}
 
-		return out
-	}()
+			b = append(b, '}')
+		}
+		return b
+	}, func() any {
+		return func() any {
+			if r0 == nil {
+				return nil
+			}
+
+			out := crystallineObjects.New()
+			for k, v := range r0 {
+				out.Set(string(k), float64(v))
+			}
+
+			return out
+		}()
+	})
 }
 
 func crystallineFnPayloadMakePoints(this js.Value, args []js.Value) (result any) {
@@ -1129,19 +1229,37 @@ func crystallineFnPayloadMakeReadings(this js.Value, args []js.Value) (result an
 
 	r0 := payload.MakeReadings(a0)
 
-	return func() any {
-		items := r0
-		if items == nil {
-			return nil
-		}
+	return crystallineJSON(func(b []byte, ok *bool) []byte {
+		if items0 := r0; items0 == nil {
+			b = append(b, "null"...)
+		} else {
+			b = append(b, '[')
+			for i0 := range items0 {
+				if i0 > 0 {
+					b = append(b, ',')
+				}
 
-		out := make([]any, 0, len(items))
-		for i := range items {
-			out = append(out, crystallineMarshalPayloadReading(&items[i]))
-		}
+				b = crystallineAppendPayloadReading(b, &items0[i0], ok)
+			}
 
-		return out
-	}()
+			b = append(b, ']')
+		}
+		return b
+	}, func() any {
+		return func() any {
+			items := r0
+			if items == nil {
+				return nil
+			}
+
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, crystallineMarshalPayloadReading(&items[i]))
+			}
+
+			return out
+		}()
+	})
 }
 
 func crystallineFnPayloadNewPoint(this js.Value, args []js.Value) (result any) {
@@ -1265,7 +1383,12 @@ func crystallineFnPayloadRecordData(this js.Value, args []js.Value) (result any)
 
 	r0 := payload.RecordData()
 
-	return crystallinePlainPayloadRecord(r0)
+	return crystallineJSON(func(b []byte, ok *bool) []byte {
+		b = crystallineAppendPayloadRecord(b, r0, ok)
+		return b
+	}, func() any {
+		return crystallinePlainPayloadRecord(r0)
+	})
 }
 
 func crystallineFnPayloadRounds(this js.Value, args []js.Value) (result any) {
@@ -1399,7 +1522,12 @@ func crystallineMarshalPayloadPoint(v *payload.Point) any {
 					return string(v.Label)
 				case 3:
 					return crystallineCached(entry, 3, nil, func() any {
-						return crystallineMarshalPayloadAnchor(&v.Origin)
+						return crystallineJSON(func(b []byte, ok *bool) []byte {
+							b = crystallineAppendPayloadAnchor(b, &v.Origin, ok)
+							return b
+						}, func() any {
+							return crystallineMarshalPayloadAnchor(&v.Origin)
+						})
 					})
 				}
 
@@ -1502,7 +1630,12 @@ func crystallineMarshalPayloadReading(v *payload.Reading) any {
 	out.Set("X", float64(v.X))
 	out.Set("Y", float64(v.Y))
 	out.Set("Label", string(v.Label))
-	out.Set("Origin", crystallineMarshalPayloadAnchor(&v.Origin))
+	out.Set("Origin", crystallineJSON(func(b []byte, ok *bool) []byte {
+		b = crystallineAppendPayloadAnchor(b, &v.Origin, ok)
+		return b
+	}, func() any {
+		return crystallineMarshalPayloadAnchor(&v.Origin)
+	}))
 
 	return out
 }
@@ -1528,19 +1661,37 @@ func crystallineMarshalPayloadRecord(v *payload.Record) any {
 				case 3:
 					return bool(v.Active)
 				case 4:
-					return func() any {
-						items := v.Tags
-						if items == nil {
-							return nil
-						}
+					return crystallineJSON(func(b []byte, ok *bool) []byte {
+						if items0 := v.Tags; items0 == nil {
+							b = append(b, "null"...)
+						} else {
+							b = append(b, '[')
+							for i0 := range items0 {
+								if i0 > 0 {
+									b = append(b, ',')
+								}
 
-						out := make([]any, 0, len(items))
-						for i := range items {
-							out = append(out, string(items[i]))
-						}
+								b = crystallineAppendString(b, string(items0[i0]))
+							}
 
-						return out
-					}()
+							b = append(b, ']')
+						}
+						return b
+					}, func() any {
+						return func() any {
+							items := v.Tags
+							if items == nil {
+								return nil
+							}
+
+							out := make([]any, 0, len(items))
+							for i := range items {
+								out = append(out, string(items[i]))
+							}
+
+							return out
+						}()
+					})
 				case 5:
 					return func() any {
 						items := v.Lines
@@ -1582,18 +1733,40 @@ func crystallineMarshalPayloadRecord(v *payload.Record) any {
 						return out
 					}()
 				case 7:
-					return func() any {
-						if v.Totals == nil {
-							return nil
-						}
+					return crystallineJSON(func(b []byte, ok *bool) []byte {
+						if entries0 := v.Totals; entries0 == nil {
+							b = append(b, "null"...)
+						} else {
+							b = append(b, '{')
+							first0 := true
+							for k0, v0 := range entries0 {
+								if !first0 {
+									b = append(b, ',')
+								}
 
-						out := crystallineObjects.New()
-						for k, v := range v.Totals {
-							out.Set(string(k), float64(v))
-						}
+								first0 = false
+								b = crystallineAppendString(b, string(k0))
+								b = append(b, ':')
+								b = crystallineAppendNumber(b, float64(v0), ok)
+							}
 
-						return out
-					}()
+							b = append(b, '}')
+						}
+						return b
+					}, func() any {
+						return func() any {
+							if v.Totals == nil {
+								return nil
+							}
+
+							out := crystallineObjects.New()
+							for k, v := range v.Totals {
+								out.Set(string(k), float64(v))
+							}
+
+							return out
+						}()
+					})
 				case 8:
 					return crystallineCached(entry, 8, nil, func() any {
 						return crystallineMarshalPayloadLine(&v.Main)
@@ -1749,6 +1922,160 @@ func crystallineMarshalPayloadRecord(v *payload.Record) any {
 	return crystallineMarshalPayloadRecordShape.Invoke(crystallineRetain(v))
 }
 
+func crystallineAppendPayloadAnchor(b []byte, v *payload.Anchor, ok *bool) []byte {
+	if v == nil {
+		return append(b, "null"...)
+	}
+
+	b = append(b, "{\"X\":"...)
+	b = crystallineAppendNumber(b, float64(v.X), ok)
+	b = append(b, ",\"Y\":"...)
+	b = crystallineAppendNumber(b, float64(v.Y), ok)
+
+	return append(b, '}')
+}
+
+func crystallineAppendPayloadLine(b []byte, v *payload.Line, ok *bool) []byte {
+	if v == nil {
+		return append(b, "null"...)
+	}
+
+	b = append(b, "{\"Label\":"...)
+	b = crystallineAppendString(b, string(v.Label))
+	b = append(b, ",\"Values\":"...)
+	if items0 := v.Values; items0 == nil {
+		b = append(b, "null"...)
+	} else {
+		b = append(b, '[')
+		for i0 := range items0 {
+			if i0 > 0 {
+				b = append(b, ',')
+			}
+
+			b = crystallineAppendNumber(b, float64(items0[i0]), ok)
+		}
+
+		b = append(b, ']')
+	}
+
+	return append(b, '}')
+}
+
+func crystallineAppendPayloadReading(b []byte, v *payload.Reading, ok *bool) []byte {
+	if v == nil {
+		return append(b, "null"...)
+	}
+
+	b = append(b, "{\"X\":"...)
+	b = crystallineAppendNumber(b, float64(v.X), ok)
+	b = append(b, ",\"Y\":"...)
+	b = crystallineAppendNumber(b, float64(v.Y), ok)
+	b = append(b, ",\"Label\":"...)
+	b = crystallineAppendString(b, string(v.Label))
+	b = append(b, ",\"Origin\":"...)
+	b = crystallineAppendPayloadAnchor(b, &v.Origin, ok)
+
+	return append(b, '}')
+}
+
+func crystallineAppendPayloadRecord(b []byte, v *payload.Record, ok *bool) []byte {
+	if v == nil {
+		return append(b, "null"...)
+	}
+
+	b = append(b, "{\"ID\":"...)
+	b = crystallineAppendNumber(b, float64(v.ID), ok)
+	b = append(b, ",\"Name\":"...)
+	b = crystallineAppendString(b, string(v.Name))
+	b = append(b, ",\"Score\":"...)
+	b = crystallineAppendNumber(b, float64(v.Score), ok)
+	b = append(b, ",\"Active\":"...)
+	b = strconv.AppendBool(b, bool(v.Active))
+	b = append(b, ",\"Tags\":"...)
+	if items0 := v.Tags; items0 == nil {
+		b = append(b, "null"...)
+	} else {
+		b = append(b, '[')
+		for i0 := range items0 {
+			if i0 > 0 {
+				b = append(b, ',')
+			}
+
+			b = crystallineAppendString(b, string(items0[i0]))
+		}
+
+		b = append(b, ']')
+	}
+	b = append(b, ",\"Lines\":"...)
+	if items0 := v.Lines; items0 == nil {
+		b = append(b, "null"...)
+	} else {
+		b = append(b, '[')
+		for i0 := range items0 {
+			if i0 > 0 {
+				b = append(b, ',')
+			}
+
+			b = crystallineAppendPayloadLine(b, &items0[i0], ok)
+		}
+
+		b = append(b, ']')
+	}
+	b = append(b, ",\"Grid\":"...)
+	if items0 := v.Grid; items0 == nil {
+		b = append(b, "null"...)
+	} else {
+		b = append(b, '[')
+		for i0 := range items0 {
+			if i0 > 0 {
+				b = append(b, ',')
+			}
+
+			if items2 := items0[i0]; items2 == nil {
+				b = append(b, "null"...)
+			} else {
+				b = append(b, '[')
+				for i2 := range items2 {
+					if i2 > 0 {
+						b = append(b, ',')
+					}
+
+					b = crystallineAppendNumber(b, float64(items2[i2]), ok)
+				}
+
+				b = append(b, ']')
+			}
+		}
+
+		b = append(b, ']')
+	}
+	b = append(b, ",\"Totals\":"...)
+	if entries0 := v.Totals; entries0 == nil {
+		b = append(b, "null"...)
+	} else {
+		b = append(b, '{')
+		first0 := true
+		for k0, v0 := range entries0 {
+			if !first0 {
+				b = append(b, ',')
+			}
+
+			first0 = false
+			b = crystallineAppendString(b, string(k0))
+			b = append(b, ':')
+			b = crystallineAppendNumber(b, float64(v0), ok)
+		}
+
+		b = append(b, '}')
+	}
+	b = append(b, ",\"Main\":"...)
+	b = crystallineAppendPayloadLine(b, &v.Main, ok)
+	b = append(b, ",\"Parent\":"...)
+	b = crystallineAppendPayloadLine(b, v.Parent, ok)
+
+	return append(b, '}')
+}
+
 func crystallinePlainPayloadLine(v *payload.Line) any {
 	if v == nil {
 		return nil
@@ -1785,32 +2112,68 @@ func crystallinePlainPayloadRecord(v *payload.Record) any {
 	out.Set("Name", string(v.Name))
 	out.Set("Score", float64(v.Score))
 	out.Set("Active", bool(v.Active))
-	out.Set("Tags", func() any {
-		items := v.Tags
-		if items == nil {
-			return nil
-		}
+	out.Set("Tags", crystallineJSON(func(b []byte, ok *bool) []byte {
+		if items0 := v.Tags; items0 == nil {
+			b = append(b, "null"...)
+		} else {
+			b = append(b, '[')
+			for i0 := range items0 {
+				if i0 > 0 {
+					b = append(b, ',')
+				}
 
-		out := make([]any, 0, len(items))
-		for i := range items {
-			out = append(out, string(items[i]))
-		}
+				b = crystallineAppendString(b, string(items0[i0]))
+			}
 
-		return out
-	}())
-	out.Set("Lines", func() any {
-		items := v.Lines
-		if items == nil {
-			return nil
+			b = append(b, ']')
 		}
+		return b
+	}, func() any {
+		return func() any {
+			items := v.Tags
+			if items == nil {
+				return nil
+			}
 
-		out := make([]any, 0, len(items))
-		for i := range items {
-			out = append(out, crystallinePlainPayloadLine(&items[i]))
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, string(items[i]))
+			}
+
+			return out
+		}()
+	}))
+	out.Set("Lines", crystallineJSON(func(b []byte, ok *bool) []byte {
+		if items0 := v.Lines; items0 == nil {
+			b = append(b, "null"...)
+		} else {
+			b = append(b, '[')
+			for i0 := range items0 {
+				if i0 > 0 {
+					b = append(b, ',')
+				}
+
+				b = crystallineAppendPayloadLine(b, &items0[i0], ok)
+			}
+
+			b = append(b, ']')
 		}
+		return b
+	}, func() any {
+		return func() any {
+			items := v.Lines
+			if items == nil {
+				return nil
+			}
 
-		return out
-	}())
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, crystallinePlainPayloadLine(&items[i]))
+			}
+
+			return out
+		}()
+	}))
 	out.Set("Grid", func() any {
 		items := v.Grid
 		if items == nil {
@@ -1836,20 +2199,52 @@ func crystallinePlainPayloadRecord(v *payload.Record) any {
 
 		return out
 	}())
-	out.Set("Totals", func() any {
-		if v.Totals == nil {
-			return nil
-		}
+	out.Set("Totals", crystallineJSON(func(b []byte, ok *bool) []byte {
+		if entries0 := v.Totals; entries0 == nil {
+			b = append(b, "null"...)
+		} else {
+			b = append(b, '{')
+			first0 := true
+			for k0, v0 := range entries0 {
+				if !first0 {
+					b = append(b, ',')
+				}
 
-		out := crystallineObjects.New()
-		for k, v := range v.Totals {
-			out.Set(string(k), float64(v))
-		}
+				first0 = false
+				b = crystallineAppendString(b, string(k0))
+				b = append(b, ':')
+				b = crystallineAppendNumber(b, float64(v0), ok)
+			}
 
-		return out
-	}())
-	out.Set("Main", crystallinePlainPayloadLine(&v.Main))
-	out.Set("Parent", crystallinePlainPayloadLine(v.Parent))
+			b = append(b, '}')
+		}
+		return b
+	}, func() any {
+		return func() any {
+			if v.Totals == nil {
+				return nil
+			}
+
+			out := crystallineObjects.New()
+			for k, v := range v.Totals {
+				out.Set(string(k), float64(v))
+			}
+
+			return out
+		}()
+	}))
+	out.Set("Main", crystallineJSON(func(b []byte, ok *bool) []byte {
+		b = crystallineAppendPayloadLine(b, &v.Main, ok)
+		return b
+	}, func() any {
+		return crystallinePlainPayloadLine(&v.Main)
+	}))
+	out.Set("Parent", crystallineJSON(func(b []byte, ok *bool) []byte {
+		b = crystallineAppendPayloadLine(b, v.Parent, ok)
+		return b
+	}, func() any {
+		return crystallinePlainPayloadLine(v.Parent)
+	}))
 
 	return out
 }

@@ -1,6 +1,7 @@
 package sample
 
 import (
+	"math"
 	"context"
 	"errors"
 	"time"
@@ -481,4 +482,32 @@ func MakeTree() Tree {
 
 func TreeData() Tree {
 	return MakeTree()
+}
+
+// Awkward is plain data holding the values JSON spells differently from a
+// direct conversion, or cannot spell at all.
+type Awkward struct {
+	Text    string
+	Numbers []float64
+	Keyed   map[int]string
+	Missing []string
+	Empty   []string `crystalline:"not_nil"`
+	Nested  *Sample
+	Absent  *Sample
+}
+
+// AwkwardValues fills an Awkward, with a NaN and infinities when asked: those
+// JSON has no spelling for at all.
+func AwkwardValues(nonFinite bool) Awkward {
+	numbers := []float64{math.Copysign(0, -1), 1e21, 5e-324, 9007199254740993, -1.5, 123456789012345680000}
+	if nonFinite {
+		numbers = append(numbers, math.NaN(), math.Inf(1), math.Inf(-1))
+	}
+
+	return Awkward{
+		Text:    "quote\" back\\ tab\t nul\x00 bell\x07 del\x7f é ☃ 😀 bad\xff\xfe end\xe2\x82",
+		Numbers: numbers,
+		Keyed:   map[int]string{-1: "minus", 10: "ten", 2: "two"},
+		Nested:  &Sample{At: "\u2028line\u2029", Value: 0.1},
+	}
 }

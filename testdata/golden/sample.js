@@ -47,6 +47,7 @@ export const initializeCrystalline = () => {
   };
   sample = {
     Advance: wrap('sample.Advance', globalThis['go']['app']['sample']['Advance']),
+    AwkwardValues: wrap('sample.AwkwardValues', globalThis['go']['app']['sample']['AwkwardValues']),
     Basic: wrap('sample.Basic', globalThis['go']['app']['sample']['Basic']),
     Big: wrap('sample.Big', globalThis['go']['app']['sample']['Big']),
     Cancellable: wrap('sample.Cancellable', globalThis['go']['app']['sample']['Cancellable']),

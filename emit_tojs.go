@@ -11,6 +11,10 @@ import (
 func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
 	t = unaliased(t)
 
+	if root, ok, err := e.jsonRoot(expr, t, nonNil); err != nil || ok {
+		return root, err
+	}
+
 	switch typed := t.(type) {
 	case *types.Basic:
 		return basicToJSExpr(expr, typed)

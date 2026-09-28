@@ -77,6 +77,84 @@ func crystallineFail(message string) any {
 // looked up once rather than off the global object per value.
 var crystallineObjects = js.Global().Get("Object")
 
+// crystallineParse and crystallineJSONBuffer carry plain data across as one
+// JSON string. The buffer is reused between calls: encoding never yields.
+var (
+	crystallineParse      = js.Global().Get("JSON").Get("parse")
+	crystallineJSONBuffer []byte
+)
+
+// crystallineJSON hands a value over as JSON, or the ordinary way when it holds
+// something JSON cannot spell: a NaN or an infinity.
+func crystallineJSON(encode func(b []byte, ok *bool) []byte, fallback func() any) any {
+	ok := true
+	b := encode(crystallineJSONBuffer[:0], &ok)
+
+	// A buffer that grew for one large value is not kept for every small one.
+	if cap(b) <= 1<<20 {
+		crystallineJSONBuffer = b[:0]
+	}
+
+	if !ok {
+		return fallback()
+	}
+
+	return crystallineParse.Invoke(string(b))
+}
+
+// crystallineAppendString writes a JSON string. Bytes that are not valid UTF-8
+// are passed through: TextDecoder replaces them on the way in exactly as it
+// does for a string crossing on its own.
+func crystallineAppendString(b []byte, s string) []byte {
+	const hex = "0123456789abcdef"
+
+	b = append(b, '"')
+	start := 0
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 0x20 && c != '"' && c != '\\' {
+			continue
+		}
+
+		b = append(b, s[start:i]...)
+
+		if c == '"' || c == '\\' {
+			b = append(b, '\\', c)
+		} else {
+			b = append(b, '\\', 'u', '0', '0', hex[c>>4], hex[c&15])
+		}
+
+		start = i + 1
+	}
+
+	b = append(b, s[start:]...)
+
+	return append(b, '"')
+}
+
+// crystallineAppendNumber writes a JSON number, the value js.ValueOf would
+// hand over. -0 crosses as 0 there, so it does here. NaN and the infinities
+// have no JSON spelling, so they fail the encoding instead.
+func crystallineAppendNumber(b []byte, f float64, ok *bool) []byte {
+	if f-f != 0 {
+		*ok = false
+
+		return b
+	}
+
+	if f == 0 {
+		return append(b, '0')
+	}
+
+	// An integer formats far faster than a float, and most numbers are one.
+	if i := int64(f); float64(i) == f && i > -1e15 && i < 1e15 {
+		return strconv.AppendInt(b, i, 10)
+	}
+
+	return strconv.AppendFloat(b, f, 'g', -1, 64)
+}
+
 func crystallineBytes(data []byte) any {
 	if data == nil {
 		return nil
@@ -1021,19 +1099,37 @@ func crystallineMarshalAccountAccount(v *account.Account) any {
 				case 1:
 					return float64(v.Balance)
 				case 2:
-					return func() any {
-						items := v.History
-						if items == nil {
-							return []any{}
-						}
+					return crystallineJSON(func(b []byte, ok *bool) []byte {
+						if items0 := v.History; items0 == nil {
+							b = append(b, "[]"...)
+						} else {
+							b = append(b, '[')
+							for i0 := range items0 {
+								if i0 > 0 {
+									b = append(b, ',')
+								}
 
-						out := make([]any, 0, len(items))
-						for i := range items {
-							out = append(out, string(items[i]))
-						}
+								b = crystallineAppendString(b, string(items0[i0]))
+							}
 
-						return out
-					}()
+							b = append(b, ']')
+						}
+						return b
+					}, func() any {
+						return func() any {
+							items := v.History
+							if items == nil {
+								return []any{}
+							}
+
+							out := make([]any, 0, len(items))
+							for i := range items {
+								out = append(out, string(items[i]))
+							}
+
+							return out
+						}()
+					})
 				}
 
 				return nil
@@ -1102,7 +1198,12 @@ func crystallineMarshalAccountAccount(v *account.Account) any {
 
 					r0 := v.Snapshot()
 
-					return crystallineMarshalAccountStatement(&r0)
+					return crystallineJSON(func(b []byte, ok *bool) []byte {
+						b = crystallineAppendAccountStatement(b, &r0, ok)
+						return b
+					}, func() any {
+						return crystallineMarshalAccountStatement(&r0)
+					})
 				case 2:
 					if len(args) != 0 {
 						return crystallineFail("Statement: expected 0 arguments, got " + strconv.Itoa(len(args)))
@@ -1147,21 +1248,67 @@ func crystallineMarshalAccountStatement(v *account.Statement) any {
 
 	out.Set("Owner", string(v.Owner))
 	out.Set("Balance", float64(v.Balance))
-	out.Set("Entries", func() any {
-		items := v.Entries
-		if items == nil {
-			return nil
-		}
+	out.Set("Entries", crystallineJSON(func(b []byte, ok *bool) []byte {
+		if items0 := v.Entries; items0 == nil {
+			b = append(b, "null"...)
+		} else {
+			b = append(b, '[')
+			for i0 := range items0 {
+				if i0 > 0 {
+					b = append(b, ',')
+				}
 
-		out := make([]any, 0, len(items))
-		for i := range items {
-			out = append(out, string(items[i]))
-		}
+				b = crystallineAppendString(b, string(items0[i0]))
+			}
 
-		return out
-	}())
+			b = append(b, ']')
+		}
+		return b
+	}, func() any {
+		return func() any {
+			items := v.Entries
+			if items == nil {
+				return nil
+			}
+
+			out := make([]any, 0, len(items))
+			for i := range items {
+				out = append(out, string(items[i]))
+			}
+
+			return out
+		}()
+	}))
 
 	return out
+}
+
+func crystallineAppendAccountStatement(b []byte, v *account.Statement, ok *bool) []byte {
+	if v == nil {
+		return append(b, "null"...)
+	}
+
+	b = append(b, "{\"Owner\":"...)
+	b = crystallineAppendString(b, string(v.Owner))
+	b = append(b, ",\"Balance\":"...)
+	b = crystallineAppendNumber(b, float64(v.Balance), ok)
+	b = append(b, ",\"Entries\":"...)
+	if items0 := v.Entries; items0 == nil {
+		b = append(b, "null"...)
+	} else {
+		b = append(b, '[')
+		for i0 := range items0 {
+			if i0 > 0 {
+				b = append(b, ',')
+			}
+
+			b = crystallineAppendString(b, string(items0[i0]))
+		}
+
+		b = append(b, ']')
+	}
+
+	return append(b, '}')
 }
 
 var crystallineKnownAccountAccount = map[string]bool{"Owner": true, "Balance": true, "History": true}

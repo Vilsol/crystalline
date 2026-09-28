@@ -374,6 +374,12 @@ type emitter struct {
 	// second time as data beside the wrapper they have everywhere else.
 	pendingPlain []*types.Named
 
+	// pendingAppend holds the structs whose JSON encoders are still to be
+	// emitted, and inJSON is set while the fallback for one is rendered, so a
+	// value inside it does not become JSON a second time.
+	pendingAppend []*types.Named
+	inJSON        bool
+
 	// plainResult asks the next call emitted for its results as plain data,
 	// and plain is set while they, and the copies they reach, are converted.
 	plainResult bool
@@ -463,7 +469,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	}
 
 	// Marshallers can queue further marshallers, so drain until stable.
-	for len(e.pending)+len(e.pendingPlain) > 0 {
+	for len(e.pending)+len(e.pendingPlain)+len(e.pendingAppend) > 0 {
 		var (
 			named   *types.Named
 			key     string
@@ -479,11 +485,16 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 			if e.marks.isPlain(named) {
 				marshal = e.emitPlainMarshaller
 			}
-		} else {
+		} else if len(e.pendingPlain) > 0 {
 			named = e.pendingPlain[0]
 			e.pendingPlain = e.pendingPlain[1:]
 			key = plainCopyName(e.imports.goTypeName(named))
 			marshal = e.emitPlainCopy
+		} else {
+			named = e.pendingAppend[0]
+			e.pendingAppend = e.pendingAppend[1:]
+			key = appendName(e.imports.goTypeName(named))
+			marshal = e.emitAppender
 		}
 
 		if _, done := e.marshallers[key]; done {

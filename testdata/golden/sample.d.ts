@@ -44,6 +44,15 @@ export declare namespace marshal {
   function Brighten(c: string): string;
 }
 export declare namespace sample {
+  interface Awkward {
+    readonly Text: string;
+    readonly Numbers?: Array<number>;
+    readonly Keyed?: Record<number, string>;
+    readonly Missing?: Array<string>;
+    readonly Empty: Array<string>;
+    readonly Nested?: sample.Sample;
+    readonly Absent?: sample.Sample;
+  }
   interface Base {
     Tag: string;
     Promoted(): string;
@@ -172,6 +181,7 @@ export declare namespace sample {
     readonly Stage: sample.Phase;
   }
   function Advance(p: sample.Phase): sample.Phase;
+  function AwkwardValues(nonFinite: boolean): sample.Awkward;
   function Basic(): number;
   function Big(n: number): number;
   function Cancellable(signal: AbortSignal, label: string): Promise<Result<string>>;

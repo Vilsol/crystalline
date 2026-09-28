@@ -47,6 +47,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   226. A slice is left as it was: measured, `js.ValueOf` over a `[]any` is 1-2
   µs cheaper for the few elements a slice usually has, and only overtakes past
   about fifty.
+- Plain data crosses as one JSON string, which JavaScript parses. Every Go
+  string that crosses on its own is a `TextDecoder` call of its own, field
+  names and map keys handed to `Value.Set` included, and measured that call
+  costs more than the crossing it rides on; JSON pays for one. It applies to a
+  struct, map or string-holding slice whose whole graph converts to what JSON
+  spells exactly, and only there: a wrapper, `Date`, `Uint8Array`, bigint,
+  `Error` or iterator anywhere keeps the direct conversion, and so does an
+  array of numbers alone, since formatting a float in wasm costs more than it
+  saves. A NaN or an infinity, which JSON cannot spell, falls back to the
+  direct conversion at run time; -0 crosses as 0 and invalid UTF-8 is replaced
+  the same way it was. The encoder is generated per type and reflect-free.
+  32 plain structs went from 229 µs to 24, a ten-field plain record from 64 µs
+  and 154 crossings to 15 µs and 13, and a map of 256 numbers from 89 µs to 54.
+  A map of a handful of numbers is about 1 µs slower, the fixed cost of the
+  parse.
 
 ### Fixed
 

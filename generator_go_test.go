@@ -131,6 +131,13 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"PlainNested=noon",
 		"PlainNestedNoMethod=true",
 		"PlainJSON={\"At\":\"noon\",\"Value\":1}",
+		"PlainDecodes=1",
+		"AwkwardText=\"quote\\\" back\\\\ tab\\t nul\\u0000 bell\\u0007 del\x7f é ☃ 😀 bad\ufffd\ufffd end\ufffd\"",
+		"AwkwardNumbers=0,1e+21,5e-324,9007199254740992,-1.5,123456789012345680000",
+		`AwkwardKeyed={"2":"two","10":"ten","-1":"minus"}`,
+		"AwkwardMissing=[null,[],null]",
+		"AwkwardNested={\"At\":\"\u2028line\u2029\",\"Value\":0.1}",
+		"AwkwardNonFinite=NaN,Infinity,-Infinity,51",
 		"PlainResultFuncs=0",
 		"PlainResultWrappers=0",
 		`PlainResultJSON={"Label":"tree","Leaves":[{"FirstValue":"hello","SecondValue":123,"ThirdValue":4.559999942779541},{"FirstValue":"second","SecondValue":0,"ThirdValue":0}],"ByName":{"a":{"FirstValue":"keyed","SecondValue":0,"ThirdValue":0}},"Top":{"FirstValue":"top","SecondValue":0,"ThirdValue":0},"Stage":2}`,
@@ -584,6 +591,31 @@ func main() {
 		out.push("PlainNested=" + readings[0].Peak.At);
 		out.push("PlainNestedNoMethod=" + (readings[0].Peak.Describe === undefined));
 		out.push("PlainJSON=" + JSON.stringify(readings[1].Peak));
+
+		// Plain data crosses as one JSON string: every Go string that crosses
+		// on its own, field names and map keys included, is a TextDecoder
+		// call of its own, and one decode is what JSON costs. The bridge
+		// decodes a few names of its own on every call, so those are counted
+		// on a call that returns nothing and taken off.
+		const decode = TextDecoder.prototype.decode;
+		let decodes = 0;
+		TextDecoder.prototype.decode = function (...args) { decodes++; return decode.apply(this, args); };
+		s.Basic();
+		const perCall = decodes;
+		decodes = 0;
+		s.Readings(3);
+		TextDecoder.prototype.decode = decode;
+		out.push("PlainDecodes=" + (decodes - perCall));
+
+		// And arrives as the same values a direct conversion produced.
+		const awkward = s.AwkwardValues(false);
+		out.push("AwkwardText=" + JSON.stringify(awkward.Text));
+		out.push("AwkwardNumbers=" + awkward.Numbers.map((n) => Object.is(n, -0) ? "-0" : String(n)).join(","));
+		out.push("AwkwardKeyed=" + JSON.stringify(awkward.Keyed));
+		out.push("AwkwardMissing=" + JSON.stringify([awkward.Missing, awkward.Empty, awkward.Absent]));
+		out.push("AwkwardNested=" + JSON.stringify(awkward.Nested));
+		const nonFinite = s.AwkwardValues(true);
+		out.push("AwkwardNonFinite=" + nonFinite.Numbers.slice(-3).join(",") + "," + nonFinite.Text.length);
 
 		// A result asked for as data is a deep copy: no wrapper anywhere in it,
 		// so it clones, serialises and needs no release. The same types stay
