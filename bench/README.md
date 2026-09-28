@@ -32,10 +32,11 @@ One machine, node 24, Go 1.26. The ratios travel; the absolute numbers do not.
 | array in, 1024 numbers | 90 µs | 58 µs | 88 ns per element |
 | array out, 1024 numbers | 120 µs | 115 µs | 118 ns per element |
 | object in, 256 keys | 465 µs | 537 µs | 1.8 µs per key |
-| object out, 256 keys | 111 µs | 105 µs | 0.4 µs per key |
+| object out, 256 keys | 54 µs | 105 µs | as one JSON string |
 | 32 structs out, wrappers | 330 µs | 204 µs | 10 µs per wrapper |
-| 32 structs out, `bind.Plain()` | 318 µs | 204 µs | as cheap to build as wrappers; reading them is where it wins |
-| **record out and read in full, wrapper** | **230 µs** | 70 µs | `BenchmarkRecord/dump`: 10 fields, 7 wrappers, 435 crossings |
+| **32 structs out, `bind.Plain()`** | **24 µs** | 204 µs | as one JSON string, 8.5× under the hand-written line |
+| record out and read in full, wrapper | 240 µs | 65 µs | `BenchmarkRecord/dump`: 10 fields, 7 wrappers, 424 crossings |
+| **record out, `bind.PlainResult()`** | **15 µs** | 65 µs | `BenchmarkRecord/plain`: the same data, 13 crossings |
 | one wrapper out, released | 17 µs | | two calls: the function and `release` |
 | field read, wrapper | 6.7 µs | 9.1 ns (plain data) | |
 | field read, nested struct | 6.8 µs | | cached per parent, so no worse than a scalar |
@@ -55,11 +56,13 @@ One machine, node 24, Go 1.26. The ratios travel; the absolute numbers do not.
 1. **A crossing costs about 5.5 µs, whoever writes it.** For scalar calls
    crystalline is indistinguishable from a hand-written binding, so the thing to
    count is crossings, not conversions.
-2. **Mark a read-only result `bind.Plain()`.** A live wrapper is one call to
-   build, since its accessors and methods belong to its type, but reading it
-   back out is a crossing per field and per nested wrapper: a ten-field record
-   read in full costs 3.3× a hand-written plain object. Converted once, the same
-   data costs no more to build and nothing to read.
+2. **Mark a read-only result `bind.Plain()`, or the call `bind.PlainResult()`.**
+   A live wrapper is one call to build, since its accessors and methods belong
+   to its type, but reading it back out is a crossing per field and per nested
+   wrapper: a ten-field record read in full costs 16× the same record handed
+   over as plain data. Plain data crosses as one JSON string, because every Go
+   string that crosses on its own — field names and map keys included — is a
+   `TextDecoder` call of its own, and that call is the expensive part.
 3. **A wrapper field is a function call, not a property**: 6.7 µs against 9.1 ns
    on plain data. Read it into a local rather than in a loop. A struct-typed
    field is cached per parent, so reading one is no worse than reading a scalar

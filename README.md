@@ -12,8 +12,8 @@ Go to JavaScript bindings for WebAssembly, generated from source.
   from packages you do not own. `//crystalline:export` is the shorthand for ones
   you do.
 * Structs arrive as live wrappers, or as plain data with `bind.Plain()` for a
-  type or `bind.PlainResult()` for one call — about 3x cheaper for a result that
-  is read in full.
+  type or `bind.PlainResult()` for one call — about 16x cheaper for a result
+  that is read in full, since plain data crosses as one JSON string.
 * `bind.MarshalledBy` maps a type onto a JavaScript counterpart with two Go
   functions. `time.Time` and `time.Duration` are mapped as standard.
 * Enums keep their names: a union type plus a constants object.
@@ -261,8 +261,9 @@ Everything crosses a bridge, and the bridge is the cost. Measured with
   data. Read it into a local rather than in a loop.
 * Building a struct wrapper is one call into JavaScript, about 17 µs with its
   release, whatever its size. Reading all of it back out is a crossing per
-  field and per nested wrapper, so a result that is read in full is still
-  cheaper as `bind.Plain()`.
+  field and per nested wrapper, so a result that is read in full is about 16x
+  cheaper as `bind.Plain()` or `bind.PlainResult()`, which cross as one JSON
+  string.
 * Bulk data crosses about 3x faster as `[]byte` than as a string.
 
 ## TinyGo
