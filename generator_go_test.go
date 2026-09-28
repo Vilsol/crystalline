@@ -50,6 +50,7 @@ func TestGeneratedBindingsWork(t *testing.T) {
 
 	for _, expected := range []string{
 		"Basic=420",
+		"WrapperEvals=0",
 		"FirstValue=hello",
 		"SecondValue=123",
 		"A(true)=true",
@@ -363,6 +364,17 @@ func main() {
 		const g = globalThis.go.app.generic;
 		const out = [];
 		out.push("Basic=" + s.Basic());
+
+		// Building a wrapper must not compile JavaScript: eval is a parse per
+		// call, and it ran once per wrapper.
+		const evaluate = globalThis.eval;
+		let evals = 0;
+		globalThis.eval = (source) => { evals++; return (0, evaluate)(source); };
+		s.FooBar().release();
+		evals = 0;
+		for (let i = 0; i < 5; i++) { s.FooBar().release(); }
+		globalThis.eval = evaluate;
+		out.push("WrapperEvals=" + evals);
 		const f = s.FooBar();
 		out.push("FirstValue=" + f.FirstValue);
 		out.push("SecondValue=" + f.SecondValue);

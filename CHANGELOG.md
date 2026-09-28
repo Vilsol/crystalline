@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Building a wrapper no longer compiles JavaScript. `crystallineAttach` ran an
+  `eval` per wrapper to install `Symbol.dispose`; it is now compiled once, as
+  `crystallineWrap` already was. `BenchmarkRecord` reports evals per op.
+
 ### Fixed
 
 - A type a supplied interface names in its method signatures is declared. The

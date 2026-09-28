@@ -432,6 +432,10 @@ func crystallineReleaseHandle(handle int) {
 	entry.scope.funcs = nil
 }
 
+// crystallineDisposable installs Symbol.dispose. It is compiled once: an eval
+// per wrapper was a parse per wrapper.
+var crystallineDisposable js.Value
+
 // crystallineAttach tags a wrapper with its handle and arranges for the entry
 // to be dropped once JS no longer holds the wrapper.
 func crystallineAttach(target js.Value, handle int, scope *crystallineScope) {
@@ -451,11 +455,15 @@ func crystallineAttach(target js.Value, handle int, scope *crystallineScope) {
 
 	target.Set("release", disposer)
 
-	js.Global().Call("eval", `(target, dispose) => {
-		if (typeof Symbol.dispose !== "undefined") {
-			target[Symbol.dispose] = dispose;
-		}
-	}`).Invoke(target, disposer)
+	if crystallineDisposable.IsUndefined() {
+		crystallineDisposable = js.Global().Call("eval", `(target, dispose) => {
+			if (typeof Symbol.dispose !== "undefined") {
+				target[Symbol.dispose] = dispose;
+			}
+		}`)
+	}
+
+	crystallineDisposable.Invoke(target, disposer)
 
 	if crystallineFinalizer.IsUndefined() {
 		constructor := js.Global().Get("FinalizationRegistry")
