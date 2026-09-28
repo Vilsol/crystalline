@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `bind.PlainResult` hands one call's result over as plain data, a deep copy,
+  where `bind.Plain` does it for a type everywhere. On `r.Func` it takes no
+  names; on `r.Type` it names the methods, the same split `bind.AsPromise`
+  makes, and a misplaced one says where it belongs. Every struct in the copy is
+  declared a second time as `<T>Plain` in its own namespace, readonly with
+  nothing to release, and the live interface stays for everywhere else. A
+  consumer that built wrappers only to copy every field out and release them
+  gets the copy directly: for a ten-field record, 66 µs and 168 crossings
+  against 228 µs and 435 for the wrapper and the walk, and 63 µs and 154 for a
+  hand-written plain object.
+
 ### Changed
 
 - Building a wrapper no longer compiles JavaScript. `crystallineAttach` ran an

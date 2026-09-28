@@ -68,6 +68,11 @@ type Generator struct {
 	// out exactly what the bindings did.
 	dropped map[string]bool
 
+	// plainResult asks the next signature rendered for its results as plain
+	// data, and plain is set while they, and the copies they name, render.
+	plainResult bool
+	plain       bool
+
 	// promises records which declarations carry the promise directive, keyed by
 	// a stable name rather than by object identity: a package loaded twice
 	// yields different objects for the same declaration.

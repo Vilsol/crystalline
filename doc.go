@@ -140,6 +140,16 @@
 // struct reachable from it, since a plain value cannot contain a live one.
 // The generated declarations show which types those are.
 //
+// A type read in full in one place and used live in another marks the call
+// instead:
+//
+//	r.Func(api.Report, bind.PlainResult())
+//	r.Type(api.Book{}, bind.PlainResult("Entries"))
+//
+// That result is copied as data, however deep, and every struct in it is
+// declared a second time as <T>Plain: fields only, readonly, nothing to
+// release. Everywhere else the type is still a wrapper.
+//
 // # Regenerating on save
 //
 //	crystalline -watch -app myapp -out ./dist ./...

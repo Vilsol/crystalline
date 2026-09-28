@@ -31,6 +31,7 @@ func Exports(r bind.Registry) {
 	r.Func(payload.Stream)
 	r.Func(payload.Drain)
 	r.Func(payload.MakeRecord)
+	r.Func(payload.RecordData, bind.PlainResult())
 
 	r.Func(payload.Rounds, bind.AsPromise())
 

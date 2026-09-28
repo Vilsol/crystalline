@@ -376,8 +376,9 @@ func BenchmarkFeed(b *testing.B) {
 //
 // wrap builds the wrapper and releases it. dump is what a consumer that wants
 // the data does with one: read every property recursively into plain objects,
-// releasing each wrapper it met, as go-pob's dump() does. raw is a hand-written
-// plain object of the same data, the floor for dump.
+// releasing each wrapper it met, as go-pob's dump() does. plain is the same
+// result declared bind.PlainResult(), which arrives as what dump produces. raw
+// is a hand-written plain object of the same data, the floor for both.
 func BenchmarkRecord(b *testing.B) {
 	makeRecord := api().Get("MakeRecord")
 
@@ -388,6 +389,7 @@ func BenchmarkRecord(b *testing.B) {
 	}{
 		{"wrap", makeRecord, func() js.Value { return drivers().produced }},
 		{"dump", makeRecord, func() js.Value { return drivers().dumped }},
+		{"plain", api().Get("RecordData"), func() js.Value { return drivers().produced }},
 		{"raw", rawAPI().Get("MakeRecord"), func() js.Value { return drivers().produced }},
 	} {
 		b.Run(run.name, func(b *testing.B) {

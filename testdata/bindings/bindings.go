@@ -49,6 +49,11 @@ func Exports(r bind.Registry) {
 
 	r.Type(sample.Reading{}, bind.Plain())
 
+	// Tree and FnSample are live, except where a result is asked for as data.
+	r.Func(sample.MakeTree)
+	r.Func(sample.TreeData, bind.PlainResult())
+	r.Type(sample.Tree{}, bind.PlainResult("Copy"))
+
 	// A map whose key names a package but whose element does not.
 	r.Value("Titles", map[sample.Kind]string{1: "one"})
 }

@@ -32,6 +32,7 @@ func init() {
 	crystallineNamespace("bench", "payload").Set("Stream", crystallineWrap(js.FuncOf(crystallineFnPayloadStream)))
 	crystallineNamespace("bench", "payload").Set("Drain", crystallineWrap(js.FuncOf(crystallineFnPayloadDrain)))
 	crystallineNamespace("bench", "payload").Set("MakeRecord", crystallineWrap(js.FuncOf(crystallineFnPayloadMakeRecord)))
+	crystallineNamespace("bench", "payload").Set("RecordData", crystallineWrap(js.FuncOf(crystallineFnPayloadRecordData)))
 	crystallineNamespace("bench", "payload").Set("Rounds", crystallineWrap(js.FuncOf(crystallineFnPayloadRounds)))
 
 	Exports(crystallineRegistry{})
@@ -1251,6 +1252,18 @@ func crystallineFnPayloadMakeRecord(this js.Value, args []js.Value) (result any)
 	return crystallineMarshalPayloadRecord(r0)
 }
 
+func crystallineFnPayloadRecordData(this js.Value, args []js.Value) (result any) {
+	defer crystallineRecover(&result)
+
+	if len(args) != 0 {
+		return crystallineFail("RecordData: expected 0 arguments, got " + strconv.Itoa(len(args)))
+	}
+
+	r0 := payload.RecordData()
+
+	return crystallinePlainPayloadRecord(r0)
+}
+
 func crystallineFnPayloadRounds(this js.Value, args []js.Value) (result any) {
 	defer crystallineRecover(&result)
 
@@ -1730,6 +1743,111 @@ func crystallineMarshalPayloadRecord(v *payload.Record) any {
 	}
 
 	return crystallineMarshalPayloadRecordShape.Invoke(crystallineRetain(v))
+}
+
+func crystallinePlainPayloadLine(v *payload.Line) any {
+	if v == nil {
+		return nil
+	}
+
+	out := js.Global().Get("Object").New()
+
+	out.Set("Label", string(v.Label))
+	out.Set("Values", func() any {
+		items := v.Values
+		if items == nil {
+			return nil
+		}
+
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, float64(items[i]))
+		}
+
+		return out
+	}())
+
+	return out
+}
+
+func crystallinePlainPayloadRecord(v *payload.Record) any {
+	if v == nil {
+		return nil
+	}
+
+	out := js.Global().Get("Object").New()
+
+	out.Set("ID", float64(v.ID))
+	out.Set("Name", string(v.Name))
+	out.Set("Score", float64(v.Score))
+	out.Set("Active", bool(v.Active))
+	out.Set("Tags", func() any {
+		items := v.Tags
+		if items == nil {
+			return nil
+		}
+
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, string(items[i]))
+		}
+
+		return out
+	}())
+	out.Set("Lines", func() any {
+		items := v.Lines
+		if items == nil {
+			return nil
+		}
+
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, crystallinePlainPayloadLine(&items[i]))
+		}
+
+		return out
+	}())
+	out.Set("Grid", func() any {
+		items := v.Grid
+		if items == nil {
+			return nil
+		}
+
+		out := make([]any, 0, len(items))
+		for i := range items {
+			out = append(out, func() any {
+				items := items[i]
+				if items == nil {
+					return nil
+				}
+
+				out := make([]any, 0, len(items))
+				for i := range items {
+					out = append(out, float64(items[i]))
+				}
+
+				return out
+			}())
+		}
+
+		return out
+	}())
+	out.Set("Totals", func() any {
+		if v.Totals == nil {
+			return nil
+		}
+
+		out := make(map[string]any, len(v.Totals))
+		for k, v := range v.Totals {
+			out[string(k)] = float64(v)
+		}
+
+		return out
+	}())
+	out.Set("Main", crystallinePlainPayloadLine(&v.Main))
+	out.Set("Parent", crystallinePlainPayloadLine(v.Parent))
+
+	return out
 }
 
 func crystallineToBool(value js.Value) (bool, error) {

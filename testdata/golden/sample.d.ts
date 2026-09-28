@@ -147,6 +147,30 @@ export declare namespace sample {
     release(): void;
     [Symbol.dispose](): void;
   }
+  interface Tree {
+    Label: string;
+    Leaves?: Array<sample.FnSample>;
+    ByName?: Record<string, Readonly<sample.FnSample>>;
+    Top?: sample.FnSample;
+    Stage: sample.Phase;
+    Copy(): sample.TreePlain;
+    Name(): string;
+    /** Releases the Go resources behind this wrapper. */
+    release(): void;
+    [Symbol.dispose](): void;
+  }
+  interface FnSamplePlain {
+    readonly FirstValue: string;
+    readonly SecondValue: number;
+    readonly ThirdValue: number;
+  }
+  interface TreePlain {
+    readonly Label: string;
+    readonly Leaves?: Array<sample.FnSamplePlain>;
+    readonly ByName?: Record<string, sample.FnSamplePlain>;
+    readonly Top?: sample.FnSamplePlain;
+    readonly Stage: sample.Phase;
+  }
   function Advance(p: sample.Phase): sample.Phase;
   function Basic(): number;
   function Big(n: number): number;
@@ -156,6 +180,7 @@ export declare namespace sample {
   function Keys(ids: Array<number> | undefined, seed: number): number;
   function MakeEmbedder(): sample.Embedder;
   function MakeStamped(): sample.Stamped;
+  function MakeTree(): sample.Tree;
   function MayFail(ok: boolean): Result<string>;
   function MaybeStamp(ok: boolean): (Date | undefined);
   function Middle(first: sample.FnSample | undefined, label: string): string;
@@ -174,6 +199,7 @@ export declare namespace sample {
   function Ticks(signal: AbortSignal, count: number): AsyncIterable<number>;
   const Titles: Record<number, string> | undefined;
   function Total(nums: Array<number> | undefined): number;
+  function TreeData(): sample.TreePlain;
 }
 export function boot(wasm: string | URL | BufferSource): Promise<{ generic: typeof generic; marshal: typeof marshal; sample: typeof sample }>;
 export const initializeCrystalline: () => void;

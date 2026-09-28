@@ -121,12 +121,13 @@ func (g *Generator) readFunc(pkg *packages.Package, where string, call *ast.Call
 	}
 
 	return entry{
-		Kind:      entryFunc,
-		Namespace: namespace,
-		Name:      obj.Name(),
-		Type:      obj.Type(),
-		Promise:   options.Promise,
-		Object:    obj,
+		Kind:        entryFunc,
+		Namespace:   namespace,
+		Name:        obj.Name(),
+		Type:        obj.Type(),
+		Promise:     options.Promise,
+		PlainResult: options.PlainResult,
+		Object:      obj,
 	}, nil
 }
 
@@ -159,6 +160,10 @@ func (g *Generator) readValue(pkg *packages.Package, where string, call *ast.Cal
 	// here compiled, generated and did nothing.
 	if _, isFunc := valueType.Underlying().(*types.Signature); options.Promise && !isFunc {
 		return entry{}, fmt.Errorf("%s: bind.AsPromise() applies to a function, and %s is not one", where, valueType)
+	}
+
+	if options.PlainResult {
+		return entry{}, fmt.Errorf("%s: bind.PlainResult() applies to a function; declare it with r.Func", where)
 	}
 
 	namespace := options.Namespace
@@ -302,6 +307,10 @@ func (g *Generator) readType(pkg *packages.Package, where string, call *ast.Call
 
 	for _, method := range options.PromiseMethods {
 		entries = append(entries, methodMark(named, entryPromise, method))
+	}
+
+	for _, method := range options.PlainResultMethods {
+		entries = append(entries, methodMark(named, entryPlainResult, method))
 	}
 
 	return entries, nil
@@ -488,6 +497,17 @@ func readOptions(pkg *packages.Package, where string, args []ast.Expr) (manifest
 			}
 
 			resolved.PromiseMethods = append(resolved.PromiseMethods, methods...)
+		case "PlainResult":
+			methods, err := literalNames(pkg, where, obj.Name(), call.Args)
+			if err != nil {
+				return manifestOptions{}, err
+			}
+
+			if len(methods) == 0 {
+				resolved.PlainResult = true
+			}
+
+			resolved.PlainResultMethods = append(resolved.PlainResultMethods, methods...)
 		case "Without":
 			methods, err := literalNames(pkg, where, obj.Name(), call.Args)
 			if err != nil {
@@ -589,6 +609,8 @@ func (o manifestOptions) rejectTypeOnly(where string) error {
 		return fmt.Errorf("%s: bind.Without names methods of a type, so it belongs on r.Type", where)
 	case len(o.PromiseMethods) > 0:
 		return fmt.Errorf("%s: bind.AsPromise names methods of a type, so it belongs on r.Type; on a function it takes no names", where)
+	case len(o.PlainResultMethods) > 0:
+		return fmt.Errorf("%s: bind.PlainResult names methods of a type, so it belongs on r.Type; on a function it takes no names", where)
 	case o.hasMarshal:
 		return fmt.Errorf("%s: bind.MarshalledBy maps a type, so it belongs on r.Type", where)
 	case len(o.Called) > 0:
@@ -611,6 +633,8 @@ func (o manifestOptions) checkForImport(where string) error {
 		return fmt.Errorf("%s: bind.Without hides a method from JavaScript; an imported interface declares only what Go calls", where)
 	case o.Promise:
 		return fmt.Errorf("%s: bind.AsPromise() applies to a function; name the methods that return a promise", where)
+	case o.PlainResult || len(o.PlainResultMethods) > 0:
+		return fmt.Errorf("%s: bind.PlainResult says how a result crosses out, and an import comes in", where)
 	}
 
 	return nil
@@ -648,19 +672,21 @@ func (o manifestOptions) checkForType(where string, named *types.Named) error {
 	switch {
 	case o.Promise:
 		return fmt.Errorf("%s: %s is not a function; name the methods that return a promise, as bind.AsPromise(%q)", where, named, "Method")
+	case o.PlainResult:
+		return fmt.Errorf("%s: %s is not a function; name the methods whose results are plain data, as bind.PlainResult(%q)", where, named, "Method")
 	case o.Namespace != "":
 		return fmt.Errorf("%s: bind.InNamespace applies to a function or a value; a type follows the package that declares it", where)
 	case len(o.Called) > 0:
 		return fmt.Errorf("%s: bind.Called names a method JavaScript already has, so it belongs on r.Import", where)
 	case o.Plain && o.hasMarshal:
 		return fmt.Errorf("%s: bind.Plain() and bind.MarshalledBy say different things about how %s crosses", where, named)
-	case o.Plain && len(o.Without)+len(o.PromiseMethods) > 0:
+	case o.Plain && len(o.Without)+len(o.PromiseMethods)+len(o.PlainResultMethods) > 0:
 		return fmt.Errorf("%s: %s is plain data, which has no methods to name", where, named)
-	case o.hasMarshal && len(o.Without)+len(o.PromiseMethods) > 0:
+	case o.hasMarshal && len(o.Without)+len(o.PromiseMethods)+len(o.PlainResultMethods) > 0:
 		return fmt.Errorf("%s: %s is mapped by its own functions, which have no methods to name", where, named)
 	}
 
-	for _, method := range append(append([]string{}, o.Without...), o.PromiseMethods...) {
+	for _, method := range append(append(append([]string{}, o.Without...), o.PromiseMethods...), o.PlainResultMethods...) {
 		if !namedHasMethod(named, method) {
 			return fmt.Errorf("%s: %s has no exported method %q", where, named, method)
 		}

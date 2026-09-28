@@ -370,6 +370,15 @@ type emitter struct {
 	marshallers map[string]string
 	pending     []*types.Named
 
+	// pendingPlain holds the types a plain result copies, which are emitted a
+	// second time as data beside the wrapper they have everywhere else.
+	pendingPlain []*types.Named
+
+	// plainResult asks the next call emitted for its results as plain data,
+	// and plain is set while they, and the copies they reach, are converted.
+	plainResult bool
+	plain       bool
+
 	converters map[string]string
 }
 
@@ -441,7 +450,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 
 	for _, entry := range declarations.entries {
 		reached := make([]*types.Named, 0)
-		collectNamed(e.marks, entry.Type, seenEnums, &reached)
+		collectEntry(e.marks, entry, seenEnums, &reached, newPlainCopies())
 
 		for _, named := range reached {
 			constants := enumConstants(named)
@@ -454,20 +463,34 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 	}
 
 	// Marshallers can queue further marshallers, so drain until stable.
-	for len(e.pending) > 0 {
-		named := e.pending[0]
-		e.pending = e.pending[1:]
+	for len(e.pending)+len(e.pendingPlain) > 0 {
+		var (
+			named   *types.Named
+			key     string
+			marshal func(*types.Named) (string, error)
+		)
 
-		if _, done := e.marshallers[e.imports.goTypeName(named)]; done {
+		if len(e.pending) > 0 {
+			named = e.pending[0]
+			e.pending = e.pending[1:]
+			key = e.imports.goTypeName(named)
+
+			marshal = e.emitMarshaller
+			if e.marks.isPlain(named) {
+				marshal = e.emitPlainMarshaller
+			}
+		} else {
+			named = e.pendingPlain[0]
+			e.pendingPlain = e.pendingPlain[1:]
+			key = plainCopyName(e.imports.goTypeName(named))
+			marshal = e.emitPlainCopy
+		}
+
+		if _, done := e.marshallers[key]; done {
 			continue
 		}
 
-		e.marshallers[e.imports.goTypeName(named)] = ""
-
-		marshal := e.emitMarshaller
-		if e.marks.isPlain(named) {
-			marshal = e.emitPlainMarshaller
-		}
+		e.marshallers[key] = ""
 
 		e.imports.begin()
 
@@ -481,7 +504,7 @@ func (e *emitter) emitBindings(declarations Declarations) (string, error) {
 
 		e.imports.commit()
 
-		e.marshallers[e.imports.goTypeName(named)] = body
+		e.marshallers[key] = body
 	}
 
 	var helpers strings.Builder
@@ -688,6 +711,12 @@ func marshalName(name string) string {
 	return "crystallineMarshal" + name
 }
 
+// plainCopyName names the marshaller that copies a type as data for a plain
+// result, beside the wrapper it crosses as everywhere else.
+func plainCopyName(name string) string {
+	return "crystallinePlain" + name
+}
+
 // declaredName renders a type the way generated code must spell it.
 func (e *emitter) declaredName(t types.Type) string {
 	return types.TypeString(t, e.qualifier)
@@ -714,6 +743,8 @@ func (e *emitter) emitDeclaredFunc(entry entry) (string, error) {
 	body.WriteString("\tif len(args) != " + strconv.Itoa(sig.Params().Len()) + " {\n")
 	body.WriteString("\t\treturn crystallineFail(" + strconv.Quote(fn.Name()+": expected "+strconv.Itoa(sig.Params().Len())+" arguments, got ") + " + strconv.Itoa(len(args)))\n")
 	body.WriteString("\t}\n\n")
+
+	e.plainResult = entry.PlainResult
 
 	returns, err := e.emitCall(sig, func(call []string) string {
 		return qualified(e.qualifier(fn.Pkg()), fn.Name()) + "(" + spread(sig, call) + ")"
@@ -860,6 +891,10 @@ func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) stri
 		onFailure = "crystallineStop()\n\t\t\t"
 	}
 
+	// Only the results are plain: a callback's arguments keep their own shape.
+	plain := e.plainResult
+	e.plainResult = false
+
 	call, preamble, checks, err := e.emitArguments(sig, !streaming, onFailure)
 	if err != nil {
 		return "", err
@@ -870,7 +905,10 @@ func (e *emitter) emitCall(sig *types.Signature, invoke func(call []string) stri
 		defer func() { e.streamStop = "" }()
 	}
 
+	e.plain = plain
 	returns, err := e.emitReturn(invoke(call), sig.Results(), checks, onFailure)
+	e.plain = false
+
 	if err != nil {
 		return "", err
 	}

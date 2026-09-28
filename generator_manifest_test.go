@@ -209,6 +209,26 @@ func TestBarePromiseOnATypeIsAnError(t *testing.T) {
 		"the error must say how to name the methods instead, got: "+errText(err))
 }
 
+// A plain result names methods on a type and nothing on a function, the same
+// split bind.AsPromise makes, and each misplacement says where it belongs.
+func TestPlainResultIsPlacedLikeAsPromise(t *testing.T) {
+	for _, tc := range []struct {
+		manifest string
+		want     string
+	}{
+		{"./testdata/badplainresult", "bind.PlainResult names methods of a type, so it belongs on r.Type; on a function it takes no names"},
+		{"./testdata/badtypeplainresult", `is not a function; name the methods whose results are plain data, as bind.PlainResult("Method")`},
+	} {
+		g := NewGenerator("app")
+		testza.AssertNoError(t, g.Load(".", tc.manifest, "./testdata/sample"))
+
+		_, err := g.Declarations()
+		testza.AssertNotNil(t, err, tc.manifest)
+		testza.AssertTrue(t, strings.Contains(errText(err), tc.want),
+			tc.manifest+": the error must say where the option belongs, got: "+errText(err))
+	}
+}
+
 // An import is the other direction: Go declares the few methods it needs and
 // they are filled from an object JavaScript already has.
 func TestImportIsRead(t *testing.T) {

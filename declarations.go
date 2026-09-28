@@ -40,6 +40,9 @@ const (
 	entryPlain   entryKind = "plain"
 	entryMarshal entryKind = "marshal"
 	entryImport  entryKind = "import"
+
+	// entryPlainResult marks a method whose result crosses as plain data.
+	entryPlainResult entryKind = "plain result"
 )
 
 // hasDirective reports whether a doc comment carries the given directive.
@@ -83,6 +86,9 @@ type entry struct {
 	// Promise records whether the entity was marked asynchronous.
 	Promise bool
 
+	// PlainResult records whether a function's result crosses as plain data.
+	PlainResult bool
+
 	// NamespaceOverride is the literal bind.InNamespace value, empty when none
 	// was given. Generated code keys values on it because that is what a
 	// registry can reconstruct at run time.
@@ -111,12 +117,16 @@ func (e entry) String() string {
 	switch e.Kind {
 	case entryImport:
 		return "import " + e.Namespace + "." + e.Name + " " + e.Path
-	case entryIgnore, entryPromise:
+	case entryIgnore, entryPromise, entryPlainResult:
 		return string(e.Kind) + " " + e.Namespace + "." + e.Name + "." + e.Method
 	case entryFunc:
 		out := "func " + e.Namespace + "." + e.Name
 		if e.Promise {
 			out += " promise"
+		}
+
+		if e.PlainResult {
+			out += " plain result"
 		}
 
 		return out
@@ -141,6 +151,9 @@ type marks struct {
 	promised map[string]bool
 	plain    map[string]bool
 
+	// plainResult names the methods whose results cross as plain data.
+	plainResult map[string]bool
+
 	// custom maps a type onto a JS counterpart, keyed like the rest.
 	custom map[string]marshaller
 }
@@ -151,6 +164,8 @@ func newMarks(declarations Declarations) marks {
 		promised: make(map[string]bool),
 		plain:    make(map[string]bool),
 		custom:   make(map[string]marshaller),
+
+		plainResult: make(map[string]bool),
 	}
 
 	for _, entry := range declarations.entries {
@@ -164,6 +179,8 @@ func newMarks(declarations Declarations) marks {
 			m.ignored[markKey(named, entry.Method)] = true
 		case entryPromise:
 			m.promised[markKey(named, entry.Method)] = true
+		case entryPlainResult:
+			m.plainResult[markKey(named, entry.Method)] = true
 		case entryMarshal:
 			m.custom[markKey(named, "")] = marshaller{
 				to:           entry.Object,

@@ -67,6 +67,22 @@ export declare namespace payload {
     release(): void;
     [Symbol.dispose](): void;
   }
+  interface LinePlain {
+    readonly Label: string;
+    readonly Values?: Array<number>;
+  }
+  interface RecordPlain {
+    readonly ID: number;
+    readonly Name: string;
+    readonly Score: number;
+    readonly Active: boolean;
+    readonly Tags?: Array<string>;
+    readonly Lines?: Array<payload.LinePlain>;
+    readonly Grid?: Array<Array<number> | undefined>;
+    readonly Totals?: Record<string, number>;
+    readonly Main: payload.LinePlain;
+    readonly Parent?: payload.LinePlain;
+  }
   function AddInts(a: number, b: number): number;
   function CountKeys(index: Record<string, number> | undefined): number;
   function Drain(values: AsyncIterable<number>): Promise<number>;
@@ -80,6 +96,7 @@ export declare namespace payload {
   function MayFail(ok: boolean): Result<number>;
   function NewPoint(label: string): (payload.Point | undefined);
   function Noop(): void;
+  function RecordData(): (payload.RecordPlain | undefined);
   function Rounds(n: number): Promise<number>;
   function Stream(n: number): AsyncIterable<number>;
   function SumFloats(values: Array<number> | undefined): number;

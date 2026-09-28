@@ -36,6 +36,7 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	// that pulled them in.
 	interfaces := make(map[string][]*types.Named)
 	seen := make(map[*types.Named]bool)
+	copies := newPlainCopies()
 
 	for _, entry := range declarations.entries {
 		// Left out of the bindings, so left out here too. One decision about
@@ -53,16 +54,16 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		}
 
 		reached := make([]*types.Named, 0)
-		collectNamed(g.marks, entry.Type, seen, &reached)
+		collectEntry(g.marks, entry, seen, &reached, copies)
 
 		for _, named := range reached {
-			owner := named.Obj().Name()
-			if named.Obj().Pkg() != nil {
-				owner = named.Obj().Pkg().Name()
-			}
-
-			interfaces[owner] = append(interfaces[owner], named)
+			interfaces[ownerNamespace(named)] = append(interfaces[ownerNamespace(named)], named)
 		}
+	}
+
+	copied := make(map[string][]*types.Named)
+	for _, named := range copies.order {
+		copied[ownerNamespace(named)] = append(copied[ownerNamespace(named)], named)
 	}
 
 	namespaces := make(map[string]bool, len(entities)+len(interfaces))
@@ -71,6 +72,10 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	}
 
 	for namespace := range interfaces {
+		namespaces[namespace] = true
+	}
+
+	for namespace := range copied {
 		namespaces[namespace] = true
 	}
 
@@ -85,7 +90,10 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 		exposed := entities[namespace]
 		sort.SliceStable(exposed, func(i, j int) bool { return exposed[i].Name < exposed[j].Name })
 
-		namespaced, err := g.renderNamespace(namespace, declared, exposed)
+		plainCopies := copied[namespace]
+		sort.Slice(plainCopies, func(i, j int) bool { return instantiatedName(plainCopies[i]) < instantiatedName(plainCopies[j]) })
+
+		namespaced, err := g.renderNamespace(namespace, declared, plainCopies, exposed)
 		if err != nil {
 			return Output{}, err
 		}
@@ -163,6 +171,16 @@ func (g *Generator) Build(declarations Declarations) (Output, error) {
 	return Output{TypeScript: tsd.String(), JavaScript: js.String(), Skipped: analysed.skipped, Warnings: analysed.warnings}, nil
 }
 
+// ownerNamespace is where a type is declared: the package that defines it,
+// not the entry that reached it.
+func ownerNamespace(named *types.Named) string {
+	if named.Obj().Pkg() != nil {
+		return named.Obj().Pkg().Name()
+	}
+
+	return named.Obj().Name()
+}
+
 // bannerText renders the configured banner, ending it with a newline so the
 // generated content starts on its own line.
 func (g *Generator) bannerText() string {
@@ -175,8 +193,21 @@ func (g *Generator) bannerText() string {
 
 // renderNamespace renders the interfaces a package declares, then the entities
 // exposed under its name.
-func (g *Generator) renderNamespace(namespace string, declared []*types.Named, exposed []entry) (string, error) {
+func (g *Generator) renderNamespace(namespace string, declared []*types.Named, copies []*types.Named, exposed []entry) (string, error) {
 	var body strings.Builder
+
+	names := make(map[string]bool, len(declared))
+	for _, named := range declared {
+		names[named.Obj().Name()] = true
+		names[instantiatedName(named)] = true
+	}
+
+	for _, named := range copies {
+		if names[plainCopyTSName(named)] {
+			return "", fmt.Errorf("%s: a plain result declares %s, and the package already has a type of that name",
+				namespace, plainCopyTSName(named))
+		}
+	}
 
 	for _, named := range declared {
 		if constants := enumConstants(named); len(constants) > 0 {
@@ -194,6 +225,15 @@ func (g *Generator) renderNamespace(namespace string, declared []*types.Named, e
 				continue
 			}
 
+			return "", err
+		}
+
+		body.WriteString(rendered)
+	}
+
+	for _, named := range copies {
+		rendered, err := g.renderPlainCopy(named)
+		if err != nil {
 			return "", err
 		}
 
@@ -218,6 +258,8 @@ func (g *Generator) renderEntity(namespace string, entry entry) (string, error) 
 		if entry.Object != nil {
 			promise = promise || g.isPromise(entry.Object)
 		}
+
+		g.plainResult = entry.PlainResult
 
 		rendered, err := g.renderSignature(g.jsMemberName(entry.Name, ""), sig, true, promise)
 		if err != nil {
@@ -304,16 +346,33 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 		return g.renderSupplied(named, declared)
 	}
 
+	return g.renderStruct(named, instantiatedName(named), g.marks.isPlain(named))
+}
+
+// renderPlainCopy declares a type the way a plain result copies it: fields
+// only, readonly, and each struct in it named as its own copy.
+func (g *Generator) renderPlainCopy(named *types.Named) (string, error) {
+	g.plain = true
+	defer func() { g.plain = false }()
+
+	return g.renderStruct(named, plainCopyTSName(named), true)
+}
+
+// plainCopyTSName is what a plain result names a type that is a wrapper
+// everywhere else.
+func plainCopyTSName(named *types.Named) string {
+	return instantiatedName(named) + "Plain"
+}
+
+func (g *Generator) renderStruct(named *types.Named, name string, plain bool) (string, error) {
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
 	}
 
-	plain := g.marks.isPlain(named)
-
 	var result strings.Builder
 
-	result.WriteString("  interface " + instantiatedName(named) + " {\n")
+	result.WriteString("  interface " + name + " {\n")
 
 	for i := 0; i < structType.NumFields(); i++ {
 		field := structType.Field(i)
@@ -370,6 +429,7 @@ func (g *Generator) renderInterface(named *types.Named) (string, error) {
 		}
 
 		promise := g.marks.promised[markKey(named, method.Name())] || g.isPromise(method)
+		g.plainResult = g.marks.plainResult[markKey(named, method.Name())]
 
 		signature, err := g.renderSignature(g.jsMemberName(method.Name(), ""), method.Type().(*types.Signature), true, promise)
 		if err != nil {
@@ -441,6 +501,10 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 	// emitter, so the declarations cannot describe a shape the bindings do not
 	// produce.
 	promise = promise || asyncSignature(sig)
+
+	// Only the results are plain: a callback's parameters keep their own shape.
+	plain := g.plainResult
+	g.plainResult = false
 
 	var result strings.Builder
 
@@ -538,7 +602,10 @@ func (g *Generator) renderSignature(name string, sig *types.Signature, named boo
 		result.WriteString("Result<")
 	}
 
+	g.plain = plain
 	returns, err := g.renderResults(results)
+	g.plain = false
+
 	if err != nil {
 		return "", err
 	}

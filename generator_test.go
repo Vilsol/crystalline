@@ -921,6 +921,38 @@ func TestDeclarationsNameNothingUndeclared(t *testing.T) {
 	assertEveryReferenceIsDeclared(t, out.TypeScript)
 }
 
+// TestPlainResultsAreDeclaredAsData pins what a result asked for as data is
+// declared as: an interface of its own per type it copies, fields only and
+// readonly, with nothing to release. The live interface stays, for everywhere
+// else the type crosses.
+func TestPlainResultsAreDeclaredAsData(t *testing.T) {
+	out, err := staticBuild(t)
+	testza.AssertNoError(t, err)
+
+	for _, expected := range []string{
+		"  function TreeData(): sample.TreePlain;\n",
+		"  function MakeTree(): sample.Tree;\n",
+		"    Copy(): sample.TreePlain;\n",
+		"    Name(): string;\n",
+		"  interface TreePlain {\n" +
+			"    readonly Label: string;\n" +
+			"    readonly Leaves?: Array<sample.FnSamplePlain>;\n" +
+			"    readonly ByName?: Record<string, sample.FnSamplePlain>;\n" +
+			"    readonly Top?: sample.FnSamplePlain;\n" +
+			"    readonly Stage: sample.Phase;\n" +
+			"  }\n",
+		"  interface FnSamplePlain {\n" +
+			"    readonly FirstValue: string;\n" +
+			"    readonly SecondValue: number;\n" +
+			"    readonly ThirdValue: number;\n" +
+			"  }\n",
+	} {
+		testza.AssertTrue(t, strings.Contains(out.TypeScript, expected), "missing:\n"+expected+"\nin:\n"+out.TypeScript)
+	}
+
+	assertEveryReferenceIsDeclared(t, out.TypeScript)
+}
+
 // TestGoldenDeclarationsAreSelfContained applies the same invariant to the
 // fixture the golden files pin, so a future disagreement is caught there too.
 func TestGoldenDeclarationsAreSelfContained(t *testing.T) {

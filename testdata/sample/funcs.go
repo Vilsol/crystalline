@@ -450,3 +450,35 @@ type Exact struct {
 func NewExact() *Exact {
 	return &Exact{Serial: 9007199254740993, Count: 2}
 }
+
+// Tree is live where it is returned on its own, and copied as data where the
+// manifest asks for a result to be plain.
+type Tree struct {
+	Label  string
+	Leaves []FnSample
+	ByName map[string]FnSample
+	Top    *FnSample
+	Stage  Phase
+}
+
+func (t Tree) Name() string {
+	return t.Label
+}
+
+func (t Tree) Copy() Tree {
+	return t
+}
+
+func MakeTree() Tree {
+	return Tree{
+		Label:  "tree",
+		Leaves: []FnSample{FooBar(), {FirstValue: "second"}},
+		ByName: map[string]FnSample{"a": {FirstValue: "keyed"}},
+		Top:    &FnSample{FirstValue: "top"},
+		Stage:  PhaseDone,
+	}
+}
+
+func TreeData() Tree {
+	return MakeTree()
+}

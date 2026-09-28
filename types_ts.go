@@ -117,6 +117,10 @@ func (g *Generator) namedToJS(t types.Type) (string, bool, error) {
 		name := obj.Name()
 		if named, ok := t.(*types.Named); ok {
 			name = instantiatedName(named)
+
+			if g.plain && !g.marks.isPlain(named) {
+				name = plainCopyTSName(named)
+			}
 		}
 
 		if obj.Pkg() == nil {
@@ -185,7 +189,7 @@ func (g *Generator) mapToJS(typed *types.Map) (string, bool, error) {
 		return "", false, err
 	}
 
-	if crossesAsWrapper(g.marks, typed.Elem()) {
+	if !g.plain && crossesAsWrapper(g.marks, typed.Elem()) {
 		// Go cannot address a map element, so the wrapper stands over a copy
 		// and its fields refuse writes. Readonly says so before the attempt.
 		valueName = "Readonly<" + valueName + ">"
@@ -220,9 +224,90 @@ func namedObject(t types.Type) *types.TypeName {
 	return nil
 }
 
+// plainCopies collects the types plain results copy, which are declared again
+// as data beside the wrappers they are everywhere else.
+type plainCopies struct {
+	seen  map[*types.Named]bool
+	order []*types.Named
+}
+
+func newPlainCopies() *plainCopies {
+	return &plainCopies{seen: make(map[*types.Named]bool)}
+}
+
+// collectEntry walks what a manifest entry reaches. A function whose result is
+// plain reaches copies through its results rather than wrappers.
+func collectEntry(m marks, entry entry, seen map[*types.Named]bool, order *[]*types.Named, copies *plainCopies) {
+	if sig, ok := entry.Type.(*types.Signature); ok && entry.PlainResult {
+		collectSignature(m, sig, true, seen, order, copies)
+
+		return
+	}
+
+	collectNamed(m, entry.Type, seen, order, copies)
+}
+
+// collectSignature walks a signature, its results as copies when they are
+// plain.
+func collectSignature(m marks, sig *types.Signature, plain bool, seen map[*types.Named]bool, order *[]*types.Named, copies *plainCopies) {
+	for i := 0; i < sig.Params().Len(); i++ {
+		collectNamed(m, sig.Params().At(i).Type(), seen, order, copies)
+	}
+
+	for i := 0; i < sig.Results().Len(); i++ {
+		if plain {
+			collectPlain(m, sig.Results().At(i).Type(), seen, order, copies)
+		} else {
+			collectNamed(m, sig.Results().At(i).Type(), seen, order, copies)
+		}
+	}
+}
+
+// collectPlain walks a plain result. A struct in it is a copy, and anything
+// else it names is declared as usual: an enum is still an enum.
+func collectPlain(m marks, t types.Type, seen map[*types.Named]bool, order *[]*types.Named, copies *plainCopies) {
+	t = unaliased(t)
+
+	switch typed := t.(type) {
+	case *types.Named:
+		structType, isStruct := typed.Underlying().(*types.Struct)
+		if _, mapped := m.marshallerFor(typed); mapped || !isStruct || m.isPlain(typed) {
+			collectNamed(m, typed, seen, order, copies)
+
+			return
+		}
+
+		if copies.seen[typed] {
+			return
+		}
+
+		copies.seen[typed] = true
+		copies.order = append(copies.order, typed)
+
+		for i := 0; i < structType.NumFields(); i++ {
+			if field := structType.Field(i); field.Exported() {
+				collectPlain(m, field.Type(), seen, order, copies)
+			}
+		}
+	case *types.Pointer:
+		collectPlain(m, typed.Elem(), seen, order, copies)
+	case *types.Slice:
+		collectPlain(m, typed.Elem(), seen, order, copies)
+	case *types.Array:
+		collectPlain(m, typed.Elem(), seen, order, copies)
+	case *types.Map:
+		collectPlain(m, typed.Key(), seen, order, copies)
+		collectPlain(m, typed.Elem(), seen, order, copies)
+	case *types.Chan:
+		collectPlain(m, typed.Elem(), seen, order, copies)
+	default:
+		collectNamed(m, t, seen, order, copies)
+	}
+}
+
 // collectNamed walks a type for the named struct types reachable from it,
 // recording each one once in declaration-independent order.
-func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*types.Named) {
+func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*types.Named, copies *plainCopies) {
 	t = unaliased(t)
 
 	switch typed := t.(type) {
@@ -260,7 +345,7 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 				declared := typed.Underlying().(*types.Interface)
 				for i := 0; i < declared.NumMethods(); i++ {
 					if method := declared.Method(i); method.Exported() {
-						collectNamed(m, method.Type(), seen, order)
+						collectNamed(m, method.Type(), seen, order, copies)
 					}
 				}
 			}
@@ -283,7 +368,7 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 		structType := typed.Underlying().(*types.Struct)
 		for i := 0; i < structType.NumFields(); i++ {
 			if field := structType.Field(i); field.Exported() {
-				collectNamed(m, field.Type(), seen, order)
+				collectNamed(m, field.Type(), seen, order, copies)
 			}
 		}
 
@@ -300,28 +385,22 @@ func collectNamed(m marks, t types.Type, seen map[*types.Named]bool, order *[]*t
 				continue
 			}
 
-			collectNamed(m, method.Type(), seen, order)
+			collectSignature(m, method.Type().(*types.Signature), m.plainResult[markKey(typed, method.Name())], seen, order, copies)
 		}
 	case *types.Pointer:
-		collectNamed(m, typed.Elem(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order, copies)
 	case *types.Slice:
-		collectNamed(m, typed.Elem(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order, copies)
 	case *types.Array:
-		collectNamed(m, typed.Elem(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order, copies)
 	case *types.Map:
-		collectNamed(m, typed.Key(), seen, order)
-		collectNamed(m, typed.Elem(), seen, order)
+		collectNamed(m, typed.Key(), seen, order, copies)
+		collectNamed(m, typed.Elem(), seen, order, copies)
 	case *types.Chan:
 		// A receive-only channel renders as AsyncIterable<Elem>, so the element
 		// is named and has to be declared.
-		collectNamed(m, typed.Elem(), seen, order)
+		collectNamed(m, typed.Elem(), seen, order, copies)
 	case *types.Signature:
-		for i := 0; i < typed.Params().Len(); i++ {
-			collectNamed(m, typed.Params().At(i).Type(), seen, order)
-		}
-
-		for i := 0; i < typed.Results().Len(); i++ {
-			collectNamed(m, typed.Results().At(i).Type(), seen, order)
-		}
+		collectSignature(m, typed, false, seen, order, copies)
 	}
 }

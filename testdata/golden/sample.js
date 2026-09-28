@@ -55,6 +55,7 @@ export const initializeCrystalline = () => {
     Keys: wrap('sample.Keys', globalThis['go']['app']['sample']['Keys']),
     MakeEmbedder: wrap('sample.MakeEmbedder', globalThis['go']['app']['sample']['MakeEmbedder']),
     MakeStamped: wrap('sample.MakeStamped', globalThis['go']['app']['sample']['MakeStamped']),
+    MakeTree: wrap('sample.MakeTree', globalThis['go']['app']['sample']['MakeTree']),
     MayFail: wrap('sample.MayFail', globalThis['go']['app']['sample']['MayFail']),
     MaybeStamp: wrap('sample.MaybeStamp', globalThis['go']['app']['sample']['MaybeStamp']),
     Middle: wrap('sample.Middle', globalThis['go']['app']['sample']['Middle']),
@@ -73,7 +74,8 @@ export const initializeCrystalline = () => {
     TakesTime: wrap('sample.TakesTime', globalThis['go']['app']['sample']['TakesTime']),
     Ticks: wrap('sample.Ticks', globalThis['go']['app']['sample']['Ticks']),
     Titles: globalThis['go']['app']['sample']['Titles'],
-    Total: wrap('sample.Total', globalThis['go']['app']['sample']['Total'])
+    Total: wrap('sample.Total', globalThis['go']['app']['sample']['Total']),
+    TreeData: wrap('sample.TreeData', globalThis['go']['app']['sample']['TreeData'])
   };
 
   initialized = true;

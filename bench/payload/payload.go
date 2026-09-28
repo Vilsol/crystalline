@@ -209,6 +209,12 @@ func (l *Line) Sum() float64 {
 	return sum
 }
 
+// RecordData is MakeRecord with its result declared plain, so the same data
+// can be compared as a wrapper and as a copy.
+func RecordData() *Record {
+	return MakeRecord()
+}
+
 // MakeRecord returns a filled Record with four of everything.
 func MakeRecord() *Record {
 	line := func(label string) Line {

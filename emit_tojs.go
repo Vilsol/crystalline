@@ -24,9 +24,7 @@ func (e *emitter) toJS(expr string, t types.Type, nonNil bool) (string, error) {
 
 		if named, ok := typed.Elem().(*types.Named); ok && !mapped {
 			if _, isStruct := named.Underlying().(*types.Struct); isStruct {
-				e.queue(named)
-
-				return marshalName(e.imports.goTypeName(named)) + "(" + expr + ")", nil
+				return e.structToJS(named, expr), nil
 			}
 		}
 
@@ -121,12 +119,28 @@ func (e *emitter) namedToJSExpr(expr string, t types.Type) (string, error) {
 	}
 
 	if _, ok := named.Underlying().(*types.Struct); ok {
-		e.queue(named)
-
-		return marshalName(e.imports.goTypeName(named)) + "(&" + expr + ")", nil
+		return e.structToJS(named, "&"+expr), nil
 	}
 
 	return e.toJS(expr, named.Underlying(), false)
+}
+
+// structToJS renders a pointer to a struct crossing: as its wrapper, or as a
+// plain copy while a plain result is being converted. A type declared plain
+// has one marshaller, which serves both.
+func (e *emitter) structToJS(named *types.Named, pointer string) string {
+	if e.plain && !e.marks.isPlain(named) {
+		name := e.imports.goTypeName(named)
+		if _, done := e.marshallers[plainCopyName(name)]; !done {
+			e.pendingPlain = append(e.pendingPlain, named)
+		}
+
+		return plainCopyName(name) + "(" + pointer + ")"
+	}
+
+	e.queue(named)
+
+	return marshalName(e.imports.goTypeName(named)) + "(" + pointer + ")"
 }
 
 func (e *emitter) sliceToJSExpr(expr string, elem types.Type, nonNil bool) (string, error) {
@@ -184,7 +198,7 @@ func (e *emitter) mapToJSExpr(expr string, typed *types.Map, nonNil bool) (strin
 		return "", err
 	}
 
-	if crossesAsWrapper(e.marks, typed.Elem()) {
+	if !e.plain && crossesAsWrapper(e.marks, typed.Elem()) {
 		// The element is ranged over by value because Go cannot address a map
 		// element at all. The wrapper therefore stands over a copy, and a write
 		// to it has to be refused rather than discarded.

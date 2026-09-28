@@ -50,6 +50,7 @@ export const initializeCrystalline = () => {
     MayFail: wrap('payload.MayFail', globalThis['go']['bench']['payload']['MayFail']),
     NewPoint: wrap('payload.NewPoint', globalThis['go']['bench']['payload']['NewPoint']),
     Noop: wrap('payload.Noop', globalThis['go']['bench']['payload']['Noop']),
+    RecordData: wrap('payload.RecordData', globalThis['go']['bench']['payload']['RecordData']),
     Rounds: wrap('payload.Rounds', globalThis['go']['bench']['payload']['Rounds']),
     Stream: wrap('payload.Stream', globalThis['go']['bench']['payload']['Stream']),
     SumFloats: wrap('payload.SumFloats', globalThis['go']['bench']['payload']['SumFloats']),

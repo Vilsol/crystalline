@@ -186,6 +186,21 @@ func exportedMethods(named *types.Named) []*types.Func {
 }
 
 func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
+	return e.plainMarshaller(named, marshalName(e.imports.goTypeName(named)), true)
+}
+
+// emitPlainCopy renders a type that crosses as a wrapper as data instead, for a
+// result the manifest asked for as data. Its methods are bound on the wrapper,
+// so nothing is reported missing.
+func (e *emitter) emitPlainCopy(named *types.Named) (string, error) {
+	return e.plainMarshaller(named, plainCopyName(e.imports.goTypeName(named)), false)
+}
+
+func (e *emitter) plainMarshaller(named *types.Named, fn string, reportMethods bool) (string, error) {
+	// Everything a plain value contains is plain too.
+	e.plain = true
+	defer func() { e.plain = false }()
+
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
 		return "", fmt.Errorf("%s is not a struct", named.Obj().Name())
@@ -196,7 +211,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 
 	var body strings.Builder
 
-	body.WriteString("func " + marshalName(name) + "(v *" + e.declaredName(named) + ") any {\n")
+	body.WriteString("func " + fn + "(v *" + e.declaredName(named) + ") any {\n")
 	body.WriteString("\tif v == nil {\n\t\treturn nil\n\t}\n\n")
 
 	// Built field by field rather than from a Go map, so that the property
@@ -227,7 +242,7 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 	// Methods have nowhere to live on plain data. Saying which ones went is the
 	// difference between a documented trade and a silent one.
 	for _, method := range exportedMethods(named) {
-		if !e.isIgnored(named, method.Name()) {
+		if reportMethods && !e.isIgnored(named, method.Name()) {
 			e.skipAt(method.Pos(), identity+"."+method.Name(), "not bound: "+identity+" is marshalled as plain data")
 		}
 	}
@@ -272,6 +287,8 @@ func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, er
 
 	e.subject = memberIdentity(named, method.Name())
 	defer func() { e.subject = "" }()
+
+	e.plainResult = e.marks.plainResult[markKey(named, method.Name())]
 
 	returns, err := e.emitCall(sig, func(call []string) string {
 		return "v." + method.Name() + "(" + spread(sig, call) + ")"

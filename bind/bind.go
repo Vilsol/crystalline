@@ -48,6 +48,13 @@ type Options struct {
 	// Without names the methods kept off the exposed type's JS surface.
 	Without []string
 
+	// PlainResult hands the exposed function's result over as plain data.
+	PlainResult bool
+
+	// PlainResultMethods names the methods of an exposed type whose results
+	// are handed over as plain data.
+	PlainResultMethods []string
+
 	// MarshalTo and MarshalFrom are the pair of functions mapping the exposed
 	// type onto a JS counterpart.
 	MarshalTo   any
@@ -100,6 +107,29 @@ func InNamespace(name string) Option {
 func Plain() Option {
 	return func(o *Options) {
 		o.Plain = true
+	}
+}
+
+// PlainResult hands a result over as plain data: a deep copy, with no methods,
+// nothing to release and nothing written back, even where the types in it cross
+// as live wrappers everywhere else.
+//
+// It is Plain for one call rather than for a type. A type that is read in full
+// in one place and used live in another no longer has to choose, and a consumer
+// no longer builds wrappers only to copy every field out of them and release
+// them.
+//
+// Passed to Func it takes no names, because the thing being exposed is the
+// function; passed to Type, it names the methods whose results are copied.
+func PlainResult(methods ...string) Option {
+	return func(o *Options) {
+		if len(methods) == 0 {
+			o.PlainResult = true
+
+			return
+		}
+
+		o.PlainResultMethods = append(o.PlainResultMethods, methods...)
 	}
 }
 

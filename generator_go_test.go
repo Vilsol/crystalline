@@ -111,6 +111,12 @@ func TestGeneratedBindingsWork(t *testing.T) {
 		"PlainNested=noon",
 		"PlainNestedNoMethod=true",
 		"PlainJSON={\"At\":\"noon\",\"Value\":1}",
+		"PlainResultFuncs=0",
+		"PlainResultWrappers=0",
+		`PlainResultJSON={"Label":"tree","Leaves":[{"FirstValue":"hello","SecondValue":123,"ThirdValue":4.559999942779541},{"FirstValue":"second","SecondValue":0,"ThirdValue":0}],"ByName":{"a":{"FirstValue":"keyed","SecondValue":0,"ThirdValue":0}},"Top":{"FirstValue":"top","SecondValue":0,"ThirdValue":0},"Stage":2}`,
+		"PlainResultClone=cloned",
+		"PlainResultLiveElsewhere=true",
+		"PlainMethodResult=true",
 		"BigType=bigint",
 		"BigRead=9007199254740993",
 		"BigUnsigned=18446744073709551615",
@@ -558,6 +564,28 @@ func main() {
 		out.push("PlainNested=" + readings[0].Peak.At);
 		out.push("PlainNestedNoMethod=" + (readings[0].Peak.Describe === undefined));
 		out.push("PlainJSON=" + JSON.stringify(readings[1].Peak));
+
+		// A result asked for as data is a deep copy: no wrapper anywhere in it,
+		// so it clones, serialises and needs no release. The same types stay
+		// live everywhere else.
+		const proto2 = globalThis.Go.prototype;
+		const makeFunc2 = proto2._makeFuncWrapper;
+		s.TreeData();
+		let plainFuncs = 0;
+		proto2._makeFuncWrapper = function (id) { plainFuncs++; return makeFunc2.call(this, id); };
+		const tree = s.TreeData();
+		proto2._makeFuncWrapper = makeFunc2;
+		out.push("PlainResultFuncs=" + plainFuncs);
+		out.push("PlainResultWrappers=" + [tree, tree.Leaves[0], tree.ByName.a, tree.Top].filter((o) => "release" in o || "One" in o).length);
+		out.push("PlainResultJSON=" + JSON.stringify(tree));
+		let treeClone = "cloned";
+		try { structuredClone(tree); } catch (e) { treeClone = e.name; }
+		out.push("PlainResultClone=" + treeClone);
+		const liveTree = s.MakeTree();
+		out.push("PlainResultLiveElsewhere=" + [liveTree, liveTree.Leaves[0], liveTree.Top].every((o) => typeof o.release === "function"));
+		const copied = liveTree.Copy();
+		out.push("PlainMethodResult=" + (copied.release === undefined && copied.Leaves[0].release === undefined && copied.Top.FirstValue === "top"));
+		liveTree.release();
 
 		// A field tagged bigint carries its value exactly. syscall/js cannot
 		// look at a BigInt at all — Value.Type panics with "bad type flag" and

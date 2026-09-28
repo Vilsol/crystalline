@@ -11,8 +11,9 @@ Go to JavaScript bindings for WebAssembly, generated from source.
 * One compiler-checked manifest declares the whole surface, including symbols
   from packages you do not own. `//crystalline:export` is the shorthand for ones
   you do.
-* Structs arrive as live wrappers, or as plain data with `bind.Plain()` — 9x
-  cheaper for a result that is only read.
+* Structs arrive as live wrappers, or as plain data with `bind.Plain()` for a
+  type or `bind.PlainResult()` for one call — about 3x cheaper for a result that
+  is read in full.
 * `bind.MarshalledBy` maps a type onto a JavaScript counterpart with two Go
   functions. `time.Time` and `time.Duration` are mapped as standard.
 * Enums keep their names: a union type plus a constants object.
@@ -197,6 +198,7 @@ render in JavaScript, import the handful of things Go has to reach.
 | `*T` | `T \| undefined` |
 | `struct` | `interface`, live fields and methods |
 | `struct` marked `bind.Plain()` | `interface`, read-only data, no methods |
+| `struct` in a `bind.PlainResult()` result | `interface` named `<T>Plain`, read-only data, no methods |
 | named int or string with constants | union type plus a constants object |
 | `time.Time` | `Date` |
 | `time.Duration` | `number` of milliseconds |
@@ -218,6 +220,12 @@ many fields it has. `r.Type(T{}, bind.Plain())` converts a type to ordinary Java
 data instead —
 once, with no methods and no writing back — which is what a result that is only
 read wants. See [Performance](#performance).
+
+When the same type is read in full in one place and used live in another,
+mark the call rather than the type. `r.Func(api.Report, bind.PlainResult())`
+copies that function's result, and `r.Type(api.Book{}, bind.PlainResult("Entries"))`
+that method's; every struct in the copy is declared as `<T>Plain`, and the type
+stays live everywhere else.
 
 A channel parameter accepts any iterable, including a plain array, and must say
 its direction — `chan T` is refused rather than guessed at. Send-only channels
