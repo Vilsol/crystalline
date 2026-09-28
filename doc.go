@@ -126,9 +126,9 @@
 // # Plain data
 //
 // A wrapper is a live view, and liveness is not free: every field read is a
-// call into Go, and every field and method holds a slot in the Go/JS bridge
-// until the wrapper is released. A result that JavaScript only reads pays for
-// machinery it never uses.
+// call into Go, and the wrapper holds a handle until it is released. A result
+// that JavaScript only reads pays a crossing per field it reads, and one more
+// per nested wrapper it releases.
 //
 // Marking the type in the manifest converts it once instead:
 //

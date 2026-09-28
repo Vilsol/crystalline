@@ -55,6 +55,12 @@ func fieldConverter(t types.Type, tag string) string {
 	return "crystallineToBigInt"
 }
 
+// emitMarshaller renders the live wrapper for a struct.
+//
+// Everything a wrapper does belongs to its type: the accessors and methods are
+// rendered once, as switches over a field or method index, and handed to
+// crystallineShape the first time a value of the type crosses. Each value then
+// costs one call into JavaScript and a handle.
 func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
@@ -63,13 +69,16 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 
 	name := e.imports.goTypeName(named)
 	identity := typeIdentity(named)
+	goType := e.declaredName(named)
+	shape := marshalName(name) + "Shape"
 
-	var body strings.Builder
-
-	body.WriteString("func " + marshalName(name) + "(v *" + e.declaredName(named) + ") any {\n")
-	body.WriteString("\tif v == nil {\n\t\treturn nil\n\t}\n\n")
-	body.WriteString("\tout := js.Global().Get(\"Object\").New()\n")
-	body.WriteString("\tscope := &crystallineScope{}\n\n")
+	var (
+		fields  []string
+		getters strings.Builder
+		setters strings.Builder
+		methods []string
+		calls   strings.Builder
+	)
 
 	for i := 0; i < structType.NumFields(); i++ {
 		field := structType.Field(i)
@@ -99,15 +108,14 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 				strconv.Quote(identity+"."+field.Name()+" cannot be written from JavaScript: "+err.Error()) + ")\n\t}"
 		}
 
-		preamble, getter := e.fieldGetter(field.Name(), "v."+field.Name(), field.Type(), expr)
+		index := strconv.Itoa(len(fields))
+		fields = append(fields, strconv.Quote(e.gen.jsMemberName(field.Name(), tag)))
 
-		body.WriteString(preamble)
-		body.WriteString("\tcrystallineDefine(scope, out, " + strconv.Quote(e.gen.jsMemberName(field.Name(), tag)) + ", " + getter + ", " + setter + ")\n")
+		getters.WriteString("\t\tcase " + index + ":\n\t\t\treturn " + e.fieldGetter(index, "v."+field.Name(), field.Type(), expr) + "\n")
+		setters.WriteString("\t\tcase " + index + ":\n\t\t\t(" + setter + ")(value)\n")
 	}
 
-	methods := exportedMethods(named)
-
-	for _, method := range methods {
+	for _, method := range exportedMethods(named) {
 		if e.isIgnored(named, method.Name()) {
 			continue
 		}
@@ -119,11 +127,24 @@ func (e *emitter) emitMarshaller(named *types.Named) (string, error) {
 			continue
 		}
 
-		body.WriteString("\tout.Set(" + strconv.Quote(e.gen.jsMemberName(method.Name(), "")) + ", " + bound + ")\n")
+		calls.WriteString("\t\tcase " + strconv.Itoa(len(methods)) + ":\n" + bound)
+		methods = append(methods, strconv.Quote(e.gen.jsMemberName(method.Name(), "")))
 	}
 
-	body.WriteString("\n\tcrystallineAttach(out, crystallineRetain(v, scope), scope)\n\n")
-	body.WriteString("\treturn out\n}\n\n")
+	var body strings.Builder
+
+	body.WriteString("var " + shape + " js.Value\n\n")
+	body.WriteString("func " + marshalName(name) + "(v *" + goType + ") any {\n")
+	body.WriteString("\tif v == nil {\n\t\treturn nil\n\t}\n\n")
+	body.WriteString("\tif " + shape + ".IsUndefined() {\n")
+	body.WriteString("\t\t" + shape + " = crystallineShape(" + strconv.Quote(identity) + ",\n")
+	body.WriteString("\t\t[]string{" + strings.Join(fields, ", ") + "},\n")
+	body.WriteString("\t\tfunc(v *" + goType + ", entry *crystallineEntry, field int) any {\n\t\tswitch field {\n" + getters.String() + "\t\t}\n\n\t\treturn nil\n\t},\n")
+	body.WriteString("\t\tfunc(v *" + goType + ", field int, value js.Value) {\n\t\tswitch field {\n" + setters.String() + "\t\t}\n\t},\n")
+	body.WriteString("\t\t[]string{" + strings.Join(methods, ", ") + "},\n")
+	body.WriteString("\t\tfunc(v *" + goType + ", method int, args []js.Value) any {\n\t\tswitch method {\n" + calls.String() + "\t\t}\n\n\t\treturn nil\n\t},\n")
+	body.WriteString("\t\t)\n\t}\n\n")
+	body.WriteString("\treturn " + shape + ".Invoke(crystallineRetain(v))\n}\n\n")
 
 	return body.String(), nil
 }
@@ -216,64 +237,34 @@ func (e *emitter) emitPlainMarshaller(named *types.Named) (string, error) {
 	return body.String(), nil
 }
 
-// fieldGetter renders the read half of a field accessor, caching the wrapper a
-// struct-typed field hands back.
-//
-// Rebuilding it on every read allocated a handle and a set of bridge slots each
-// time, and meant a.Field !== a.Field, which breaks ===, Map keys and every
-// framework's memo comparison. A struct field has a stable address, so a
-// wrapper over it stays a live view however the field is reassigned. A pointer
-// field is keyed on the pointer, so it refreshes when Go points elsewhere.
+// fieldGetter renders what reading a field returns, caching the wrapper a
+// struct-typed field hands back. See crystallineCached.
 //
 // Slices and maps are deliberately not cached: converting one produces a
 // snapshot rather than a view, so a cached copy would hide a later change.
-func (e *emitter) fieldGetter(name string, target string, t types.Type, expr string) (string, string) {
+func (e *emitter) fieldGetter(index string, target string, t types.Type, expr string) string {
 	t = unaliased(t)
 
-	plain := "func() any {\n\t\treturn " + expr + "\n\t}"
-
-	cache := "crystallineCache" + name
-	cached := "crystallineCached" + name
+	cached := func(key string) string {
+		return "crystallineCached(entry, " + index + ", " + key + ", func() any {\n\t\t\treturn " + expr + "\n\t\t})"
+	}
 
 	switch typed := t.(type) {
 	case *types.Named, *types.Alias:
-		if _, ok := t.Underlying().(*types.Struct); !ok {
-			return "", plain
+		if _, ok := t.Underlying().(*types.Struct); ok {
+			return cached("nil")
 		}
-
-		preamble := "\tvar " + cache + " any\n\tvar " + cached + " bool\n\n"
-
-		return preamble, "func() any {\n" +
-			"\t\tif !" + cached + " {\n" +
-			"\t\t\t" + cached + " = true\n" +
-			"\t\t\t" + cache + " = " + expr + "\n" +
-			"\t\t}\n\n" +
-			"\t\treturn " + cache + "\n\t}"
-
 	case *types.Pointer:
 		if _, ok := typed.Elem().Underlying().(*types.Struct); !ok {
-			return "", plain
+			return expr
 		}
 
-		if _, ok := typed.Elem().(*types.Named); !ok {
-			return "", plain
+		if _, ok := typed.Elem().(*types.Named); ok {
+			return cached(target)
 		}
-
-		holder := "crystallineCacheFor" + name
-
-		preamble := "\tvar " + cache + " any\n\tvar " + cached + " bool\n\tvar " + holder + " " +
-			types.TypeString(t, e.qualifier) + "\n\n"
-
-		return preamble, "func() any {\n" +
-			"\t\tif !" + cached + " || " + holder + " != " + target + " {\n" +
-			"\t\t\t" + cached + " = true\n" +
-			"\t\t\t" + holder + " = " + target + "\n" +
-			"\t\t\t" + cache + " = " + expr + "\n" +
-			"\t\t}\n\n" +
-			"\t\treturn " + cache + "\n\t}"
 	}
 
-	return "", plain
+	return expr
 }
 
 func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, error) {
@@ -291,13 +282,12 @@ func (e *emitter) emitMethod(named *types.Named, method *types.Func) (string, er
 
 	var body strings.Builder
 
-	body.WriteString("crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {\n")
-	body.WriteString("\t\tdefer crystallineRecover(&result)\n\n")
+	// A case of the type's method switch. The panic a conversion raises is
+	// recovered around the switch, in crystallineShape.
 	body.WriteString("\t\tif len(args) != " + strconv.Itoa(sig.Params().Len()) + " {\n")
 	body.WriteString("\t\t\treturn crystallineFail(" + strconv.Quote(e.gen.jsMemberName(method.Name(), "")+": expected "+strconv.Itoa(sig.Params().Len())+" arguments, got ") + " + strconv.Itoa(len(args)))\n")
 	body.WriteString("\t\t}\n\n")
 	body.WriteString(wrapPromise(returns, e.isPromised(named, method.Name(), method) || asyncSignature(sig), 2))
-	body.WriteString("\t}))")
 
 	return body.String(), nil
 }

@@ -51,6 +51,14 @@ func TestGeneratedBindingsWork(t *testing.T) {
 	for _, expected := range []string{
 		"Basic=420",
 		"WrapperEvals=0",
+		"WrapperFuncs=0",
+		"WrapperKeys=FirstValue,SecondValue,ThirdValue,A,B,C,One,Three,Two,release",
+		"WrapperOwnNames=FirstValue,SecondValue,ThirdValue,A,B,C,One,Three,Two,__crystallineHandle,release",
+		`WrapperJSON={"FirstValue":"hello","SecondValue":123,"ThirdValue":4.559999942779541}`,
+		"WrapperDetached=hello",
+		"WrapperClone=DataCloneError",
+		"ReleasedRead=threw",
+		"ReleasedCall=threw",
 		"FirstValue=hello",
 		"SecondValue=123",
 		"A(true)=true",
@@ -375,6 +383,35 @@ func main() {
 		for (let i = 0; i < 5; i++) { s.FooBar().release(); }
 		globalThis.eval = evaluate;
 		out.push("WrapperEvals=" + evals);
+
+		// A wrapper's accessors and methods are shared by its type, so building
+		// one after the first allocates no bridge slot at all.
+		const proto = globalThis.Go.prototype;
+		const makeFunc = proto._makeFuncWrapper;
+		let funcs = 0;
+		proto._makeFuncWrapper = function (id) { funcs++; return makeFunc.call(this, id); };
+		for (let i = 0; i < 5; i++) {
+			const w = s.FooBar();
+			w.FirstValue = w.FirstValue + "!";
+			w.One();
+			w.release();
+		}
+		proto._makeFuncWrapper = makeFunc;
+		out.push("WrapperFuncs=" + funcs);
+
+		// The shape consumers walk stays what it was: fields, methods and
+		// release as own enumerable properties, in that order, the handle
+		// hidden, and methods callable without their object.
+		const shaped = s.FooBar();
+		out.push("WrapperKeys=" + Object.keys(shaped).join(","));
+		out.push("WrapperOwnNames=" + Object.getOwnPropertyNames(shaped).join(","));
+		out.push("WrapperJSON=" + JSON.stringify(shaped));
+		const detached = shaped.One;
+		out.push("WrapperDetached=" + detached());
+		let cloned = "cloned";
+		try { structuredClone(shaped); } catch (e) { cloned = e.name; }
+		out.push("WrapperClone=" + cloned);
+		shaped.release();
 		const f = s.FooBar();
 		out.push("FirstValue=" + f.FirstValue);
 		out.push("SecondValue=" + f.SecondValue);
@@ -770,6 +807,23 @@ func main() {
 		} catch (e) {
 			out.push("Disposed=" + (e.message.includes("released") ? "yes" : e.message));
 		}
+
+		// A released wrapper refuses a read with a reason, rather than calling
+		// into a bridge slot that is gone.
+		const gone = s.FooBar();
+		gone.release();
+		try {
+			gone.FirstValue;
+			out.push("ReleasedRead=read");
+		} catch (e) {
+			out.push("ReleasedRead=" + (e.message.includes("released") ? "threw" : e.message));
+		}
+		try {
+			gone.One();
+			out.push("ReleasedCall=called");
+		} catch (e) {
+			out.push("ReleasedCall=" + (e.message.includes("released") ? "threw" : e.message));
+		}
 		return out.join(" | ");
 	})()` + "`" + `)
 
@@ -1133,13 +1187,22 @@ func TestCamelCaseReachesEveryName(t *testing.T) {
 
 	// The bindings: every name published into the JS object graph.
 	for _, pattern := range []*regexp.Regexp{
-		regexp.MustCompile(`crystallineDefine\(scope, out, "([^"]+)"`),
 		regexp.MustCompile(`out\.Set\("([^"]+)"`),
 		regexp.MustCompile(`\)\.Set\("([^"]+)", crystallineWrap`),
 		regexp.MustCompile(`value\.Get\("([^"]+)"\)`),
 		regexp.MustCompile(`c\.value\.Call\("([^"]+)"`),
 	} {
 		for _, found := range pattern.FindAllStringSubmatch(bindings.Source, -1) {
+			if capitalised(found[1]) {
+				wrong = append(wrong, "bindings: "+found[1])
+			}
+		}
+	}
+
+	// A wrapper's fields and methods are named in the lists handed to
+	// crystallineShape.
+	for _, list := range regexp.MustCompile(`\[\]string\{([^}]*)\}`).FindAllStringSubmatch(bindings.Source, -1) {
+		for _, found := range regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(list[1], -1) {
 			if capitalised(found[1]) {
 				wrong = append(wrong, "bindings: "+found[1])
 			}

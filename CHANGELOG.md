@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Building a wrapper no longer compiles JavaScript. `crystallineAttach` ran an
   `eval` per wrapper to install `Symbol.dispose`; it is now compiled once, as
   `crystallineWrap` already was. `BenchmarkRecord` reports evals per op.
+- A wrapper's accessors and methods belong to its type. They were two
+  `js.FuncOf` per field, one per method and one for `release`, per wrapper,
+  each defined by its own call; they are now made once per type, and building
+  a wrapper is one call into JavaScript. The wrapper keeps its shape: fields,
+  methods and `release` are still own enumerable properties in the same order,
+  so `Object.keys`, `JSON.stringify` and a walk over its properties see what
+  they did, and a method still works detached from its object. A ten-field
+  record with nested structs went from 23 `js.FuncOf` and about 226 crossings
+  to none and 21 (all but one of them the two calls themselves), and from
+  about 190 µs to 16 µs; reading one out in full, from 59 `js.FuncOf` and 620
+  µs to none and 230 µs.
+- Reading or calling a released wrapper throws, naming the type. It used to
+  call into a bridge slot that had been released, which logs to the console
+  and answers `undefined`.
+- `crystallineFrozen` is one call rather than two per field.
 
 ### Fixed
 

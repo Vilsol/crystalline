@@ -360,39 +360,32 @@ const crystallineHandleKey = "__crystallineHandle"
 
 // Wrappers are backed by a handle table rather than by copying, so a value
 // handed back to Go resolves to the object it came from. Entries are released
-// when JS collects the wrapper.
-// crystallineScope collects the js.Func values a wrapper owns. Each one holds a
-// slot in the Go/JS bridge until it is released, so a wrapper that is never
-// released leaks one per field and method.
-type crystallineScope struct {
-	funcs []js.Func
-}
-
-func (s *crystallineScope) fn(handler func(js.Value, []js.Value) any) js.Func {
-	created := js.FuncOf(handler)
-	s.funcs = append(s.funcs, created)
-
-	return created
-}
-
+// when JS collects the wrapper, or when it is released explicitly.
 type crystallineEntry struct {
 	value any
-	scope *crystallineScope
+
+	// cache holds the wrappers the struct-typed fields handed out, so that a
+	// field read twice gives the same object. It goes when the entry does.
+	cache map[int]crystallineCacheSlot
+}
+
+type crystallineCacheSlot struct {
+	key   any
+	value any
 }
 
 var (
 	crystallineHandleMutex sync.Mutex
-	crystallineHandles     = make(map[int]crystallineEntry)
+	crystallineHandles     = make(map[int]*crystallineEntry)
 	crystallineHandleNext  int
-	crystallineFinalizer   js.Value
 )
 
-func crystallineRetain(value any, scope *crystallineScope) int {
+func crystallineRetain(value any) int {
 	crystallineHandleMutex.Lock()
 	defer crystallineHandleMutex.Unlock()
 
 	crystallineHandleNext++
-	crystallineHandles[crystallineHandleNext] = crystallineEntry{value: value, scope: scope}
+	crystallineHandles[crystallineHandleNext] = &crystallineEntry{value: value}
 
 	return crystallineHandleNext
 }
@@ -402,69 +395,193 @@ func crystallineResolve(handle int) (any, bool) {
 	defer crystallineHandleMutex.Unlock()
 
 	entry, ok := crystallineHandles[handle]
+	if !ok {
+		return nil, false
+	}
 
-	return entry.value, ok
+	return entry.value, true
 }
 
-// crystallineReleaseHandle drops a wrapper and frees the bridge slots it held.
+// crystallineReleaseHandle drops a wrapper's entry. Nothing else is held per
+// wrapper: its accessors and methods belong to its type.
 func crystallineReleaseHandle(handle int) {
 	crystallineHandleMutex.Lock()
-	entry, ok := crystallineHandles[handle]
 	delete(crystallineHandles, handle)
 	crystallineHandleMutex.Unlock()
-
-	if !ok || entry.scope == nil {
-		return
-	}
-
-	for _, released := range entry.scope.funcs {
-		released.Release()
-	}
-
-	entry.scope.funcs = nil
 }
 
-// crystallineAttach tags a wrapper with its handle and arranges for the entry
-// to be dropped once JS no longer holds the wrapper.
-func crystallineAttach(target js.Value, handle int, scope *crystallineScope) {
-	js.Global().Get("Object").Call("defineProperty", target, crystallineHandleKey, map[string]any{
-		"value":      handle,
-		"enumerable": false,
-	})
+// crystallineCached hands back the wrapper a struct-typed field produced the
+// last time it was read, building a new one only when key changed.
+//
+// Rebuilding it on every read allocated a handle each time, and meant
+// a.Field !== a.Field, which breaks ===, Map keys and every framework's memo
+// comparison. A field held by value has a stable address, so its key is nil and
+// never changes. A pointer field is keyed on the pointer, so it refreshes when
+// Go points elsewhere.
+func crystallineCached(entry *crystallineEntry, field int, key any, build func() any) any {
+	crystallineHandleMutex.Lock()
+	slot, ok := entry.cache[field]
+	crystallineHandleMutex.Unlock()
 
-	// Explicit disposal, so a caller that knows when it is done need not wait
-	// for the collector. Symbol.dispose cannot be reached through Value.Set,
-	// which only takes string keys.
-	disposer := scope.fn(func(this js.Value, args []js.Value) any {
-		crystallineReleaseHandle(handle)
+	if ok && slot.key == key {
+		return slot.value
+	}
 
-		return nil
-	})
+	value := build()
 
-	target.Set("release", disposer)
+	crystallineHandleMutex.Lock()
+	if entry.cache == nil {
+		entry.cache = make(map[int]crystallineCacheSlot)
+	}
+	entry.cache[field] = crystallineCacheSlot{key: key, value: value}
+	crystallineHandleMutex.Unlock()
 
-	js.Global().Call("eval", `(target, dispose) => {
-		if (typeof Symbol.dispose !== "undefined") {
-			target[Symbol.dispose] = dispose;
-		}
-	}`).Invoke(target, disposer)
+	return value
+}
 
-	if crystallineFinalizer.IsUndefined() {
-		constructor := js.Global().Get("FinalizationRegistry")
-		if constructor.IsUndefined() {
-			return
-		}
+// crystallineShaper turns one type's accessors and methods into a function
+// that builds its wrappers. It is compiled once.
+//
+// A wrapper keeps the shape it always had: its fields as enumerable accessor
+// properties, its methods and release as enumerable functions, all its own, so
+// Object.keys, JSON.stringify and a walk over its properties see what they
+// did. What changed is who owns the functions. The accessors are shared by the
+// type and read the handle off the object they are called on, and a method is
+// a JavaScript closure over the handle rather than a bridge slot of its own.
+var crystallineShaper js.Value
 
-		crystallineFinalizer = constructor.New(js.FuncOf(func(this js.Value, args []js.Value) any {
-			if len(args) > 0 {
+// crystallineReleaser is the release every wrapper shares, and the finalizer's
+// callback: both are handed the handle.
+var crystallineReleaser js.Func
+
+var crystallineFinalizer js.Value
+
+// crystallineShape builds the factory for one type's wrappers.
+//
+// It costs three js.FuncOf per type, once. A wrapper then costs one call into
+// JavaScript, where it used to cost two js.FuncOf per field, one per method and
+// one for release, plus a call to define each of them.
+func crystallineShape[T any](
+	subject string,
+	fields []string,
+	get func(v *T, entry *crystallineEntry, field int) any,
+	set func(v *T, field int, value js.Value),
+	methods []string,
+	call func(v *T, method int, args []js.Value) any,
+) js.Value {
+	if crystallineShaper.IsUndefined() {
+		crystallineShaper = js.Global().Call("eval", `(key, fields, get, set, methods, call, release, registry) => {
+			const descriptors = {};
+			fields.forEach((name, i) => {
+				descriptors[name] = {
+					enumerable: true,
+					// Configurable so a wrapper that cannot accept writes can
+					// replace the setter after the fact. See crystallineFrozen.
+					configurable: true,
+					get() { return get(this[key], i); },
+					set(value) { set(this[key], i, value); },
+				};
+			});
+			const disposable = typeof Symbol.dispose !== "undefined";
+			return (handle) => {
+				const out = Object.defineProperties({}, descriptors);
+				methods.forEach((name, m) => {
+					out[name] = (...args) => call(handle, m, ...args);
+				});
+				Object.defineProperty(out, key, { value: handle, enumerable: false });
+				// Explicit disposal, so a caller that knows when it is done
+				// need not wait for the collector.
+				const dispose = () => release(handle);
+				out.release = dispose;
+				if (disposable) {
+					out[Symbol.dispose] = dispose;
+				}
+				if (registry !== undefined) {
+					registry.register(out, handle);
+				}
+				return out;
+			};
+		}`)
+
+		crystallineReleaser = js.FuncOf(func(this js.Value, args []js.Value) any {
+			if len(args) > 0 && args[0].Type() == js.TypeNumber {
 				crystallineReleaseHandle(args[0].Int())
 			}
 
 			return nil
-		}))
+		})
+
+		if constructor := js.Global().Get("FinalizationRegistry"); !constructor.IsUndefined() {
+			crystallineFinalizer = constructor.New(crystallineReleaser)
+		}
 	}
 
-	crystallineFinalizer.Call("register", target, handle)
+	// entryOf finds what a handle stands for. A released wrapper still has its
+	// accessors, since they belong to the type, so this is where it is told.
+	entryOf := func(handle js.Value) (*T, *crystallineEntry, error) {
+		if handle.Type() != js.TypeNumber {
+			return nil, nil, errors.New(subject + ": called on something that is not its wrapper")
+		}
+
+		crystallineHandleMutex.Lock()
+		entry, ok := crystallineHandles[handle.Int()]
+		crystallineHandleMutex.Unlock()
+
+		if !ok {
+			return nil, nil, errors.New(subject + ": the value behind this handle has been released")
+		}
+
+		return entry.value.(*T), entry, nil
+	}
+
+	getter := js.FuncOf(func(this js.Value, args []js.Value) (result any) {
+		defer crystallineRecover(&result)
+
+		v, entry, err := entryOf(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		return get(v, entry, args[1].Int())
+	})
+
+	// A write validates, so it throws where it happened rather than poisoning
+	// the next unrelated call.
+	setter := js.FuncOf(func(this js.Value, args []js.Value) (result any) {
+		defer crystallineRecover(&result)
+
+		v, _, err := entryOf(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		set(v, args[1].Int(), args[2])
+
+		return nil
+	})
+
+	caller := js.FuncOf(func(this js.Value, args []js.Value) (result any) {
+		defer crystallineRecover(&result)
+
+		v, _, err := entryOf(args[0])
+		if err != nil {
+			return crystallineFail(err.Error())
+		}
+
+		return call(v, args[1].Int(), args[2:])
+	})
+
+	names := func(list []string) []any {
+		out := make([]any, 0, len(list))
+		for _, name := range list {
+			out = append(out, name)
+		}
+
+		return out
+	}
+
+	return crystallineShaper.Invoke(crystallineHandleKey, names(fields), crystallineWrap(getter), crystallineWrap(setter),
+		names(methods), crystallineWrap(caller), crystallineReleaser, crystallineFinalizer)
 }
 
 // crystallineHandleOf recovers the handle a wrapper carries, if any.
@@ -562,13 +679,10 @@ func crystallineErrorText(value js.Value) string {
 	return value.String()
 }
 
-// crystallineDefine installs accessors so that reads and writes from JS reach
-// the Go value, rather than operating on a detached copy.
-// crystallineFrozenSetter refuses a write that could not have landed.
-//
-// It is created once and never released: there is nothing per-field to say, and
-// a scope would have to reach inside a wrapper that is already built.
-var crystallineFrozenSetter js.Value
+// crystallineFreezer replaces the setters of an already-built wrapper with one
+// that refuses. It is compiled once, and freezing is one call however many
+// fields the wrapper has.
+var crystallineFreezer js.Value
 
 // crystallineFrozen makes an already-built wrapper reject writes.
 //
@@ -582,57 +696,32 @@ func crystallineFrozen(value any) any {
 		return value
 	}
 
-	if crystallineFrozenSetter.IsUndefined() {
-		crystallineFrozenSetter = crystallineWrap(js.FuncOf(func(this js.Value, args []js.Value) any {
-			return crystallineFail("cannot be written: a map element is a copy in Go, so the write would be discarded")
-		}))
+	if crystallineFreezer.IsUndefined() {
+		crystallineFreezer = js.Global().Call("eval", `(() => {
+			const refuse = () => {
+				throw new Error("cannot be written: a map element is a copy in Go, so the write would be discarded");
+			};
+			return (object) => {
+				for (const name of Object.keys(object)) {
+					const descriptor = Object.getOwnPropertyDescriptor(object, name);
+					// A method is a plain property: there is no write to refuse.
+					if (descriptor.set === undefined) {
+						continue;
+					}
+					Object.defineProperty(object, name, {
+						enumerable: true,
+						configurable: true,
+						get: descriptor.get,
+						set: refuse,
+					});
+				}
+			};
+		})()`)
 	}
 
-	objects := js.Global().Get("Object")
-	names := objects.Call("keys", object)
-
-	for i := 0; i < names.Length(); i++ {
-		name := names.Index(i).String()
-
-		descriptor := objects.Call("getOwnPropertyDescriptor", object, name)
-		if descriptor.Get("set").IsUndefined() {
-			// A method is a plain property: there is no write to refuse.
-			continue
-		}
-
-		objects.Call("defineProperty", object, name, map[string]any{
-			"enumerable":   true,
-			"configurable": true,
-			"get":          descriptor.Get("get"),
-			"set":          crystallineFrozenSetter,
-		})
-	}
+	crystallineFreezer.Invoke(object)
 
 	return value
-}
-
-func crystallineDefine(scope *crystallineScope, target js.Value, name string, get func() any, set func(js.Value)) {
-	js.Global().Get("Object").Call("defineProperty", target, name, map[string]any{
-		"enumerable": true,
-		// Configurable so a wrapper that cannot accept writes can replace the
-		// setter after the fact. See crystallineFrozen.
-		"configurable": true,
-		"get": scope.fn(func(this js.Value, args []js.Value) any {
-			return get()
-		}),
-		// Wrapped, because a write now validates: handing a string to a number
-		// field has to throw where the write happened rather than poison the
-		// next unrelated call.
-		"set": crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
-			defer crystallineRecover(&result)
-
-			if len(args) > 0 {
-				set(args[0])
-			}
-
-			return nil
-		})),
-	})
 }
 
 // crystallineRecover turns a panic into a reported failure, so a bad argument
@@ -890,154 +979,170 @@ func crystallineFnCatalogueRestock(this js.Value, args []js.Value) (result any) 
 	})
 }
 
+var crystallineMarshalCatalogueAuditedShape js.Value
+
 func crystallineMarshalCatalogueAudited(v *catalogue.Audited) any {
 	if v == nil {
 		return nil
 	}
 
-	out := js.Global().Get("Object").New()
-	scope := &crystallineScope{}
+	if crystallineMarshalCatalogueAuditedShape.IsUndefined() {
+		crystallineMarshalCatalogueAuditedShape = crystallineShape("catalogue.Audited",
+			[]string{"CreatedAt"},
+			func(v *catalogue.Audited, entry *crystallineEntry, field int) any {
+				switch field {
+				case 0:
+					return crystallineCached(entry, 0, nil, func() any {
+						return js.Global().Get("Date").New(float64(v.CreatedAt.UnixMilli()))
+					})
+				}
 
-	var crystallineCacheCreatedAt any
-	var crystallineCachedCreatedAt bool
+				return nil
+			},
+			func(v *catalogue.Audited, field int, value js.Value) {
+				switch field {
+				case 0:
+					(func(value js.Value) {
+						converted, err := crystallineToTimeTime(value)
+						if err != nil {
+							crystallineFail(err.Error())
 
-	crystallineDefine(scope, out, "CreatedAt", func() any {
-		if !crystallineCachedCreatedAt {
-			crystallineCachedCreatedAt = true
-			crystallineCacheCreatedAt = js.Global().Get("Date").New(float64(v.CreatedAt.UnixMilli()))
-		}
+							return
+						}
 
-		return crystallineCacheCreatedAt
-	}, func(value js.Value) {
-		converted, err := crystallineToTimeTime(value)
-		if err != nil {
-			crystallineFail(err.Error())
+						v.CreatedAt = converted
+					})(value)
+				}
+			},
+			[]string{"Listed"},
+			func(v *catalogue.Audited, method int, args []js.Value) any {
+				switch method {
+				case 0:
+					if len(args) != 0 {
+						return crystallineFail("Listed: expected 0 arguments, got " + strconv.Itoa(len(args)))
+					}
 
-			return
-		}
+					r0 := v.Listed()
 
-		v.CreatedAt = converted
-	})
-	out.Set("Listed", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
-		defer crystallineRecover(&result)
+					return string(r0)
+				}
 
-		if len(args) != 0 {
-			return crystallineFail("Listed: expected 0 arguments, got " + strconv.Itoa(len(args)))
-		}
+				return nil
+			},
+		)
+	}
 
-		r0 := v.Listed()
-
-		return string(r0)
-	})))
-
-	crystallineAttach(out, crystallineRetain(v, scope), scope)
-
-	return out
+	return crystallineMarshalCatalogueAuditedShape.Invoke(crystallineRetain(v))
 }
+
+var crystallineMarshalCatalogueItemShape js.Value
 
 func crystallineMarshalCatalogueItem(v *catalogue.Item) any {
 	if v == nil {
 		return nil
 	}
 
-	out := js.Global().Get("Object").New()
-	scope := &crystallineScope{}
+	if crystallineMarshalCatalogueItemShape.IsUndefined() {
+		crystallineMarshalCatalogueItemShape = crystallineShape("catalogue.Item",
+			[]string{"Audited", "Name", "Price", "Status"},
+			func(v *catalogue.Item, entry *crystallineEntry, field int) any {
+				switch field {
+				case 0:
+					return crystallineCached(entry, 0, nil, func() any {
+						return crystallineMarshalCatalogueAudited(&v.Audited)
+					})
+				case 1:
+					return string(v.Name)
+				case 2:
+					return crystallineCached(entry, 2, nil, func() any {
+						return string(catalogue.MoneyToText(v.Price))
+					})
+				case 3:
+					return float64(v.Status)
+				}
 
-	var crystallineCacheAudited any
-	var crystallineCachedAudited bool
+				return nil
+			},
+			func(v *catalogue.Item, field int, value js.Value) {
+				switch field {
+				case 0:
+					(func(value js.Value) {
+						converted, err := crystallineToCatalogueAudited(value)
+						if err != nil {
+							crystallineFail(err.Error())
 
-	crystallineDefine(scope, out, "Audited", func() any {
-		if !crystallineCachedAudited {
-			crystallineCachedAudited = true
-			crystallineCacheAudited = crystallineMarshalCatalogueAudited(&v.Audited)
-		}
+							return
+						}
 
-		return crystallineCacheAudited
-	}, func(value js.Value) {
-		converted, err := crystallineToCatalogueAudited(value)
-		if err != nil {
-			crystallineFail(err.Error())
+						v.Audited = converted
+					})(value)
+				case 1:
+					(func(value js.Value) {
+						converted, err := crystallineToString(value)
+						if err != nil {
+							crystallineFail(err.Error())
 
-			return
-		}
+							return
+						}
 
-		v.Audited = converted
-	})
-	crystallineDefine(scope, out, "Name", func() any {
-		return string(v.Name)
-	}, func(value js.Value) {
-		converted, err := crystallineToString(value)
-		if err != nil {
-			crystallineFail(err.Error())
+						v.Name = converted
+					})(value)
+				case 2:
+					(func(value js.Value) {
+						converted, err := crystallineToCatalogueMoney(value)
+						if err != nil {
+							crystallineFail(err.Error())
 
-			return
-		}
+							return
+						}
 
-		v.Name = converted
-	})
-	var crystallineCachePrice any
-	var crystallineCachedPrice bool
+						v.Price = converted
+					})(value)
+				case 3:
+					(func(value js.Value) {
+						converted, err := crystallineToCatalogueStatus(value)
+						if err != nil {
+							crystallineFail(err.Error())
 
-	crystallineDefine(scope, out, "Price", func() any {
-		if !crystallineCachedPrice {
-			crystallineCachedPrice = true
-			crystallineCachePrice = string(catalogue.MoneyToText(v.Price))
-		}
+							return
+						}
 
-		return crystallineCachePrice
-	}, func(value js.Value) {
-		converted, err := crystallineToCatalogueMoney(value)
-		if err != nil {
-			crystallineFail(err.Error())
+						v.Status = converted
+					})(value)
+				}
+			},
+			[]string{"Listed", "Reprice"},
+			func(v *catalogue.Item, method int, args []js.Value) any {
+				switch method {
+				case 0:
+					if len(args) != 0 {
+						return crystallineFail("Listed: expected 0 arguments, got " + strconv.Itoa(len(args)))
+					}
 
-			return
-		}
+					r0 := v.Listed()
 
-		v.Price = converted
-	})
-	crystallineDefine(scope, out, "Status", func() any {
-		return float64(v.Status)
-	}, func(value js.Value) {
-		converted, err := crystallineToCatalogueStatus(value)
-		if err != nil {
-			crystallineFail(err.Error())
+					return string(r0)
+				case 1:
+					if len(args) != 1 {
+						return crystallineFail("Reprice: expected 1 arguments, got " + strconv.Itoa(len(args)))
+					}
 
-			return
-		}
+					a0, err := crystallineToCatalogueMoney(args[0])
+					if err != nil {
+						return crystallineFail(err.Error())
+					}
 
-		v.Status = converted
-	})
-	out.Set("Listed", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
-		defer crystallineRecover(&result)
+					v.Reprice(a0)
 
-		if len(args) != 0 {
-			return crystallineFail("Listed: expected 0 arguments, got " + strconv.Itoa(len(args)))
-		}
+					return nil
+				}
 
-		r0 := v.Listed()
+				return nil
+			},
+		)
+	}
 
-		return string(r0)
-	})))
-	out.Set("Reprice", crystallineWrap(scope.fn(func(this js.Value, args []js.Value) (result any) {
-		defer crystallineRecover(&result)
-
-		if len(args) != 1 {
-			return crystallineFail("Reprice: expected 1 arguments, got " + strconv.Itoa(len(args)))
-		}
-
-		a0, err := crystallineToCatalogueMoney(args[0])
-		if err != nil {
-			return crystallineFail(err.Error())
-		}
-
-		v.Reprice(a0)
-
-		return nil
-	})))
-
-	crystallineAttach(out, crystallineRetain(v, scope), scope)
-
-	return out
+	return crystallineMarshalCatalogueItemShape.Invoke(crystallineRetain(v))
 }
 
 var crystallineKnownCatalogueAudited = map[string]bool{"CreatedAt": true}

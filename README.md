@@ -212,8 +212,9 @@ render in JavaScript, import the handful of things Go has to reach.
 | `panic` | thrown or rejected `Error` with the Go stack |
 
 A struct arrives as a *live view*: each field read and write is a call into Go,
-and each field and method holds a slot in the Go/JS bridge until the wrapper is
-released. `r.Type(T{}, bind.Plain())` converts a type to ordinary JavaScript
+and the wrapper holds a handle until it is released. Its accessors and methods
+belong to its type, so building one is a single call into JavaScript however
+many fields it has. `r.Type(T{}, bind.Plain())` converts a type to ordinary JavaScript
 data instead —
 once, with no methods and no writing back — which is what a result that is only
 read wants. See [Performance](#performance).
@@ -250,8 +251,10 @@ Everything crosses a bridge, and the bridge is the cost. Measured with
   it is per crossing rather than per conversion.
 * A wrapper field is a call, not a property: about 6.8 µs against 6 ns on plain
   data. Read it into a local rather than in a loop.
-* Building a struct wrapper costs about 68 µs, so a slice of them is expensive.
-  `bind.Plain()` makes the same result about 9x cheaper.
+* Building a struct wrapper is one call into JavaScript, about 17 µs with its
+  release, whatever its size. Reading all of it back out is a crossing per
+  field and per nested wrapper, so a result that is read in full is still
+  cheaper as `bind.Plain()`.
 * Bulk data crosses about 3x faster as `[]byte` than as a string.
 
 ## TinyGo
